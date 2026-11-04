@@ -1,0 +1,635 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://excalidraw.com",
+  "elements": [
+    {
+      "type": "text",
+      "id": "title",
+      "x": 160,
+      "y": 20,
+      "text": "CircleGuard - Estrategia de Branching, PRs y SemVer (US-02)",
+      "fontSize": 24,
+      "strokeColor": "#1e1e1e"
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "x": 210,
+      "y": 55,
+      "text": "GitHub Flow + Conventional Commits + Branch Protection + CI/CD Promotion",
+      "fontSize": 16,
+      "strokeColor": "#757575"
+    },
+    {
+      "type": "rectangle",
+      "id": "zone_branches",
+      "x": 30,
+      "y": 95,
+      "width": 1140,
+      "height": 310,
+      "backgroundColor": "#dbe4ff",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#4a9eed",
+      "strokeWidth": 2,
+      "opacity": 30
+    },
+    {
+      "type": "text",
+      "id": "zone_branches_lbl",
+      "x": 50,
+      "y": 105,
+      "text": "1. Flujo de Ramas (GitHub Flow) y Reglas de Proteccion en main",
+      "fontSize": 18,
+      "strokeColor": "#2563eb"
+    },
+    {
+      "type": "rectangle",
+      "id": "b_feat",
+      "x": 60,
+      "y": 150,
+      "width": 230,
+      "height": 65,
+      "backgroundColor": "#a5d8ff",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#4a9eed",
+      "strokeWidth": 2,
+      "label": {
+        "text": "feature/US-XX-desc\nfix/US-XX-desc",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "rectangle",
+      "id": "b_hotfix",
+      "x": 60,
+      "y": 240,
+      "width": 230,
+      "height": 65,
+      "backgroundColor": "#ffc9c9",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#ef4444",
+      "strokeWidth": 2,
+      "label": {
+        "text": "hotfix/US-XX-critico\ndocs/* | chore/*",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "rectangle",
+      "id": "b_direct",
+      "x": 60,
+      "y": 325,
+      "width": 230,
+      "height": 60,
+      "backgroundColor": "#ffd8a8",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#ef4444",
+      "strokeWidth": 2,
+      "label": {
+        "text": "git push origin main\n(DIRECTO PROHIBIDO)",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "rectangle",
+      "id": "pr_box",
+      "x": 360,
+      "y": 165,
+      "width": 240,
+      "height": 130,
+      "backgroundColor": "#fff3bf",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#f59e0b",
+      "strokeWidth": 2,
+      "label": {
+        "text": "Pull Request (PR)\n- Plantilla .github/\n- Link Jira SCRUM-XX\n- >= 1 Peer Approval\n- Conv. Commits Check",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "arrow",
+      "id": "arr_feat_pr",
+      "x": 290,
+      "y": 182,
+      "width": 70,
+      "height": 25,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          70,
+          25
+        ]
+      ],
+      "strokeColor": "#4a9eed",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow",
+      "id": "arr_hot_pr",
+      "x": 290,
+      "y": 272,
+      "width": 70,
+      "height": -25,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          70,
+          -25
+        ]
+      ],
+      "strokeColor": "#ef4444",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "rectangle",
+      "id": "ci_gate",
+      "x": 660,
+      "y": 165,
+      "width": 230,
+      "height": 130,
+      "backgroundColor": "#d0bfff",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#8b5cf6",
+      "strokeWidth": 2,
+      "label": {
+        "text": "Required Status Checks\n- Jenkins Multibranch\n- Unit & Integ Tests\n- JaCoCo >= 60%\n- SonarQube Gate",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "arrow",
+      "id": "arr_pr_ci",
+      "x": 600,
+      "y": 230,
+      "width": 60,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          60,
+          0
+        ]
+      ],
+      "strokeColor": "#f59e0b",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "rectangle",
+      "id": "main_box",
+      "x": 950,
+      "y": 165,
+      "width": 190,
+      "height": 130,
+      "backgroundColor": "#b2f2bb",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#22c55e",
+      "strokeWidth": 3,
+      "label": {
+        "text": "Rama main\n(PROTEGIDA)\nSquash / Merge\nCodigo Estable",
+        "fontSize": 18
+      }
+    },
+    {
+      "type": "arrow",
+      "id": "arr_ci_main",
+      "x": 890,
+      "y": 230,
+      "width": 60,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          60,
+          0
+        ]
+      ],
+      "strokeColor": "#22c55e",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow",
+      "id": "arr_direct_block",
+      "x": 290,
+      "y": 355,
+      "width": 660,
+      "height": -90,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          500,
+          0
+        ],
+        [
+          660,
+          -90
+        ]
+      ],
+      "strokeColor": "#ef4444",
+      "strokeWidth": 2,
+      "strokeStyle": "dashed",
+      "endArrowhead": "bar",
+      "label": {
+        "text": "BLOQUEADO POR BRANCH PROTECTION (HTTP 403 / GH006)",
+        "fontSize": 14
+      }
+    },
+    {
+      "type": "rectangle",
+      "id": "zone_semver",
+      "x": 30,
+      "y": 430,
+      "width": 1140,
+      "height": 200,
+      "backgroundColor": "#e5dbff",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#8b5cf6",
+      "strokeWidth": 2,
+      "opacity": 30
+    },
+    {
+      "type": "text",
+      "id": "zone_semver_lbl",
+      "x": 50,
+      "y": 440,
+      "text": "2. Conventional Commits y Calculo Automatico de Version Semantica (SemVer)",
+      "fontSize": 18,
+      "strokeColor": "#6d28d9"
+    },
+    {
+      "type": "rectangle",
+      "id": "cc_patch",
+      "x": 60,
+      "y": 480,
+      "width": 250,
+      "height": 120,
+      "backgroundColor": "#c3fae8",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#06b6d4",
+      "strokeWidth": 2,
+      "label": {
+        "text": "fix(scope): ... | perf(...): ...\nCorreccion sin romper API\n--> Incrementa PATCH\n(ej. v1.2.0 -> v1.2.1)",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "rectangle",
+      "id": "cc_minor",
+      "x": 345,
+      "y": 480,
+      "width": 250,
+      "height": 120,
+      "backgroundColor": "#a5d8ff",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#4a9eed",
+      "strokeWidth": 2,
+      "label": {
+        "text": "feat(scope): ...\nNueva funcionalidad\n--> Incrementa MINOR\n(ej. v1.2.0 -> v1.3.0)",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "rectangle",
+      "id": "cc_major",
+      "x": 630,
+      "y": 480,
+      "width": 250,
+      "height": 120,
+      "backgroundColor": "#ffc9c9",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#ef4444",
+      "strokeWidth": 2,
+      "label": {
+        "text": "feat(scope)!: ...\nBREAKING CHANGE:\n--> Incrementa MAJOR\n(ej. v1.2.0 -> v2.0.0)",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "rectangle",
+      "id": "semver_tag",
+      "x": 920,
+      "y": 480,
+      "width": 220,
+      "height": 120,
+      "backgroundColor": "#fff3bf",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#f59e0b",
+      "strokeWidth": 2,
+      "label": {
+        "text": "Tag Git & Docker\nvX.Y.Z Inmutable\n(Prohibido :latest)\nRelease Notes Auto",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "arrow",
+      "id": "arr_main_semver",
+      "x": 1040,
+      "y": 295,
+      "width": 0,
+      "height": 185,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          185
+        ]
+      ],
+      "strokeColor": "#22c55e",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow",
+      "label": {
+        "text": "Post-Merge",
+        "fontSize": 14
+      }
+    },
+    {
+      "type": "arrow",
+      "id": "arr_cc_tag",
+      "x": 880,
+      "y": 540,
+      "width": 40,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          40,
+          0
+        ]
+      ],
+      "strokeColor": "#8b5cf6",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "rectangle",
+      "id": "zone_cd",
+      "x": 30,
+      "y": 655,
+      "width": 1140,
+      "height": 210,
+      "backgroundColor": "#d3f9d8",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#22c55e",
+      "strokeWidth": 2,
+      "opacity": 30
+    },
+    {
+      "type": "text",
+      "id": "zone_cd_lbl",
+      "x": 50,
+      "y": 665,
+      "text": "3. Empaquetado Inmutable y Promocion Continua entre Ambientes (CD)",
+      "fontSize": 18,
+      "strokeColor": "#15803d"
+    },
+    {
+      "type": "rectangle",
+      "id": "reg_box",
+      "x": 60,
+      "y": 710,
+      "width": 230,
+      "height": 125,
+      "backgroundColor": "#eebefa",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#8b5cf6",
+      "strokeWidth": 2,
+      "label": {
+        "text": "Nexus / Registry\n8 Microservicios +\nCliente Web (mobile)\nTag: X.Y.Z",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "rectangle",
+      "id": "env_dev",
+      "x": 360,
+      "y": 710,
+      "width": 220,
+      "height": 125,
+      "backgroundColor": "#a5d8ff",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#4a9eed",
+      "strokeWidth": 2,
+      "label": {
+        "text": "Ambiente DEV\nDespliegue Auto\nSmoke Tests +\nPlaywright E2E",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "rectangle",
+      "id": "env_stage",
+      "x": 650,
+      "y": 710,
+      "width": 220,
+      "height": 125,
+      "backgroundColor": "#fff3bf",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#f59e0b",
+      "strokeWidth": 2,
+      "label": {
+        "text": "Ambiente STAGE\nPromocion Auto\ntras E2E en DEV\nValidacion Pre-Prod",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "rectangle",
+      "id": "env_prod",
+      "x": 935,
+      "y": 710,
+      "width": 205,
+      "height": 125,
+      "backgroundColor": "#b2f2bb",
+      "fillStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "strokeColor": "#22c55e",
+      "strokeWidth": 3,
+      "label": {
+        "text": "Ambiente PROD\nAprobacion Manual\nHealthchecks +\nRollback Automatico",
+        "fontSize": 16
+      }
+    },
+    {
+      "type": "arrow",
+      "id": "arr_tag_reg",
+      "x": 1030,
+      "y": 600,
+      "width": -855,
+      "height": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          40
+        ],
+        [
+          -855,
+          40
+        ],
+        [
+          -855,
+          110
+        ]
+      ],
+      "strokeColor": "#8b5cf6",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow",
+      "id": "arr_reg_dev",
+      "x": 290,
+      "y": 772,
+      "width": 70,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          70,
+          0
+        ]
+      ],
+      "strokeColor": "#4a9eed",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow",
+      "label": {
+        "text": "pull",
+        "fontSize": 14
+      }
+    },
+    {
+      "type": "arrow",
+      "id": "arr_dev_stage",
+      "x": 580,
+      "y": 772,
+      "width": 70,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          70,
+          0
+        ]
+      ],
+      "strokeColor": "#f59e0b",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow",
+      "label": {
+        "text": "E2E OK",
+        "fontSize": 14
+      }
+    },
+    {
+      "type": "arrow",
+      "id": "arr_stage_prod",
+      "x": 870,
+      "y": 772,
+      "width": 65,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          65,
+          0
+        ]
+      ],
+      "strokeColor": "#22c55e",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow",
+      "label": {
+        "text": "Gate",
+        "fontSize": 14
+      }
+    }
+  ],
+  "appState": {
+    "gridSize": null,
+    "viewBackgroundColor": "#ffffff"
+  },
+  "files": {}
+}

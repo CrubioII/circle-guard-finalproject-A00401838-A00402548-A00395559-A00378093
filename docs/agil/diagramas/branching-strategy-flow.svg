@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900" font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#1e1e1e" />
+    </marker>
+    <marker id="bar" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 5 0 L 5 10" stroke="#ef4444" stroke-width="3" />
+    </marker>
+  </defs>
+  <rect width="1200" height="900" fill="#ffffff" />
+  <text x="160" y="44" font-size="24" font-weight="bold" fill="#1e1e1e">CircleGuard - Estrategia de Branching, PRs y SemVer (US-02)</text>
+  <text x="210" y="71" font-size="16" font-weight="normal" fill="#757575">GitHub Flow + Conventional Commits + Branch Protection + CI/CD Promotion</text>
+  <rect x="30" y="95" width="1140" height="310" rx="10" fill="#dbe4ff" fill-opacity="0.3" stroke="#4a9eed" stroke-width="2" />
+  <text x="50" y="123" font-size="18" font-weight="bold" fill="#2563eb">1. Flujo de Ramas (GitHub Flow) y Reglas de Proteccion en main</text>
+  <rect x="60" y="150" width="230" height="65" rx="10" fill="#a5d8ff" fill-opacity="1.0" stroke="#4a9eed" stroke-width="2" />
+  <text x="175.0" y="175.3" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">feature/US-XX-desc</text>
+  <text x="175.0" y="196.1" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">fix/US-XX-desc</text>
+  <rect x="60" y="240" width="230" height="65" rx="10" fill="#ffc9c9" fill-opacity="1.0" stroke="#ef4444" stroke-width="2" />
+  <text x="175.0" y="265.3" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">hotfix/US-XX-critico</text>
+  <text x="175.0" y="286.1" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">docs/* | chore/*</text>
+  <rect x="60" y="325" width="230" height="60" rx="10" fill="#ffd8a8" fill-opacity="1.0" stroke="#ef4444" stroke-width="2" />
+  <text x="175.0" y="347.8" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">git push origin main</text>
+  <text x="175.0" y="368.6" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">(DIRECTO PROHIBIDO)</text>
+  <rect x="360" y="165" width="240" height="130" rx="10" fill="#fff3bf" fill-opacity="1.0" stroke="#f59e0b" stroke-width="2" />
+  <text x="480.0" y="191.6" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">Pull Request (PR)</text>
+  <text x="480.0" y="212.4" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">- Plantilla .github/</text>
+  <text x="480.0" y="233.2" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">- Link Jira SCRUM-XX</text>
+  <text x="480.0" y="254.0" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">- &gt;= 1 Peer Approval</text>
+  <text x="480.0" y="274.8" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">- Conv. Commits Check</text>
+  <polyline points="290,182 360,207" fill="none" stroke="#4a9eed" stroke-width="2"  marker-end="url(#arrow)" />
+  <polyline points="290,272 360,247" fill="none" stroke="#ef4444" stroke-width="2"  marker-end="url(#arrow)" />
+  <rect x="660" y="165" width="230" height="130" rx="10" fill="#d0bfff" fill-opacity="1.0" stroke="#8b5cf6" stroke-width="2" />
+  <text x="775.0" y="191.6" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">Required Status Checks</text>
+  <text x="775.0" y="212.4" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">- Jenkins Multibranch</text>
+  <text x="775.0" y="233.2" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">- Unit &amp; Integ Tests</text>
+  <text x="775.0" y="254.0" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">- JaCoCo &gt;= 60%</text>
+  <text x="775.0" y="274.8" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">- SonarQube Gate</text>
+  <polyline points="600,230 660,230" fill="none" stroke="#f59e0b" stroke-width="2"  marker-end="url(#arrow)" />
+  <rect x="950" y="165" width="190" height="130" rx="10" fill="#b2f2bb" fill-opacity="1.0" stroke="#22c55e" stroke-width="3" />
+  <text x="1045.0" y="198.5" font-size="18" font-weight="bold" fill="#1e1e1e" text-anchor="middle">Rama main</text>
+  <text x="1045.0" y="221.9" font-size="18" font-weight="normal" fill="#1e1e1e" text-anchor="middle">(PROTEGIDA)</text>
+  <text x="1045.0" y="245.3" font-size="18" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Squash / Merge</text>
+  <text x="1045.0" y="268.7" font-size="18" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Codigo Estable</text>
+  <polyline points="890,230 950,230" fill="none" stroke="#22c55e" stroke-width="3"  marker-end="url(#arrow)" />
+  <polyline points="290,355 790,355 950,265" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#bar)" />
+  <text x="676.7" y="317.0" font-size="14" font-weight="bold" fill="#ef4444" text-anchor="middle">BLOQUEADO POR BRANCH PROTECTION (HTTP 403 / GH006)</text>
+  <rect x="30" y="430" width="1140" height="200" rx="10" fill="#e5dbff" fill-opacity="0.3" stroke="#8b5cf6" stroke-width="2" />
+  <text x="50" y="458" font-size="18" font-weight="bold" fill="#6d28d9">2. Conventional Commits y Calculo Automatico de Version Semantica (SemVer)</text>
+  <rect x="60" y="480" width="250" height="120" rx="10" fill="#c3fae8" fill-opacity="1.0" stroke="#06b6d4" stroke-width="2" />
+  <text x="185.0" y="512.0" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">fix(scope): ... | perf(...): ...</text>
+  <text x="185.0" y="532.8" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Correccion sin romper API</text>
+  <text x="185.0" y="553.6" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">--&gt; Incrementa PATCH</text>
+  <text x="185.0" y="574.4" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">(ej. v1.2.0 -&gt; v1.2.1)</text>
+  <rect x="345" y="480" width="250" height="120" rx="10" fill="#a5d8ff" fill-opacity="1.0" stroke="#4a9eed" stroke-width="2" />
+  <text x="470.0" y="512.0" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">feat(scope): ...</text>
+  <text x="470.0" y="532.8" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Nueva funcionalidad</text>
+  <text x="470.0" y="553.6" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">--&gt; Incrementa MINOR</text>
+  <text x="470.0" y="574.4" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">(ej. v1.2.0 -&gt; v1.3.0)</text>
+  <rect x="630" y="480" width="250" height="120" rx="10" fill="#ffc9c9" fill-opacity="1.0" stroke="#ef4444" stroke-width="2" />
+  <text x="755.0" y="512.0" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">feat(scope)!: ...</text>
+  <text x="755.0" y="532.8" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">BREAKING CHANGE:</text>
+  <text x="755.0" y="553.6" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">--&gt; Incrementa MAJOR</text>
+  <text x="755.0" y="574.4" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">(ej. v1.2.0 -&gt; v2.0.0)</text>
+  <rect x="920" y="480" width="220" height="120" rx="10" fill="#fff3bf" fill-opacity="1.0" stroke="#f59e0b" stroke-width="2" />
+  <text x="1030.0" y="512.0" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">Tag Git &amp; Docker</text>
+  <text x="1030.0" y="532.8" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">vX.Y.Z Inmutable</text>
+  <text x="1030.0" y="553.6" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">(Prohibido :latest)</text>
+  <text x="1030.0" y="574.4" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Release Notes Auto</text>
+  <polyline points="1040,295 1040,480" fill="none" stroke="#22c55e" stroke-width="2"  marker-end="url(#arrow)" />
+  <text x="1040.0" y="379.5" font-size="14" font-weight="bold" fill="#22c55e" text-anchor="middle">Post-Merge</text>
+  <polyline points="880,540 920,540" fill="none" stroke="#8b5cf6" stroke-width="2"  marker-end="url(#arrow)" />
+  <rect x="30" y="655" width="1140" height="210" rx="10" fill="#d3f9d8" fill-opacity="0.3" stroke="#22c55e" stroke-width="2" />
+  <text x="50" y="683" font-size="18" font-weight="bold" fill="#15803d">3. Empaquetado Inmutable y Promocion Continua entre Ambientes (CD)</text>
+  <rect x="60" y="710" width="230" height="125" rx="10" fill="#eebefa" fill-opacity="1.0" stroke="#8b5cf6" stroke-width="2" />
+  <text x="175.0" y="744.5" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">Nexus / Registry</text>
+  <text x="175.0" y="765.3" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">8 Microservicios +</text>
+  <text x="175.0" y="786.1" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Cliente Web (mobile)</text>
+  <text x="175.0" y="806.9" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Tag: X.Y.Z</text>
+  <rect x="360" y="710" width="220" height="125" rx="10" fill="#a5d8ff" fill-opacity="1.0" stroke="#4a9eed" stroke-width="2" />
+  <text x="470.0" y="744.5" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">Ambiente DEV</text>
+  <text x="470.0" y="765.3" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Despliegue Auto</text>
+  <text x="470.0" y="786.1" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Smoke Tests +</text>
+  <text x="470.0" y="806.9" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Playwright E2E</text>
+  <rect x="650" y="710" width="220" height="125" rx="10" fill="#fff3bf" fill-opacity="1.0" stroke="#f59e0b" stroke-width="2" />
+  <text x="760.0" y="744.5" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">Ambiente STAGE</text>
+  <text x="760.0" y="765.3" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Promocion Auto</text>
+  <text x="760.0" y="786.1" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">tras E2E en DEV</text>
+  <text x="760.0" y="806.9" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Validacion Pre-Prod</text>
+  <rect x="935" y="710" width="205" height="125" rx="10" fill="#b2f2bb" fill-opacity="1.0" stroke="#22c55e" stroke-width="3" />
+  <text x="1037.5" y="744.5" font-size="16" font-weight="bold" fill="#1e1e1e" text-anchor="middle">Ambiente PROD</text>
+  <text x="1037.5" y="765.3" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Aprobacion Manual</text>
+  <text x="1037.5" y="786.1" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Healthchecks +</text>
+  <text x="1037.5" y="806.9" font-size="16" font-weight="normal" fill="#1e1e1e" text-anchor="middle">Rollback Automatico</text>
+  <polyline points="1030,600 1030,640 175,640 175,710" fill="none" stroke="#8b5cf6" stroke-width="2"  marker-end="url(#arrow)" />
+  <polyline points="290,772 360,772" fill="none" stroke="#4a9eed" stroke-width="2"  marker-end="url(#arrow)" />
+  <text x="325.0" y="764.0" font-size="14" font-weight="bold" fill="#4a9eed" text-anchor="middle">pull</text>
+  <polyline points="580,772 650,772" fill="none" stroke="#f59e0b" stroke-width="2"  marker-end="url(#arrow)" />
+  <text x="615.0" y="764.0" font-size="14" font-weight="bold" fill="#f59e0b" text-anchor="middle">E2E OK</text>
+  <polyline points="870,772 935,772" fill="none" stroke="#22c55e" stroke-width="2"  marker-end="url(#arrow)" />
+  <text x="902.5" y="764.0" font-size="14" font-weight="bold" fill="#22c55e" text-anchor="middle">Gate</text>
+</svg>
