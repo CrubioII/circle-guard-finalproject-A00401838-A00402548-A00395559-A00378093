@@ -47,3 +47,13 @@ subprojects {
         useJUnitPlatform()
     }
 }
+
+val validateJenkinsSharedLibrary by tasks.registering {
+    group = "verification"
+    description = "Ejecuta la validacion reproducible de la Shared Library de Jenkins (US-09 / SCRUM-21)"
+    doLast {
+        val scriptFile = file("jenkins/test/validateSharedLibrary.groovy")
+        check(scriptFile.exists()) { "No se encontro el script de validacion: ${scriptFile.path}" }
+        groovy.lang.GroovyShell().evaluate(scriptFile)
+    }
+}
