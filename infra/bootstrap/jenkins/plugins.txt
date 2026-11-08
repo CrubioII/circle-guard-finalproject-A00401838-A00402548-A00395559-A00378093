@@ -1,0 +1,17 @@
+# Plugins requeridos por el plano de control CI/CD de CircleGuard (US-04, US-09, US-30, US-10)
+configuration-as-code
+job-dsl
+workflow-aggregator
+workflow-multibranch
+git
+github
+github-branch-source
+pipeline-githubnotify-step
+pipeline-stage-view
+credentials-binding
+jacoco
+sonar
+junit
+timestamper
+ansicolor
+ws-cleanup
