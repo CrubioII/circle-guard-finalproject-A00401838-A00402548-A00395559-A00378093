@@ -1,0 +1,69 @@
+# `multibranchFlow` — Contexto y plan del Jenkinsfile Multibranch de CircleGuard (`US-30` / `SCRUM-113`)
+
+Resuelve el contexto de una ejecución de Jenkins Multibranch (rama normal vs. *Pull Request*), calcula qué etapas debe ejecutar el `Jenkinsfile` y bloquea cualquier despliegue que no provenga de `main`. Es el punto único de decisión que consumen los bloques `when` del pipeline.
+
+## Uso básico en `Jenkinsfile`
+
+```groovy
+@Library('circleguard-shared-lib') _
+
+def flow = [:]
+def plan = [:]
+
+pipeline {
+    agent any
+    stages {
+        stage('Checkout & Context') {
+            steps {
+                script {
+                    checkout scm
+                    flow = multibranchFlow.collectContext()
+                    echo "PR=${flow.isPullRequest} main=${flow.isMainBranch} contexto=${flow.statusContext}"
+                }
+            }
+        }
+        stage('Detect') {
+            steps {
+                script {
+                    def detection = detectChangedServices()
+                    plan = multibranchFlow.planPipeline(flow, detection, [targetEnv: params.TARGET_ENV])
+                    if (plan.deploymentRequested && !plan.deploymentAllowed) {
+                        multibranchFlow.requireDeploymentAllowed(flow, params.TARGET_ENV)
+                    }
+                }
+            }
+        }
+        stage('Compile & Test Backend') {
+            when { expression { plan.runBackendBuild } }
+            steps { /* ... */ }
+        }
+        stage('Release Gate') {
+            when { expression { plan.deploymentAllowed } }
+            steps { /* US-13 */ }
+        }
+    }
+}
+```
+
+## Funciones disponibles
+
+| Función | Descripción |
+| :--- | :--- |
+| `collectContext(Map config = [:])` | Devuelve `branchName`, `changeId`, `changeTarget`, `changeBranch`, `changeFork`, `isPullRequest`, `isMainBranch`, `canDeployProd`, `isForkPullRequest` y `statusContext`. Usa `pipelineUtils` (US-09) para la semántica PR/main. |
+| `planPipeline(Map context, Map detection, Map config = [:])` | Calcula `runBackendBuild`, `runMobileBuild`, `runHeavyBuild`, `deploymentAllowed`, `deploymentRequiresApproval`, `deploymentReason`, `stages` y `statusContext`. `config` admite `targetEnv` (`none`/`dev`/`stage`/`prod`) y `forceFullBuild`. |
+| `deploymentDecision(Map context, String targetEnv)` | Devuelve `[targetEnv, allowed, requiresApproval, reason]`. Un PR o una rama distinta de `main` siempre obtiene `allowed=false`. |
+| `requireDeploymentAllowed(Map context, String targetEnv)` | Invoca `error(...)` y aborta el build si el despliegue no está permitido. |
+| `normalizeTargetEnv(String targetEnv)` | Valida que el ambiente sea `none`, `dev`, `stage` o `prod`; lanza `IllegalArgumentException` ante cualquier otro valor. |
+| `formatPlanSummary(Map plan)` | Resumen legible para la consola de Jenkins. |
+
+## Reglas de decisión (CA2)
+
+| Contexto | `TARGET_ENV` | `deploymentAllowed` | Etapas de despliegue |
+| :--- | :--- | :---: | :--- |
+| Pull Request (`CHANGE_ID`) | `none`/`dev`/`stage`/`prod` | **`false`** | `Release Gate` nunca se ejecuta; si se fuerza un ambiente, el build falla en la detección. |
+| Rama `feature/*`, `fix/*`, etc. | cualquiera | **`false`** | Sin despliegue. |
+| `main` | `none` | **`false`** | Sin despliegue (solo CI). |
+| `main` | `dev` / `stage` | **`true`** | `Release Gate` autorizada. |
+| `main` | `prod` | **`true`** (`requiresApproval=true`) | `Release Gate` autorizada; el `input` de aprobación se integra en US-13. |
+
+El contexto de estado publicado en GitHub es `continuous-integration/jenkins/pr-head` para PRs y `continuous-integration/jenkins/main` para `main`, alineado con los *Required Status Checks* definidos en `docs/agil/BRANCHING_STRATEGY.md` (US-02).

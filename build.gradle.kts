@@ -54,6 +54,18 @@ val validateJenkinsSharedLibrary by tasks.registering {
     doLast {
         val scriptFile = file("jenkins/test/validateSharedLibrary.groovy")
         check(scriptFile.exists()) { "No se encontro el script de validacion: ${scriptFile.path}" }
+        System.setProperty("circleguard.repoRoot", projectDir.absolutePath)
+        groovy.lang.GroovyShell().evaluate(scriptFile)
+    }
+}
+
+val validateJenkinsMultibranchPipeline by tasks.registering {
+    group = "verification"
+    description = "Valida el Jenkinsfile Multibranch, el job JCasC y el webhook de GitHub (US-30 / SCRUM-113)"
+    doLast {
+        val scriptFile = file("jenkins/test/validateMultibranchPipeline.groovy")
+        check(scriptFile.exists()) { "No se encontro el script de validacion: ${scriptFile.path}" }
+        System.setProperty("circleguard.repoRoot", projectDir.absolutePath)
         groovy.lang.GroovyShell().evaluate(scriptFile)
     }
 }

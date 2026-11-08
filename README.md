@@ -151,6 +151,16 @@ We maintain high system integrity via multi-level testing:
 
 ---
 
+## CI/CD (Jenkins)
+
+The repository root contains the [`Jenkinsfile`](Jenkinsfile) consumed by the **Multibranch Pipeline** (`US-30`). It loads the shared library in [`jenkins/vars/`](jenkins/vars/), detects modified services, runs selective Gradle/npm tests, blocks deployments from Pull Requests, and publishes GitHub commit statuses.
+
+- **Setup (JCasC, job, webhook):** [`docs/agil/JENKINS_MULTIBRANCH_US30.md`](docs/agil/JENKINS_MULTIBRANCH_US30.md)
+- **Validate locally:** `./jenkins/test/run-multibranch-validation.sh` or `./gradlew validateJenkinsMultibranchPipeline`
+- **Shared library (US-09):** [`docs/agil/JENKINS_SHARED_LIBRARY_US09.md`](docs/agil/JENKINS_SHARED_LIBRARY_US09.md)
+
+---
+
 ## Privacy & Compliance
 
 - **FERPA Compliance**: Student identities are never stored in the contact graph.

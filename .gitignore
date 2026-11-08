@@ -7,6 +7,7 @@ build/
 # Java
 *.class
 *.jar
+!gradle/wrapper/gradle-wrapper.jar
 *.war
 *.ear
 *.zip
@@ -46,3 +47,6 @@ web-build/
 *_data/
 pgdata/
 neo4jdata/
+
+# Local secrets / keys (never commit private keys)
+*.pem

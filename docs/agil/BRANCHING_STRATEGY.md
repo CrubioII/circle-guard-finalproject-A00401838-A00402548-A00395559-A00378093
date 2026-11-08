@@ -130,7 +130,7 @@ La rama `main` en el repositorio oficial de GitHub (`CrubioII/circle-guard-final
 
 Siguiendo las mejores prácticas de ingeniería de plataformas:
 1. **Fase Inicial (`US-02`):** Se activan de inmediato el bloqueo de *push* directo, la exigencia de Pull Request, mínimo 1 aprobación de pares, resolución de conversaciones y bloqueo de *force-push*.
-2. **Fase de Integración con CI (`US-09` y `US-10`):** En cuanto el *Multibranch Pipeline* de Jenkins y SonarQube publican sus primeros estados estables hacia la API de GitHub, se marcan como **Required Status Checks** los contextos:
+2. **Fase de Integración con CI (`US-30` y `US-10`):** En cuanto el *Multibranch Pipeline* de Jenkins y SonarQube publican sus primeros estados estables hacia la API de GitHub, se marcan como **Required Status Checks** los contextos:
    - `continuous-integration/jenkins/pr-head` (Compilación Gradle, Pruebas Unitarias, Integración y Cobertura JaCoCo $\geq 60\%$)
    - `SonarQube Quality Gate` (Análisis estático sin vulnerabilidades ni *bugs* bloqueantes)
 
@@ -170,7 +170,7 @@ gh api \
 EOF
 ```
 
-*(Si no se dispone de `gh`, el mismo payload JSON puede enviarse con `curl -L -X PUT -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/CrubioII/YamlPaQue_FinalProjectIngesoft5/branches/main/protection -d @protection.json`).*
+*(Si no se dispone de `gh`, el mismo payload JSON puede enviarse con `curl -L -X PUT -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093/branches/main/protection -d @protection.json`).*
 
 ---
 

@@ -1,0 +1,62 @@
+# `publishBuildStatus` — Publicación del estado CI en GitHub (`US-30` / `SCRUM-113`)
+
+Publica los estados `PENDING`, `SUCCESS`, `FAILURE` y `ERROR` del build como **GitHub Commit Status** mediante el paso `githubNotify` del plugin de GitHub. Si el plugin o la credencial no están disponibles, registra una advertencia y **no rompe el pipeline**.
+
+## Uso en `Jenkinsfile`
+
+```groovy
+@Library('circleguard-shared-lib') _
+
+def flow = [:]
+
+pipeline {
+    agent any
+    stages {
+        stage('Checkout & Context') {
+            steps {
+                script {
+                    checkout scm
+                    flow = multibranchFlow.collectContext()
+                    publishBuildStatus(state: 'PENDING', flow: flow, description: 'CircleGuard CI en ejecución')
+                }
+            }
+        }
+    }
+    post {
+        success { script { publishBuildStatus(state: 'SUCCESS', flow: flow, description: 'CircleGuard CI OK') } }
+        failure { script { publishBuildStatus(state: 'FAILURE', flow: flow, description: 'CircleGuard CI falló') } }
+        aborted { script { publishBuildStatus(state: 'ABORTED', flow: flow, description: 'CircleGuard CI abortado') } }
+    }
+}
+```
+
+## Parámetros (`Map config`)
+
+| Parámetro | Tipo | Por defecto | Descripción |
+| :--- | :--- | :--- | :--- |
+| `state` | `String` | `PENDING` | `PENDING`, `SUCCESS`, `FAILURE`, `ERROR` (o `ABORTED`, que se mapea a `ERROR`). |
+| `flow` | `Map` | `[:]` | Contexto de `multibranchFlow.collectContext()`; aporta `statusContext` y el repositorio. |
+| `description` | `String` | `CircleGuard CI <estado>` | Texto corto; se normaliza y recorta a 140 caracteres (límite de GitHub). |
+| `statusContext` | `String` | PR → `continuous-integration/jenkins/pr-head`; `main` → `continuous-integration/jenkins/main` | Contexto del *Commit Status*. |
+| `sha` | `String` | `env.CHANGE_COMMIT` en PRs o `env.GIT_COMMIT` | Commit sobre el que se publica el estado. |
+| `repository` / `account` + `repo` | `String` | `env.CIRCLEGUARD_REPOSITORY`, `env.GITHUB_REPOSITORY` o `env.GIT_URL` | Repositorio destino (`owner/repo`). |
+| `credentialsId` | `String` | `github-credentials` | Credencial **Username with password** (usuario + PAT con scope `repo`). |
+| `dryRun` | `Boolean` | `env.PUBLISH_BUILD_STATUS_DRY_RUN` | Si es `true`, calcula y registra el payload sin llamar a GitHub. |
+| `targetUrl` | `String` | `env.BUILD_URL` | Enlace "Details" del estado. |
+
+## Funciones auxiliares
+
+| Función | Descripción |
+| :--- | :--- |
+| `normalizeState(Object)` | Valida y normaliza el estado; valores desconocidos se publican como `ERROR` para que el fallo sea visible. |
+| `normalizeDescription(Object)` | Colapsa espacios/saltos de línea y recorta a 140 caracteres. |
+| `defaultStatusContext(Map flow)` | Devuelve el contexto `pr-head` o `main`. |
+| `resolveRepository(Map config, Map flow)` | Resuelve `owner/repo` desde overrides, `CIRCLEGUARD_REPOSITORY`, `GITHUB_REPOSITORY` o el remoto de Git. |
+| `parseGitHubRepository(String gitUrl)` | Soporta remotos HTTPS y SSH de GitHub; devuelve `resolved=false` para otros remotos. |
+
+## Requisitos
+
+- Plugin **Pipeline GitHub Notify Step** (`pipeline-githubnotify-step`) instalado (aporta el paso `githubNotify`).
+- Credencial `github-credentials` de tipo **Username with password** (usuario de GitHub + PAT como contraseña) con permiso `repo` para escribir estados.
+- La credencial `github-token` (Secret text) se reserva para el servidor GitHub de Branch Source.
+- En PRs provenientes de *forks*, el token debe tener permisos sobre el repositorio base; de lo contrario el estado se omite con una advertencia.

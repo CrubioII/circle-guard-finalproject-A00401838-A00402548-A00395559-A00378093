@@ -1,0 +1,142 @@
+# =============================================================================
+# Jenkins Configuration as Code (JCasC) — CircleGuard
+# Historia de Usuario: US-30 (SCRUM-113 / SCRUM-57)
+#
+# Declara, de forma reproducible:
+#   1. La Shared Library global 'circleguard-shared-lib' (US-09).
+#   2. El servidor GitHub usado por GitHub Branch Source.
+#   3. El job Multibranch 'circleguard-monorepo' que descubre ramas y PRs,
+#      usa el Jenkinsfile raíz y publica estados en GitHub.
+#
+# Aplicación:
+#   1. Al arrancar Jenkins: exporta CASC_JENKINS_CONFIG=<ruta absoluta>/jenkins/ci/jenkins.yaml
+#      (o configura -Dcasc.jenkins.config=...).
+#   2. Para recargar tras un cambio:
+#      java -jar jenkins-cli.jar -s "${JENKINS_URL}" -auth admin:"${JENKINS_ADMIN_PASSWORD}" \
+#           reload-jcasc-configuration
+# (o UI: Manage Jenkins -> Configuration as Code -> Reload existing configuration)
+#
+# Prerrequisitos (plugins): configuration-as-code, job-dsl, workflow-aggregator,
+# workflow-multibranch, github, github-branch-source, pipeline-githubnotify-step,
+# credentials-binding.
+# Credenciales requeridas (creadas fuera del repositorio, nunca versionadas):
+#   - github-token       (Secret text con PAT; API del servidor GitHub y Branch Source).
+#   - github-credentials (Username with password: usuario + PAT; clonado de la libreria
+#                         y paso githubNotify).
+# Variables de entorno esperadas por este archivo: JENKINS_URL.
+# =============================================================================
+jenkins:
+  systemMessage: |
+    CircleGuard CI — Pipeline Multibranch (US-30)
+    Repositorio: CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093
+    Shared Library: circleguard-shared-lib (US-09)
+  numExecutors: 2
+  scmCheckoutRetryCount: 2
+  quietPeriod: 5
+  # Repositorio base usado por publishBuildStatus aun en PRs provenientes de forks.
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "CIRCLEGUARD_REPOSITORY"
+            value: "CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093"
+          # Clave de test para el perfil de pruebas de identity-service; el
+          # application.yml de test no define jwt.secret. No es un secreto real.
+          - key: "JWT_SECRET"
+            value: "circleguard-ci-test-secret-32-chars-long-123456"
+
+unclassified:
+  location:
+    url: "${JENKINS_URL}"
+    adminAddress: "devops@circleguard.edu"
+
+  # Servidor GitHub usado por el GitHub Branch Source plugin para descubrir
+  # ramas y Pull Requests. manageHooks=false porque el webhook se registra de
+  # forma explícita e idempotente con jenkins/ci/setup-github-webhook.sh.
+  githubpluginconfig:
+    configs:
+      - name: "GitHub"
+        apiUrl: "https://api.github.com"
+        credentialsId: "github-token"
+        manageHooks: false
+
+  # Shared Library global consumida por el Jenkinsfile mediante
+  # @Library('circleguard-shared-lib') _. Vive en jenkins/vars/ de este monorepo;
+  # el defaultVersion apunta a main (rama estable). allowVersionOverride permite
+  # probar una rama puntual con @Library('circleguard-shared-lib@feature/...').
+  globalLibraries:
+    libraries:
+      - name: "circleguard-shared-lib"
+        defaultVersion: "main"
+        allowVersionOverride: true
+        includeInChangesets: false
+        retriever:
+          modernSCM:
+            # La librería vive en jenkins/vars/ dentro del monorepo; libraryPath
+            # hace que Jenkins use jenkins/ como raíz de la librería.
+            libraryPath: "jenkins"
+            scm:
+              git:
+                remote: "https://github.com/CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093.git"
+                credentialsId: "github-credentials"
+                traits:
+                  - "gitBranchDiscovery"
+
+jobs:
+  # Job Multibranch: descubre todas las ramas (CA2) y todos los Pull Requests
+  # (abiertos y actualizados). Cada build ejecuta el Jenkinsfile raíz, que
+  # diferencia el flujo PR vs. main y publica el Commit Status en GitHub (CA3).
+  - script: |
+      multibranchPipelineJob('circleguard-monorepo') {
+        displayName('CircleGuard Monorepo — Multibranch')
+        description('Pipeline CI de CircleGuard (8 microservicios + cliente web Expo). ' +
+                    'Consume la Shared Library circleguard-shared-lib y publica estados en GitHub. ' +
+                    'Trazabilidad: US-30 / SCRUM-113 / SCRUM-56 / SCRUM-57.')
+
+        branchSources {
+          branchSource {
+            source {
+              github {
+                id('circleguard-github')
+                repoOwner('CrubioII')
+                repository('circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093')
+                repositoryUrl('https://github.com/CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093.git')
+                configuredByUrl(false)
+                credentialsId('github-credentials')
+
+                traits {
+                  // 1 = descubrir las ramas normales y excluir las que ya se
+                  // construyen como PR (evita builds duplicados).
+                  gitHubBranchDiscovery {
+                    strategyId(1)
+                  }
+                  // 1 = construir el merge del PR con su rama destino (main).
+                  // Garantiza que el CI valide exactamente lo que se integrará.
+                  gitHubPullRequestDiscovery {
+                    strategyId(1)
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        factory {
+          workflowBranchProjectFactory {
+            scriptPath('Jenkinsfile')
+          }
+        }
+
+        // Indexación periódica de respaldo por si un webhook se pierde.
+        // El disparo principal es el webhook de GitHub (/github-webhook/).
+        triggers {
+          periodicFolderTrigger {
+            interval('1h')
+          }
+        }
+
+        orphanedItemStrategy {
+          discardOldItems {
+            numToKeep(20)
+          }
+        }
+      }
