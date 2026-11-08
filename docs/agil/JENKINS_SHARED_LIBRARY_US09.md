@@ -59,7 +59,7 @@ La función `detectChangedServices` clasifica cada ruta obtenida del `git diff` 
 
 ## 5. Invocación desde un Pipeline (`CA3`)
 
-En `US-30` (`Jenkinsfile` Multibranch), la librería se consume directamente de la siguiente manera:
+En `US-30` ([`Jenkinsfile` Multibranch](JENKINS_MULTIBRANCH_US30.md)), la librería se consume desde el `Jenkinsfile` raíz:
 
 ```groovy
 @Library('circleguard-shared-lib') _
@@ -67,27 +67,30 @@ En `US-30` (`Jenkinsfile` Multibranch), la librería se consume directamente de 
 pipeline {
     agent any
     stages {
-        stage('Detect Modified Services') {
+        stage('Detect Changed Components') {
             steps {
                 script {
-                    def ctx = pipelineUtils()
-                    def detection = detectChangedServices(forceAll: params.FORCE_FULL_BUILD ?: false)
-
+                    def detection = detectChangedServices(forceAll: params.FORCE_FULL_BUILD as boolean)
                     echo pipelineUtils.formatDetectionSummary(detection)
 
-                    if (detection.skipCiBuild) {
-                        echo "Cambios exclusivos de documentacion detectados. Omitiendo compilacion pesada."
-                    } else if (!detection.backendServices.isEmpty()) {
-                        String gradleCmd = pipelineUtils.buildGradleCommandForServices(detection.backendServices)
-                        echo "Comando Gradle selectivo: ${gradleCmd}"
-                        // sh gradleCmd
-                    }
+                    String gradleCmd = pipelineUtils.buildGradleCommandForServices(
+                        detection.backendServices,
+                        [includeTests: true, includeJacoco: false]
+                    )
+                    // sh gradleCmd
                 }
             }
         }
     }
 }
 ```
+
+`US-30` añade dos pasos reutilizables sobre esta base:
+
+- [`multibranchFlow.groovy`](../../jenkins/vars/multibranchFlow.groovy): contexto PR/`main`, plan de etapas y bloqueo de despliegues desde PR.
+- [`publishBuildStatus.groovy`](../../jenkins/vars/publishBuildStatus.groovy): publicación del estado del build en GitHub.
+
+El detalle del pipeline, la configuración JCasC del job y el webhook están en [`docs/agil/JENKINS_MULTIBRANCH_US30.md`](JENKINS_MULTIBRANCH_US30.md).
 
 ---
 

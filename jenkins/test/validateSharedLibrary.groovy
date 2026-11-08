@@ -6,7 +6,7 @@
 import groovy.lang.GroovyShell
 import groovy.lang.Binding
 
-File repoRoot = new File('.').canonicalFile
+File repoRoot = new File(System.getProperty('circleguard.repoRoot') ?: '.').canonicalFile
 File detectScriptFile = new File(repoRoot, 'jenkins/vars/detectChangedServices.groovy')
 File utilsScriptFile  = new File(repoRoot, 'jenkins/vars/pipelineUtils.groovy')
 
