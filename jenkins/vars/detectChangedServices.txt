@@ -1,0 +1,47 @@
+# `detectChangedServices` — Detección de Servicios Modificados en el Monorepo CircleGuard (`US-09`)
+
+Detecta automáticamente qué microservicios backend (`services/circleguard-*-service`), cliente web (`mobile/`) o archivos globales/compartidos cambiaron en un *Pull Request* o en un *commit*, devolviendo la lista exacta de módulos y tareas de Gradle a ejecutar.
+
+## Uso básico en `Jenkinsfile`
+
+```groovy
+@Library('circleguard-shared-lib') _
+
+pipeline {
+    agent any
+    stages {
+        stage('Detect Changes') {
+            steps {
+                script {
+                    def changes = detectChangedServices()
+                    echo "Servicios backend afectados: ${changes.backendServices}"
+                    echo "Cliente web (mobile) afectado: ${changes.mobileChanged}"
+                    echo "Cambio compartido/global: ${changes.sharedChanged}"
+                    echo "Tareas Gradle a ejecutar: ${changes.gradleTestTasks.join(' ')}"
+                }
+            }
+        }
+    }
+}
+```
+
+## Parámetros opcionales (`Map config`)
+
+| Parámetro | Tipo | Por defecto | Descripción |
+| :--- | :--- | :--- | :--- |
+| `forceAll` | `Boolean` | `false` | Fuerza la inclusión de los 8 microservicios backend y `mobile` (útil en *releases* o ejecuciones manuales completas). |
+| `baseBranch` | `String` | `env.CHANGE_TARGET ?: 'main'` | Rama base contra la cual se calcula `git diff --name-only origin/<baseBranch>...HEAD` en *Pull Requests*. |
+| `changedFilesOverride` | `List<String>` | `null` | Permite inyectar una lista explícita de rutas modificadas para pruebas unitarias o validaciones reproducibles sin depender del estado de Git. |
+
+## Estructura del Mapa de Retorno
+
+- `changedFiles` (`List<String>`): Lista normalizada de archivos modificados.
+- `backendServices` (`List<String>`): Microservicios backend afectados (entre los 8 del monorepo).
+- `coreServices` (`List<String>`): Subconjunto de los 5 microservicios núcleo afectados (`auth`, `identity`, `promotion`, `form`, `gateway`).
+- `mobileChanged` (`Boolean`): `true` si hubo cambios dentro de `mobile/`.
+- `sharedChanged` (`Boolean`): `true` si se modificó algún archivo compartido (`build.gradle.kts`, `settings.gradle.kts`, `gradle/`, `libs/`, `Jenkinsfile`, `jenkins/`), lo que activa automáticamente la construcción de los 8 servicios.
+- `infraChanged` (`Boolean`): `true` si se modificaron archivos en `infra/`, `deploy/` o `docker-compose*.yml`.
+- `docsOnly` (`Boolean`): `true` si únicamente cambiaron archivos de documentación (`docs/`, `.github/`, `*.md`).
+- `fullBuild` (`Boolean`): `true` si deben construirse todos los servicios backend.
+- `skipCiBuild` (`Boolean`): `true` si el commit/PR solo modifica documentación y puede omitir etapas pesadas de compilación.
+- `gradleProjects`, `gradleTestTasks`, `gradleJacocoTasks` (`List<String>`): Rutas de subproyectos y tareas listas para pasarse a `./gradlew`.

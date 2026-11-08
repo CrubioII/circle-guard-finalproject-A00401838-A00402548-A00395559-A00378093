@@ -1,0 +1,9 @@
+# `pipelineUtils` — Utilidades Comunes de la Shared Library de CircleGuard (`US-09`)
+
+Provee funciones auxiliares reutilizables para todos los *pipelines* de Jenkins en el monorepo CircleGuard:
+
+1. `pipelineUtils(Map config)`: Evalúa el contexto de rama (`main` vs *Pull Request*) e impide despliegues productivos desde un PR.
+2. `pipelineUtils.buildGradleCommandForServices(List<String> services, Map options)`: Genera la línea de comando `./gradlew` exacta para compilar, probar y generar cobertura JaCoCo únicamente de los microservicios detectados por `detectChangedServices`.
+3. `pipelineUtils.isValidSemVerTag(String versionTag)`: Verifica que una versión siga el estándar SemVer (`X.Y.Z` o `X.Y.Z-rc.N`) y bloquea explícitamente el uso de `:latest`.
+4. `pipelineUtils.formatDockerImageRef(String registryUrl, String componentName, String versionTag, String namespace)`: Construye el nombre completo de la imagen inmutable (`<registry>/circleguard/<servicio>:<semver>`).
+5. `pipelineUtils.formatDetectionSummary(Map detectionResult)`: Imprime un resumen claro de los componentes impactados en el *build log*.
