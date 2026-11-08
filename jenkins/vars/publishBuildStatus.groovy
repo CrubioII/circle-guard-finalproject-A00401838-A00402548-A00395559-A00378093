@@ -35,7 +35,16 @@ Map call(Map config = [:]) {
         // El checkout de Multibranch no siempre exporta GIT_COMMIT/CHANGE_COMMIT
         // al entorno del pipeline; se resuelve desde el workspace ya clonado.
         try {
-            sha = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+            sha = sh(
+                script: '''
+                    subject="$(git log -1 --pretty=%s HEAD 2>/dev/null || true)"
+                    case "$subject" in
+                        "Merge commit '"*"' into HEAD") git rev-parse HEAD^1 ;;
+                        *) git rev-parse HEAD ;;
+                    esac
+                ''',
+                returnStdout: true
+            ).trim()
         } catch (Exception ignored) {
             echo '[publishBuildStatus] Advertencia: no se pudo resolver el SHA desde el workspace.'
         }
