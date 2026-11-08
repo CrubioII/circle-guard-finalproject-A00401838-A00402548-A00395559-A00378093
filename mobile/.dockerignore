@@ -1,0 +1,26 @@
+# =============================================================================
+# CircleGuard - Mobile Web Docker build context filter (US-07 / SCRUM-19)
+# =============================================================================
+node_modules/
+dist/
+web-build/
+.expo/
+.metro-health-check*
+ios/
+android/
+.kotlin/
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+test-output.txt
+*.log
+*.tsbuildinfo
+.DS_Store
+*.pem
+*.key
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+.env*
+Dockerfile
