@@ -39,6 +39,10 @@ jenkins:
         env:
           - key: "CIRCLEGUARD_REPOSITORY"
             value: "CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093"
+          # Clave de test para el perfil de pruebas de identity-service; el
+          # application.yml de test no define jwt.secret. No es un secreto real.
+          - key: "JWT_SECRET"
+            value: "circleguard-ci-test-secret-32-chars-long-123456"
 
 unclassified:
   location:
