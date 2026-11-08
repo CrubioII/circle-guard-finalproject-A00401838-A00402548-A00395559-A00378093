@@ -67,6 +67,9 @@ unclassified:
         includeInChangesets: false
         retriever:
           modernSCM:
+            # La librería vive en jenkins/vars/ dentro del monorepo; libraryPath
+            # hace que Jenkins use jenkins/ como raíz de la librería.
+            libraryPath: "jenkins"
             scm:
               git:
                 remote: "https://github.com/CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093.git"
@@ -94,7 +97,7 @@ jobs:
                 repository('circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093')
                 repositoryUrl('https://github.com/CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093.git')
                 configuredByUrl(false)
-                credentialsId('github-token')
+                credentialsId('github-credentials')
 
                 traits {
                   // 1 = descubrir las ramas normales y excluir las que ya se
