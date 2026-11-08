@@ -1,0 +1,3 @@
+# Ignorar variables de entorno generadas localmente o en la instancia EC2
+.env.ci
+*.env.local
