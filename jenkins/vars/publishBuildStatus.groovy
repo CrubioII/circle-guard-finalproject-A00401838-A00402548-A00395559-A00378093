@@ -31,6 +31,15 @@ Map call(Map config = [:]) {
     String description = normalizeDescription(config.description ?: "CircleGuard CI ${state.toLowerCase()}")
     String targetUrl = config.targetUrl ?: (env?.BUILD_URL ?: '')
     String sha = config.sha ?: (env?.CHANGE_COMMIT ?: env?.GIT_COMMIT ?: '')
+    if (!sha) {
+        // El checkout de Multibranch no siempre exporta GIT_COMMIT/CHANGE_COMMIT
+        // al entorno del pipeline; se resuelve desde el workspace ya clonado.
+        try {
+            sha = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+        } catch (Exception ignored) {
+            echo '[publishBuildStatus] Advertencia: no se pudo resolver el SHA desde el workspace.'
+        }
+    }
     Map repository = resolveRepository(config, flow)
     boolean dryRun = config.containsKey('dryRun')
         ? (config.dryRun as boolean)
