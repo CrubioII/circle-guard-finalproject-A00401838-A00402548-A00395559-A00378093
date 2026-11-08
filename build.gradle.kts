@@ -45,15 +45,6 @@ subprojects {
 
     tasks.withType<Test> {
         useJUnitPlatform()
-        if (System.getenv("CI") == "true") {
-            exclude(
-                "**/PromotionPerformanceTest*",
-                "**/AdministrativeCorrectionTest*",
-                "**/HealthStatusReevaluationTest*",
-                "**/HealthStatusControllerTest*",
-                "**/AttachmentControllerTest*"
-            )
-        }
     }
 }
 
