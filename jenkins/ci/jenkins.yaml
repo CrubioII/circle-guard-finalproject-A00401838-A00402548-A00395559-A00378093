@@ -64,7 +64,7 @@ unclassified:
       - name: "circleguard-shared-lib"
         defaultVersion: "main"
         allowVersionOverride: true
-        includeInDefaultPackage: false
+        includeInChangesets: false
         retriever:
           modernSCM:
             scm:
@@ -92,6 +92,8 @@ jobs:
                 id('circleguard-github')
                 repoOwner('CrubioII')
                 repository('circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093')
+                repositoryUrl('https://github.com/CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093.git')
+                configuredByUrl(false)
                 credentialsId('github-token')
 
                 traits {
