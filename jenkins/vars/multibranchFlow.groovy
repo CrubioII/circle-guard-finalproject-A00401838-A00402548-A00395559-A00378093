@@ -69,6 +69,9 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
     boolean runHeavyBuild = !skipCiBuild
     boolean runBackendBuild = runHeavyBuild && !backendServices.isEmpty()
     boolean runMobileBuild = runHeavyBuild && mobileChanged
+    boolean enableSonar = (config.containsKey('enableSonar') ? config.enableSonar : true) as boolean
+    boolean runSonarAnalysis = runBackendBuild && enableSonar
+    boolean runQualityGate = runSonarAnalysis
 
     Map deployment = deploymentDecision(context, targetEnv)
 
@@ -78,6 +81,12 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
     }
     if (runMobileBuild) {
         stages.add('Compile & Test Web')
+    }
+    if (runSonarAnalysis) {
+        stages.add('SonarQube Analysis')
+    }
+    if (runQualityGate) {
+        stages.add('Quality Gate')
     }
     if (deployment.allowed) {
         stages.add('Release Gate')
@@ -96,6 +105,8 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
         runHeavyBuild            : runHeavyBuild,
         runBackendBuild          : runBackendBuild,
         runMobileBuild           : runMobileBuild,
+        runSonarAnalysis         : runSonarAnalysis,
+        runQualityGate           : runQualityGate,
         backendServices          : backendServices,
         mobileChanged            : mobileChanged,
         deploymentRequested      : targetEnv != 'none',

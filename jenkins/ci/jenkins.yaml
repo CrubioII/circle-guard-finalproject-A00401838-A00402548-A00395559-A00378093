@@ -39,6 +39,8 @@ jenkins:
         env:
           - key: "CIRCLEGUARD_REPOSITORY"
             value: "CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093"
+          - key: "SONAR_PROJECT_KEY"
+            value: "circleguard-monorepo"
           # Clave de test para el perfil de pruebas de identity-service; el
           # application.yml de test no define jwt.secret. No es un secreto real.
           - key: "JWT_SECRET"
@@ -48,6 +50,19 @@ unclassified:
   location:
     url: "${JENKINS_URL}"
     adminAddress: "devops@circleguard.edu"
+
+  # Integración con SonarQube (US-10 / SCRUM-22 / SCRUM-58):
+  # Usa la credencial Secret text 'sonar-token' y recibe el webhook de retorno
+  # en ${JENKINS_URL}/sonarqube-webhook/ para resolver waitForQualityGate.
+  sonarGlobalConfiguration:
+    buildWrapperEnabled: true
+    installations:
+      - name: "SonarQube"
+        serverUrl: "${SONAR_HOST_URL:-http://localhost:9000}"
+        credentialsId: "sonar-token"
+        triggers:
+          skipScmCause: false
+          skipUpstreamCause: false
 
   # Servidor GitHub usado por el GitHub Branch Source plugin para descubrir
   # ramas y Pull Requests. manageHooks=false porque el webhook se registra de

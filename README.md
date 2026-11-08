@@ -154,13 +154,14 @@ We maintain high system integrity via multi-level testing:
 
 ## CI/CD (Jenkins, SonarQube & Nexus)
 
-The repository root contains the [`Jenkinsfile`](Jenkinsfile) consumed by the **Multibranch Pipeline** (`US-30`). It loads the shared library in [`jenkins/vars/`](jenkins/vars/), detects modified services, runs selective Gradle/npm tests, blocks deployments from Pull Requests, and publishes GitHub commit statuses.
+The repository root contains the [`Jenkinsfile`](Jenkinsfile) consumed by the **Multibranch Pipeline** (`US-30`, `US-10`). It loads the shared library in [`jenkins/vars/`](jenkins/vars/), detects modified services, runs selective Gradle/npm tests with JaCoCo XML/HTML coverage reports, executes SonarQube analysis with a blocking Quality Gate (`waitForQualityGate(abortPipeline: true)`), blocks deployments from Pull Requests, and publishes GitHub commit statuses.
 
 - **CI/CD Control Plane Bootstrap (US-04):** [`docs/arquitectura/BOOTSTRAP_CI_US04.md`](docs/arquitectura/BOOTSTRAP_CI_US04.md) (`sudo bash infra/bootstrap/bootstrap-ci.sh` & [`docker-compose.ci.yml`](docker-compose.ci.yml))
 - **Verify Bootstrap Idempotency (US-04):** `./infra/bootstrap/test-bootstrap-ci-idempotency.sh`
-- **Setup (JCasC, job, webhook):** [`docs/agil/JENKINS_MULTIBRANCH_US30.md`](docs/agil/JENKINS_MULTIBRANCH_US30.md)
-- **Validate locally:** `./jenkins/test/run-multibranch-validation.sh` or `./gradlew validateJenkinsMultibranchPipeline`
-- **Shared library (US-09):** [`docs/agil/JENKINS_SHARED_LIBRARY_US09.md`](docs/agil/JENKINS_SHARED_LIBRARY_US09.md)
+- **Isolated Environments Bootstrap (US-05):** [`docs/arquitectura/BOOTSTRAP_ENV_US05.md`](docs/arquitectura/BOOTSTRAP_ENV_US05.md) (`./infra/bootstrap/test-bootstrap-env-idempotency.sh`)
+- **SonarQube & JaCoCo Quality Gate (US-10):** [`docs/agil/JENKINS_SONARQUBE_JACOCO_US10.md`](docs/agil/JENKINS_SONARQUBE_JACOCO_US10.md) (`./jenkins/test/run-sonarqube-validation.sh` or `./gradlew validateJenkinsSonarQualityGate`)
+- **Setup (JCasC, job, webhook, US-30):** [`docs/agil/JENKINS_MULTIBRANCH_US30.md`](docs/agil/JENKINS_MULTIBRANCH_US30.md) (`./jenkins/test/run-multibranch-validation.sh` or `./gradlew validateJenkinsMultibranchPipeline`)
+- **Shared library (US-09):** [`docs/agil/JENKINS_SHARED_LIBRARY_US09.md`](docs/agil/JENKINS_SHARED_LIBRARY_US09.md) (`./jenkins/test/run-validation.sh` or `./gradlew validateJenkinsSharedLibrary`)
 
 ---
 

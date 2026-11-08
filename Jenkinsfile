@@ -1,30 +1,27 @@
 #!/usr/bin/env groovy
 // =============================================================================
 // Jenkinsfile raíz — CircleGuard Multibranch Pipeline
-// Historia de Usuario: US-30 (SCRUM-113) — Jenkins Multibranch que consume la
-// Shared Library delimitada en US-09 (SCRUM-21).
+// Historias de Usuario:
+//   - US-30 (SCRUM-113): Jenkins Multibranch que consume la Shared Library (US-09).
+//   - US-10 (SCRUM-22):  Compilación Gradle, cobertura JaCoCo y Quality Gate
+//                        bloqueante en SonarQube (waitForQualityGate abortPipeline: true).
 //
 // Criterios de aceptación cubiertos:
-//   CA1: Carga la Shared Library 'circleguard-shared-lib' y usa
-//        detectChangedServices, pipelineUtils, multibranchFlow y publishBuildStatus.
-//   CA2: Distingue ramas de Pull Requests (CHANGE_ID) de main; los PR solo
-//        compilan/prueban/publican estado y NUNCA despliegan (ni a prod).
-//   CA3: Publica estados PENDING/SUCCESS/FAILURE en GitHub para el contexto
-//        'continuous-integration/jenkins/pr-head' o '.../main'; el job Multibranch
-//        y el webhook se declaran en jenkins/ci/jenkins.yaml.
-//
-// Requisitos del agente: JDK 21, Node.js 20+ (solo si cambia mobile/), git y
-// permisos de ejecución sobre ./gradlew.
+//   US-30 CA1-CA3: Carga 'circleguard-shared-lib', separa PR vs. main, bloquea
+//                  despliegues desde PR y publica estados en GitHub.
+//   US-10 CA1-CA3: Ejecuta jacocoTestReport en los servicios afectados, publica
+//                  reportes JaCoCo en Jenkins, envía métricas a SonarQube y
+//                  bloquea el pipeline con waitForQualityGate(abortPipeline: true)
+//                  si falla el Quality Gate (>= 60% cobertura en servicios núcleo).
 // =============================================================================
 import groovy.json.JsonOutput
 
-@Library('circleguard-shared-lib') _
+@Library('circleguard-shared-lib@feature/US-10-jacoco-sonarqube-quality-gate') _
 
-// Contexto, detección y plan se calculan en las primeras etapas y quedan
-// disponibles para los bloques `when` y `post` de las etapas posteriores.
 def flow = [:]
 def detection = [:]
 def plan = [:]
+def coverageByService = [:]
 
 pipeline {
     agent any
@@ -54,11 +51,17 @@ pipeline {
             defaultValue: true,
             description: 'Publica los estados PENDING/SUCCESS/FAILURE como Commit Status en GitHub.'
         )
+        booleanParam(
+            name: 'ENABLE_SONARQUBE_GATE',
+            defaultValue: true,
+            description: 'Ejecuta el análisis estático con SonarQube y el bloqueo waitForQualityGate(abortPipeline: true).'
+        )
     }
 
     environment {
         GRADLE_OPTS = '-Dorg.gradle.daemon=false'
         CI = 'true'
+        SONAR_PROJECT_KEY = 'circleguard-monorepo'
     }
 
     stages {
@@ -81,14 +84,13 @@ pipeline {
                     detection = detectChangedServices(forceAll: params.FORCE_FULL_BUILD as boolean)
                     plan = multibranchFlow.planPipeline(flow, detection, [
                         targetEnv: params.TARGET_ENV,
-                        forceFullBuild: params.FORCE_FULL_BUILD as boolean
+                        forceFullBuild: params.FORCE_FULL_BUILD as boolean,
+                        enableSonar: params.ENABLE_SONARQUBE_GATE as boolean
                     ])
 
                     echo pipelineUtils.formatDetectionSummary(detection)
                     echo multibranchFlow.formatPlanSummary(plan)
 
-                    // Guarda dura CA2: si alguien solicita un despliegue no permitido
-                    // (por ejemplo TARGET_ENV=prod en un PR), el build falla de inmediato.
                     if (plan.deploymentRequested && !plan.deploymentAllowed) {
                         multibranchFlow.requireDeploymentAllowed(flow, params.TARGET_ENV)
                     }
@@ -106,13 +108,22 @@ pipeline {
             }
             steps {
                 script {
-                    // JaCoCo se habilita en US-10 (aún no está aplicado en build.gradle.kts).
                     String gradleCommand = pipelineUtils.buildGradleCommandForServices(
                         plan.backendServices,
-                        [includeTests: true, includeJacoco: false, daemon: false]
+                        [includeTests: true, includeJacoco: true, daemon: false]
                     )
                     echo "Servicios backend afectados (${plan.backendServices.size()}): ${plan.backendServices.join(', ')}"
                     sh "${gradleCommand}"
+
+                    coverageByService = sonarQualityGate.collectServiceCoverage(plan.backendServices, '.')
+                    Map jacocoPublication = sonarQualityGate.publishJacocoReports(services: plan.backendServices)
+                    writeFile(
+                        file: 'reports/ci/jacoco-coverage.json',
+                        text: JsonOutput.prettyPrint(JsonOutput.toJson([
+                            publication      : jacocoPublication,
+                            coverageByService: coverageByService
+                        ]))
+                    )
                 }
             }
         }
@@ -125,6 +136,53 @@ pipeline {
                 dir('mobile') {
                     sh 'npm ci --no-audit --no-fund'
                     sh 'npm run test -- --ci --watchAll=false'
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            when {
+                expression { plan?.runSonarAnalysis == true }
+            }
+            steps {
+                script {
+                    String sonarCommand = sonarQualityGate.buildSonarGradleCommand(
+                        plan.backendServices,
+                        [projectKey: env.SONAR_PROJECT_KEY, skipTests: true, daemon: false]
+                    )
+                    withSonarQubeEnv('SonarQube') {
+                        sh "${sonarCommand}"
+                    }
+                    writeFile(
+                        file: 'reports/ci/sonarqube-analysis.json',
+                        text: JsonOutput.prettyPrint(JsonOutput.toJson([
+                            projectKey     : env.SONAR_PROJECT_KEY,
+                            sonarServerName: 'SonarQube',
+                            backendServices: plan.backendServices,
+                            xmlReportPaths : sonarQualityGate.resolveJacocoXmlReportPaths(plan.backendServices),
+                            command        : sonarCommand
+                        ]))
+                    )
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            when {
+                expression { plan?.runQualityGate == true }
+            }
+            steps {
+                script {
+                    timeout(time: 10, unit: 'MINUTES') {
+                        Map gateResult = sonarQualityGate.enforceQualityGate([
+                            minCoreCoverage  : 60.0d,
+                            coverageByService: coverageByService
+                        ])
+                        writeFile(
+                            file: 'reports/ci/quality-gate.json',
+                            text: JsonOutput.prettyPrint(JsonOutput.toJson(gateResult))
+                        )
+                    }
                 }
             }
         }
@@ -172,7 +230,7 @@ pipeline {
         }
         always {
             junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml'
-            archiveArtifacts artifacts: 'reports/ci/**', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'reports/ci/**,services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
         }
     }
 }
