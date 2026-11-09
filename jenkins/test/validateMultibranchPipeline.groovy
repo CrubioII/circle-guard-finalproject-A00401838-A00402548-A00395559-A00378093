@@ -460,4 +460,63 @@ String runE2e = new File(repoRoot, 'deploy/scripts/run-e2e.sh').getText('UTF-8')
 assert new File(e2eDir, 'support/fixtures.ts').getText('UTF-8').contains('E2E_RUNTIME_CONFIG_FROM_ENV')
 println("[OK] Caso 19: dev se valida con ${us17Flows.size()} flujos US-17 reales + ${deployedSpecs.size()} contratos @deployed.")
 
+// =============================================================================
+// US-31 — Aprobación manual y despliegue verificado a prod
+// =============================================================================
+List<String> prodStages = ['Approve prod release', 'Deploy to prod', 'Verify prod health']
+
+// -----------------------------------------------------------------------------
+// Caso 20: el release a prod solo se planifica en main, después de stage (CA1)
+// -----------------------------------------------------------------------------
+Map mainProdReleasePlan = multibranchFlow.planPipeline(mainContext, prDetection, [targetEnv: 'none'])
+assert mainProdReleasePlan.prodRelease == true
+int verifyStageIndex = mainProdReleasePlan.stages.indexOf('Verify stage health')
+assert prodStages.collect { mainProdReleasePlan.stages.indexOf(it) } == (1..prodStages.size()).collect { verifyStageIndex + it } :
+    'Aprobar -> desplegar -> verificar prod deben ir, en orden, justo después de verificar stage'
+[prContext, featureContext].each { Map ctx ->
+    Map p = multibranchFlow.planPipeline(ctx, prDetection, [targetEnv: 'prod'])
+    assert p.prodRelease == false && !p.stages.any { prodStages.contains(it) } : "${ctx.branchName} nunca llega a prod"
+}
+assert multibranchFlow.planPipeline(mainContext, docsDetection, [targetEnv: 'none']).prodRelease == false
+assert multibranchFlow.parseProdApprovers(' ana, luis  release-managers ,ana') == ['ana', 'luis', 'release-managers']
+assert multibranchFlow.parseProdApprovers('') == [] && multibranchFlow.parseProdApprovers(null) == []
+println('[OK] Caso 20: release a prod solo en main tras stage; aprobadores configurables (CG_PROD_APPROVERS).')
+
+// -----------------------------------------------------------------------------
+// Caso 21: decisión de la compuerta manual: quién, qué versión y si se despliega (CA1 + CA2)
+// -----------------------------------------------------------------------------
+Map approvalCfg = [outcome: 'SUBMITTED', validatedVersion: '1.4.0', approvers: ['ana', 'luis']]
+Map prodApproved = multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.4.0', COMMENT: 'RFC-012 ventana nocturna', APPROVER: 'ana'], approvalCfg)
+assert prodApproved.status == 'APPROVED' && prodApproved.deploy == true
+assert prodApproved.approver == 'ana' && prodApproved.version == '1.4.0' && prodApproved.comment == 'RFC-012 ventana nocturna'
+assert prodApproved.reason.contains('ana') && prodApproved.reason.contains('1.4.0')
+
+Map prodRejected = multibranchFlow.prodApprovalDecision(
+    [DECISION: 'RECHAZAR', VERSION: '1.4.0', COMMENT: 'Falta validar con negocio', APPROVER: 'luis'], approvalCfg)
+assert prodRejected.status == 'REJECTED' && prodRejected.deploy == false
+assert prodRejected.approver == 'luis' && prodRejected.reason.contains('luis') && prodRejected.reason.contains('Falta validar')
+
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.3.9', COMMENT: 'RFC-013', APPROVER: 'ana'], approvalCfg).status == 'INVALID' :
+    'Solo se puede aprobar la versión validada en stage'
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.4.0', COMMENT: '', APPROVER: 'ana'], approvalCfg).status == 'INVALID' :
+    'La aprobación exige comentario o RFC'
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.4.0', COMMENT: 'RFC-014', APPROVER: ''], approvalCfg).status == 'INVALID' :
+    'Sin aprobador identificado no se despliega'
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'TALVEZ', VERSION: '1.4.0', COMMENT: 'RFC-015', APPROVER: 'ana'], approvalCfg).deploy == false
+
+Map timedOut = multibranchFlow.prodApprovalDecision([:], approvalCfg + [outcome: 'TIMEOUT'])
+assert timedOut.status == 'TIMEOUT' && !timedOut.deploy
+Map prodAborted = multibranchFlow.prodApprovalDecision([:], approvalCfg + [outcome: 'ABORTED', abortedBy: 'luis'])
+assert prodAborted.status == 'ABORTED' && !prodAborted.deploy && prodAborted.reason.contains('luis')
+Map notConfigured = multibranchFlow.prodApprovalDecision([:], approvalCfg + [approvers: []])
+assert notConfigured.status == 'NOT_CONFIGURED' && !notConfigured.deploy && notConfigured.reason.contains('CG_PROD_APPROVERS')
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '', COMMENT: 'RFC', APPROVER: 'ana'], approvalCfg + [validatedVersion: '']).status == 'INVALID'
+println('[OK] Caso 21: aprobar/rechazar registran quién y qué versión; timeout, abort, versión no validada y falta de aprobadores no despliegan.')
+
 println('=== TODAS LAS PRUEBAS DEL MULTIBRANCH PIPELINE PASARON EXITOSAMENTE ===')

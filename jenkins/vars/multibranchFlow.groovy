@@ -16,6 +16,11 @@ import groovy.transform.Field
 ]
 // Compuertas que deben terminar en SUCCESS, en este orden, antes de promover a stage.
 @Field final List<String> PROMOTION_GATES = ['deployDev', 'verifyDev', 'e2eDev']
+// US-31: aprobación manual y despliegue verificado a prod, a continuación de stage.
+@Field final List<String> PROD_RELEASE_STAGES = ['Approve prod release', 'Deploy to prod', 'Verify prod health']
+// Opciones del formulario de aprobación (parámetro DECISION del paso input).
+@Field final String PROD_DECISION_APPROVE = 'APROBAR'
+@Field final String PROD_DECISION_REJECT = 'RECHAZAR'
 
 /**
  * Punto de entrada por defecto: devuelve el contexto normalizado de la ejecución.
@@ -104,6 +109,8 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
     }
     if (autoDeployDev) {
         stages.addAll(CONTINUOUS_DELIVERY_STAGES)
+        // US-31 (vía A): la versión que acaba de quedar verificada en stage se ofrece para prod.
+        stages.addAll(PROD_RELEASE_STAGES)
     }
     if (deployment.allowed) {
         stages.add('Release Gate')
@@ -130,6 +137,7 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
         deploymentReason         : deployment.reason,
         autoDeployDev            : autoDeployDev,
         promoteToStage           : autoDeployDev,
+        prodRelease              : autoDeployDev,
         stages                   : stages
     ]
 }
@@ -243,6 +251,84 @@ Map promotionDecision(Map results, Map config = [:]) {
 }
 
 /**
+ * US-31: lista de aprobadores de prod a partir de CG_PROD_APPROVERS (IDs de usuario o
+ * grupos de Jenkins separados por comas o espacios). Vacía = no hay quién apruebe.
+ */
+List<String> parseProdApprovers(String raw) {
+    return (raw ?: '').split(/[,\s]+/).collect { it.trim() }.findAll { !it.isEmpty() }.unique()
+}
+
+/**
+ * US-31 (CA1 + CA2): interpreta el resultado de la compuerta de aprobación manual a prod.
+ *
+ * `response` es lo que devuelve el paso `input` (parámetros + submitterParameter):
+ *   DECISION (APROBAR | RECHAZAR), VERSION, COMMENT, APPROVER.
+ * `config`:
+ *   outcome          'SUBMITTED' (se respondió el formulario) | 'TIMEOUT' | 'ABORTED' | 'NOT_CONFIGURED'
+ *   validatedVersion versión que pasó dev + E2E + stage en esta ejecución (la única elegible)
+ *   approvers        aprobadores configurados (lista ya parseada)
+ *   abortedBy        usuario que abortó, si Jenkins lo informó
+ *
+ * Solo `status == 'APPROVED'` habilita el despliegue. Cualquier otro resultado deja prod
+ * intacto y explica el motivo, que queda en reports/ci/prod-approval.json (CA2).
+ */
+Map prodApprovalDecision(Map response, Map config = [:]) {
+    String outcome = ((config.outcome ?: 'SUBMITTED') as String).toUpperCase()
+    String validated = (config.validatedVersion ?: '') as String
+    List<String> approvers = (config.approvers ?: []) as List<String>
+    String decision = ((response?.DECISION ?: '') as String).trim().toUpperCase()
+    String version = ((response?.VERSION ?: '') as String).trim()
+    String comment = ((response?.COMMENT ?: '') as String).trim()
+    String approver = ((response?.APPROVER ?: '') as String).trim()
+
+    Map base = [
+        targetEnv       : 'prod',
+        validatedVersion: validated,
+        version         : version ?: validated,
+        approver        : approver,
+        comment         : comment,
+        approvers       : approvers,
+        outcome         : outcome
+    ]
+    Closure<Map> result = { String status, boolean deploy, String reason ->
+        base + [status: status, deploy: deploy, reason: reason]
+    }
+
+    if (outcome == 'NOT_CONFIGURED' || approvers.isEmpty()) {
+        return result('NOT_CONFIGURED', false,
+            'Release a prod omitido: no hay aprobadores configurados (variable global CG_PROD_APPROVERS).')
+    }
+    if (!validated) {
+        return result('INVALID', false, 'No hay una versión validada en stage en esta ejecución; no se ofrece release a prod.')
+    }
+    if (outcome == 'TIMEOUT') {
+        return result('TIMEOUT', false, "Release a prod de ${validated} expiró sin respuesta de los aprobadores.")
+    }
+    if (outcome == 'ABORTED') {
+        String who = config.abortedBy ? " por ${config.abortedBy}" : ''
+        return result('ABORTED', false, "Release a prod de ${validated} abortado${who}.")
+    }
+    if (!approver) {
+        return result('INVALID', false, 'La respuesta de aprobación no identifica a quien decidió (submitterParameter vacío).')
+    }
+    if (decision == PROD_DECISION_REJECT) {
+        return result('REJECTED', false, "Release a prod de ${version ?: validated} RECHAZADO por ${approver}" +
+            (comment ? ": ${comment}" : '.'))
+    }
+    if (decision != PROD_DECISION_APPROVE) {
+        return result('INVALID', false, "Decisión desconocida '${response?.DECISION}'.")
+    }
+    if (version != validated) {
+        return result('INVALID', false,
+            "La versión seleccionada '${version}' no es la validada en stage (${validated}); no se despliega.")
+    }
+    if (comment.length() < 3) {
+        return result('INVALID', false, 'La aprobación a prod exige un comentario o ID de RFC (política de cambios).')
+    }
+    return result('APPROVED', true, "Release a prod de ${version} APROBADO por ${approver}: ${comment}")
+}
+
+/**
  * Normaliza y valida el ambiente destino. Falla rápido ante valores inválidos
  * para evitar que un parámetro mal escrito se interprete como "sin despliegue".
  */
@@ -272,6 +358,7 @@ String formatPlanSummary(Map plan) {
         "Ambiente solicitado   : ${plan?.targetEnv}",
         "Despliegue permitido  : ${plan?.deploymentAllowed} (${plan?.deploymentReason})",
         "Despliegue auto (dev) : ${plan?.autoDeployDev} | Promoción a stage tras E2E: ${plan?.promoteToStage}",
+        "Release a prod        : ${plan?.prodRelease} (requiere aprobación manual, US-31)",
         "Etapas a ejecutar     : ${(plan?.stages ?: []).join(' -> ')}",
         '====================================================='
     ].join('\n')
