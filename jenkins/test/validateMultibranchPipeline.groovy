@@ -422,7 +422,15 @@ List<Integer> order = ["stage('Publish Images to Nexus')", "stage('Deploy to dev
                        "stage('E2E against dev')", "stage('Promote to stage')", "stage('Verify stage health')"]
     .collect { jenkinsfileText.indexOf(it) }
 assert order == order.sort(false) : 'Orden requerido: publicar -> dev -> health -> E2E -> stage -> health stage'
-assert !jenkinsfileText.contains('--env prod') : 'US-13 no despliega a prod (la aprobación de producción es US-31)'
+// US-31: prod solo puede aparecer DESPUÉS de la compuerta manual (nunca en el flujo automático dev -> stage).
+int approveStageIndex = jenkinsfileText.indexOf("stage('Approve prod release')")
+assert approveStageIndex > 0 : 'Falta la compuerta manual a prod (US-31)'
+assert (jenkinsfileText =~ /--env prod/).findAll().size() > 0
+int searchFrom = 0
+while ((searchFrom = jenkinsfileText.indexOf('--env prod', searchFrom)) >= 0) {
+    assert searchFrom > approveStageIndex : 'Un despliegue/verificación a prod aparece antes de la aprobación manual (US-31)'
+    searchFrom++
+}
 assert !(jenkinsfileText =~ /versionMap\.APP_VERSION \?: '0\.1\.0'\)\s*\n\s*echo "Desplegando/) :
     'El despliegue no debe usar una versión por defecto'
 println('[OK] Caso 17: Jenkinsfile despliega dev -> E2E -> stage en orden, con credenciales y registro de la decisión.')
@@ -459,5 +467,103 @@ String runE2e = new File(repoRoot, 'deploy/scripts/run-e2e.sh').getText('UTF-8')
 }
 assert new File(e2eDir, 'support/fixtures.ts').getText('UTF-8').contains('E2E_RUNTIME_CONFIG_FROM_ENV')
 println("[OK] Caso 19: dev se valida con ${us17Flows.size()} flujos US-17 reales + ${deployedSpecs.size()} contratos @deployed.")
+
+// =============================================================================
+// US-31 — Aprobación manual y despliegue verificado a prod
+// =============================================================================
+List<String> prodStages = ['Approve prod release', 'Deploy to prod', 'Verify prod health']
+
+// -----------------------------------------------------------------------------
+// Caso 20: el release a prod solo se planifica en main, después de stage (CA1)
+// -----------------------------------------------------------------------------
+Map mainProdReleasePlan = multibranchFlow.planPipeline(mainContext, prDetection, [targetEnv: 'none'])
+assert mainProdReleasePlan.prodRelease == true
+int verifyStageIndex = mainProdReleasePlan.stages.indexOf('Verify stage health')
+assert prodStages.collect { mainProdReleasePlan.stages.indexOf(it) } == (1..prodStages.size()).collect { verifyStageIndex + it } :
+    'Aprobar -> desplegar -> verificar prod deben ir, en orden, justo después de verificar stage'
+[prContext, featureContext].each { Map ctx ->
+    Map p = multibranchFlow.planPipeline(ctx, prDetection, [targetEnv: 'prod'])
+    assert p.prodRelease == false && !p.stages.any { prodStages.contains(it) } : "${ctx.branchName} nunca llega a prod"
+}
+assert multibranchFlow.planPipeline(mainContext, docsDetection, [targetEnv: 'none']).prodRelease == false
+assert multibranchFlow.parseProdApprovers(' ana, luis  release-managers ,ana') == ['ana', 'luis', 'release-managers']
+assert multibranchFlow.parseProdApprovers('') == [] && multibranchFlow.parseProdApprovers(null) == []
+println('[OK] Caso 20: release a prod solo en main tras stage; aprobadores configurables (CG_PROD_APPROVERS).')
+
+// -----------------------------------------------------------------------------
+// Caso 21: decisión de la compuerta manual: quién, qué versión y si se despliega (CA1 + CA2)
+// -----------------------------------------------------------------------------
+Map approvalCfg = [outcome: 'SUBMITTED', validatedVersion: '1.4.0', approvers: ['ana', 'luis']]
+Map prodApproved = multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.4.0', COMMENT: 'RFC-012 ventana nocturna', APPROVER: 'ana'], approvalCfg)
+assert prodApproved.status == 'APPROVED' && prodApproved.deploy == true
+assert prodApproved.approver == 'ana' && prodApproved.version == '1.4.0' && prodApproved.comment == 'RFC-012 ventana nocturna'
+assert prodApproved.reason.contains('ana') && prodApproved.reason.contains('1.4.0')
+
+Map prodRejected = multibranchFlow.prodApprovalDecision(
+    [DECISION: 'RECHAZAR', VERSION: '1.4.0', COMMENT: 'Falta validar con negocio', APPROVER: 'luis'], approvalCfg)
+assert prodRejected.status == 'REJECTED' && prodRejected.deploy == false
+assert prodRejected.approver == 'luis' && prodRejected.reason.contains('luis') && prodRejected.reason.contains('Falta validar')
+
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.3.9', COMMENT: 'RFC-013', APPROVER: 'ana'], approvalCfg).status == 'INVALID' :
+    'Solo se puede aprobar la versión validada en stage'
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.4.0', COMMENT: '', APPROVER: 'ana'], approvalCfg).status == 'INVALID' :
+    'La aprobación exige comentario o RFC'
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.4.0', COMMENT: 'RFC-014', APPROVER: ''], approvalCfg).status == 'INVALID' :
+    'Sin aprobador identificado no se despliega'
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'TALVEZ', VERSION: '1.4.0', COMMENT: 'RFC-015', APPROVER: 'ana'], approvalCfg).deploy == false
+// Jenkins deja a los administradores responder cualquier input: solo cuentan los de CG_PROD_APPROVERS.
+Map intruder = multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.4.0', COMMENT: 'RFC-016', APPROVER: 'eve'], approvalCfg)
+assert intruder.status == 'INVALID' && !intruder.deploy && intruder.reason.contains('eve')
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'RECHAZAR', VERSION: '1.4.0', COMMENT: 'no', APPROVER: 'eve'], approvalCfg).status == 'INVALID' :
+    'Un no autorizado tampoco puede rechazar'
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.4.0', COMMENT: 'RFC-017', APPROVER: 'ANA'], approvalCfg).status == 'APPROVED' :
+    'Los IDs de usuario de Jenkins no distinguen mayúsculas'
+
+Map timedOut = multibranchFlow.prodApprovalDecision([:], approvalCfg + [outcome: 'TIMEOUT'])
+assert timedOut.status == 'TIMEOUT' && !timedOut.deploy
+Map prodAborted = multibranchFlow.prodApprovalDecision([:], approvalCfg + [outcome: 'ABORTED', abortedBy: 'luis'])
+assert prodAborted.status == 'ABORTED' && !prodAborted.deploy && prodAborted.reason.contains('luis')
+Map notConfigured = multibranchFlow.prodApprovalDecision([:], approvalCfg + [approvers: []])
+assert notConfigured.status == 'NOT_CONFIGURED' && !notConfigured.deploy && notConfigured.reason.contains('CG_PROD_APPROVERS')
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '', COMMENT: 'RFC', APPROVER: 'ana'], approvalCfg + [validatedVersion: '']).status == 'INVALID'
+println('[OK] Caso 21: aprobar/rechazar registran quién y qué versión; timeout, abort, versión no validada y falta de aprobadores no despliegan.')
+
+// -----------------------------------------------------------------------------
+// Caso 22: el Jenkinsfile cablea compuerta manual, despliegue, verificación y registro de prod (CA1-CA3)
+// -----------------------------------------------------------------------------
+[
+    "stage('Approve prod release')", "stage('Deploy to prod')", "stage('Verify prod health')",
+    'plan?.prodRelease == true && deployResults.verifyStage == \'SUCCESS\'',
+    'prodApproval?.deploy == true',
+    'input(', "submitter: approvers.join(',')", "submitterParameter: 'APPROVER'",
+    "choice(name: 'DECISION', choices: ['RECHAZAR', 'APROBAR']", "choice(name: 'VERSION', choices: [version]",
+    "string(name: 'COMMENT'", 'timeout(time: timeoutMinutes',
+    'multibranchFlow.parseProdApprovers(env.PROD_APPROVERS)',
+    'multibranchFlow.prodApprovalDecision(response',
+    'classifyApprovalInterruption(interruption, System.currentTimeMillis() - waitStartedMs, timeoutMinutes)',
+    "PROD_APPROVERS = \"\${env.CG_PROD_APPROVERS ?: ''}\"",
+    "PROD_HOST = \"\${env.CG_PROD_HOST ?: '3.19.74.9'}\"",
+    "./deploy/scripts/environment.sh deploy --env prod --version '\${prodApproval.version}'",
+    "./deploy/scripts/environment.sh verify --env prod",
+    './deploy/scripts/health-report-to-junit.sh reports/ci/health-prod.json reports/ci/junit/health-prod.xml',
+    "junit allowEmptyResults: true, testResults: 'reports/ci/junit/health-prod.xml'",
+    'reports/ci/prod-approval.json'
+].each { String required ->
+    assert jenkinsfileText.contains(required) : "El Jenkinsfile no contiene el fragmento de US-31: ${required}"
+}
+List<Integer> prodOrder = ["stage('Verify stage health')", "stage('Approve prod release')", "stage('Deploy to prod')",
+                           "stage('Verify prod health')", "stage('Release Gate')"].collect { jenkinsfileText.indexOf(it) }
+assert prodOrder == prodOrder.sort(false) : 'Orden requerido: stage verificado -> aprobación -> prod -> verificación prod'
+assert !jenkinsfileText.contains("choices: ['APROBAR', 'RECHAZAR']") : 'La opción por defecto del formulario debe ser RECHAZAR'
+println('[OK] Caso 22: Jenkinsfile exige aprobación antes de prod, despliega la versión aprobada y publica sus healthchecks en JUnit.')
 
 println('=== TODAS LAS PRUEBAS DEL MULTIBRANCH PIPELINE PASARON EXITOSAMENTE ===')

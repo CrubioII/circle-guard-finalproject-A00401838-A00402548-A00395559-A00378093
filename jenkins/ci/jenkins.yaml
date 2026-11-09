@@ -29,6 +29,8 @@
 #                         nodos dev/stage de US-05; despliegue y túneles E2E de US-13).
 # Variables de entorno esperadas por este archivo: JENKINS_URL.
 # Variables globales opcionales (US-13): CG_DEV_HOST, CG_STAGE_HOST, CG_REGISTRY_URL.
+# Variables globales de US-31: CG_PROD_APPROVERS (IDs de usuario que aprueban releases a prod;
+#   vacío = release a prod omitido), CG_PROD_APPROVAL_TIMEOUT_MIN (60), CG_PROD_HOST (3.19.74.9).
 # =============================================================================
 jenkins:
   systemMessage: |
