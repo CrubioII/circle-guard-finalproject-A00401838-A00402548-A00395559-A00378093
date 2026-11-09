@@ -5,9 +5,9 @@ El framework (configuración, fixtures, reportes y etapa de Jenkins) lo entrega 
 
 | Flujo | Archivo esperado | Estado |
 |---|---|---|
-| Inicio de sesión | `login.spec.ts` | Pendiente (US-17) |
-| Cuestionario de salud | `health-questionnaire.spec.ts` | Pendiente (US-17) |
-| Validación de acceso (gate) | `access-validation.spec.ts` | Pendiente (US-17) |
+| Inicio de sesión | `login.spec.ts` | Implementado (US-17) |
+| Cuestionario de salud | `health-questionnaire.spec.ts` | Implementado (US-17) |
+| Validación de acceso (gate) | `access-validation.spec.ts` | Implementado (US-17) |
 
 ## Convenciones
 
