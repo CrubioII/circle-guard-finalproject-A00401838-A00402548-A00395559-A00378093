@@ -69,3 +69,16 @@ val validateJenkinsMultibranchPipeline by tasks.registering {
         groovy.lang.GroovyShell().evaluate(scriptFile)
     }
 }
+
+val validateComposeEnvironments by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Valida deploy/compose/docker-compose.{dev,stage,prod}.yml: pila completa, SemVer sin latest y healthchecks con service_healthy (US-08)"
+    workingDir = projectDir
+    // En Windows 'bash' suele resolver al lanzador de WSL; se prefiere Git Bash si existe (o $BASH_EXE).
+    val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+    val bashExe = System.getenv("BASH_EXE")
+        ?: listOf("C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe")
+            .firstOrNull { isWindows && file(it).exists() }
+        ?: "bash"
+    commandLine(bashExe, "deploy/compose/validate-compose.sh")
+}

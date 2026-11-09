@@ -111,6 +111,27 @@ VAULT_SEC="$(resolve_secret VAULT_SECRET 32)"
 VAULT_SALT_VAL="$(resolve_secret VAULT_SALT 8)"
 VAULT_HASH_VAL="$(resolve_secret VAULT_HASH_SALT 8)"
 
+# Tag inmutable de las imágenes propias: SemVer 2.0 estricto, nunca "latest" (US-08 / CA2).
+IMAGE_TAG_VAL="${IMAGE_TAG:-${APP_VERSION}}"
+SEMVER_REGEX='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+if [[ ! "$IMAGE_TAG_VAL" =~ $SEMVER_REGEX ]]; then
+    printf '[inject-secrets][ERROR] IMAGE_TAG/APP_VERSION "%s" no cumple SemVer (ej. 1.2.0).
+' "$IMAGE_TAG_VAL" >&2
+    exit 1
+fi
+
+# Base DN de LDAP derivada del dominio del ambiente (dev.circleguard.edu -> dc=dev,dc=circleguard,dc=edu).
+# La consumen OpenLDAP y auth-service en deploy/compose/docker-compose.<env>.yml (US-08).
+LDAP_DOMAIN_VAL="${TARGET_ENV}.circleguard.edu"
+LDAP_BASE_DN_VAL="dc=${LDAP_DOMAIN_VAL//./,dc=}"
+
+# Ruta opcional del script de inicialización de PostgreSQL para deploy/compose (US-08).
+# bootstrap-env.sh la fija hacia /opt/circleguard/<env>/compose/init-db.sql.
+INIT_DB_LINE=""
+if [[ -n "${INIT_DB_SCRIPT:-}" ]]; then
+    INIT_DB_LINE="INIT_DB_SCRIPT=${INIT_DB_SCRIPT}"
+fi
+
 TMP_ENV="${OUTPUT_FILE}.tmp.$$"
 umask 077
 cat > "$TMP_ENV" <<EOF
@@ -146,7 +167,8 @@ REDIS_PASSWORD=${REDIS_PASS}
 LDAP_PORT=389
 LDAPS_PORT=636
 LDAP_ORGANISATION=CircleGuard-${TARGET_ENV}
-LDAP_DOMAIN=${TARGET_ENV}.circleguard.edu
+LDAP_DOMAIN=${LDAP_DOMAIN_VAL}
+LDAP_BASE_DN=${LDAP_BASE_DN_VAL}
 LDAP_ADMIN_PASSWORD=${LDAP_PASS}
 
 # Secretos criptográficos de microservicios
@@ -155,6 +177,13 @@ QR_SECRET=${QR_SEC}
 VAULT_SECRET=${VAULT_SEC}
 VAULT_SALT=${VAULT_SALT_VAL}
 VAULT_HASH_SALT=${VAULT_HASH_VAL}
+
+# Pila completa deploy/compose/docker-compose.${TARGET_ENV}.yml (US-08)
+# IMAGE_TAG (SemVer) se toma de APP_VERSION salvo que el pipeline lo sobrescriba.
+IMAGE_TAG=${IMAGE_TAG_VAL}
+# Host/IP pública con la que el navegador alcanza los servicios publicados (cliente web).
+PUBLIC_HOST=${PUBLIC_HOST:-localhost}
+${INIT_DB_LINE}
 EOF
 
 chmod 600 "$TMP_ENV"

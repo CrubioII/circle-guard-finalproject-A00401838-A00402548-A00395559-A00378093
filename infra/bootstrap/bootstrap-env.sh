@@ -378,6 +378,7 @@ provision_single_aws_env() {
 
     COPYFILE_DISABLE=1 tar --no-xattrs -C "$REPO_ROOT" -czf - \
         docker-compose.dev.yml \
+        deploy/compose \
         init-db.sql \
         .env.example \
         infra/bootstrap \
@@ -388,7 +389,7 @@ provision_single_aws_env() {
     # 5. Ejecutar bootstrap-env.sh localmente dentro de la máquina del ambiente
     log_info "[${env_name}] Ejecutando bootstrap-env.sh en ${public_ip}..."
     ssh -i "$EC2_SSH_KEY_PATH" -o StrictHostKeyChecking=no "${EC2_SSH_USER}@${public_ip}" \
-        "sudo DEPLOY_USER='${EC2_SSH_USER}' bash '${remote_src}/infra/bootstrap/bootstrap-env.sh' '${env_name}' --registry-url '${REGISTRY_URL}'"
+        "sudo DEPLOY_USER='${EC2_SSH_USER}' PUBLIC_HOST='${public_ip}' bash '${remote_src}/infra/bootstrap/bootstrap-env.sh' '${env_name}' --registry-url '${REGISTRY_URL}'"
 }
 
 # -----------------------------------------------------------------------------
@@ -588,15 +589,20 @@ prepare_isolated_directories_and_secrets() {
     local env_name="$1"
     local base_dir="${STATE_ROOT}${DEPLOY_BASE_DIR}/${env_name}"
     local net_name="circleguard_${env_name}_net"
+    # US-08: pila completa del ambiente (middleware + 5 servicios núcleo + web). Aquí solo se
+    # copia y valida; levantarla corresponde al pipeline de despliegue (US-13).
+    local stack_file="docker-compose.${env_name}.yml"
 
     log_info "[${env_name}] Preparando estructura de directorios aislados en ${base_dir}..."
 
     if [[ -n "$STATE_ROOT" ]]; then
-        mkdir -p "${base_dir}/compose" "${base_dir}/config" "${base_dir}/logs" "${base_dir}/backups"
+        mkdir -p "${base_dir}/compose/stack" "${base_dir}/config" "${base_dir}/logs" "${base_dir}/backups"
         chmod 750 "$base_dir"
         cp -f "${REPO_ROOT}/docker-compose.dev.yml" "${base_dir}/compose/docker-compose.dev.yml"
         cp -f "${REPO_ROOT}/init-db.sql" "${base_dir}/compose/init-db.sql"
+        cp -f "${REPO_ROOT}/deploy/compose/${stack_file}" "${base_dir}/compose/stack/${stack_file}"
         cp -f "${SCRIPT_DIR}/env/.env.${env_name}.example" "${base_dir}/config/.env.example"
+        INIT_DB_SCRIPT="${base_dir}/compose/init-db.sql" PUBLIC_HOST="${PUBLIC_HOST:-localhost}" \
         bash "${SCRIPT_DIR}/inject-jenkins-secrets.sh" \
             --env "$env_name" \
             --output "${base_dir}/.env" \
@@ -610,13 +616,16 @@ prepare_isolated_directories_and_secrets() {
         return 0
     fi
 
-    run_privileged mkdir -p "${base_dir}/compose" "${base_dir}/config" "${base_dir}/logs" "${base_dir}/backups"
+    run_privileged mkdir -p "${base_dir}/compose/stack" "${base_dir}/config" "${base_dir}/logs" "${base_dir}/backups"
     run_privileged chmod 750 "$base_dir"
     run_privileged cp -f "${REPO_ROOT}/docker-compose.dev.yml" "${base_dir}/compose/docker-compose.dev.yml"
     run_privileged cp -f "${REPO_ROOT}/init-db.sql" "${base_dir}/compose/init-db.sql"
+    run_privileged cp -f "${REPO_ROOT}/deploy/compose/${stack_file}" "${base_dir}/compose/stack/${stack_file}"
     run_privileged cp -f "${SCRIPT_DIR}/env/.env.${env_name}.example" "${base_dir}/config/.env.example"
 
-    run_privileged bash "${SCRIPT_DIR}/inject-jenkins-secrets.sh" \
+    # 'env' explícito: sudo descarta las variables de entorno del llamador.
+    run_privileged env INIT_DB_SCRIPT="${base_dir}/compose/init-db.sql" PUBLIC_HOST="${PUBLIC_HOST:-localhost}" \
+        bash "${SCRIPT_DIR}/inject-jenkins-secrets.sh" \
         --env "$env_name" \
         --output "${base_dir}/.env" \
         --registry-url "$REGISTRY_URL"
@@ -636,6 +645,10 @@ prepare_isolated_directories_and_secrets() {
     # Validar el manifiesto con las variables externalizadas
     run_docker compose --env-file "${base_dir}/.env" -f "${base_dir}/compose/docker-compose.dev.yml" config -q
     log_ok "[${env_name}] Manifiesto validado con secretos externalizados (${base_dir}/.env)."
+
+    # US-08: la pila completa debe renderizar con el mismo .env (IMAGE_TAG SemVer, secretos, healthchecks).
+    run_docker compose --env-file "${base_dir}/.env" -f "${base_dir}/compose/stack/${stack_file}" config -q
+    log_ok "[${env_name}] Pila completa ${stack_file} validada con ${base_dir}/.env."
 
     if [[ "$START_MIDDLEWARE" == "true" ]]; then
         log_info "[${env_name}] Levantando contenedores de middleware en ${base_dir}..."
