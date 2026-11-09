@@ -50,3 +50,6 @@ neo4jdata/
 
 # Local secrets / keys (never commit private keys)
 *.pem
+
+# Local agent context & handoff documentation
+agentes/

@@ -87,11 +87,12 @@ CircleGuard follows a **Microservice Architecture** built on a **Hybrid Data Mod
 ## Local Development
 
 ### 1. Infrastructure
-Ensure Docker is installed, then start the middleware stack:
+Ensure Docker is installed, copy `.env.example` to `.env` (setting local passwords), and start the middleware stack:
 ```bash
-docker-compose -f docker-compose.dev.yml up -d
+cp .env.example .env
+docker compose --env-file .env -f docker-compose.dev.yml up -d
 ```
-*Middleware includes: PostgreSQL, Neo4j, Kafka, Zookeeper, Redis, and OpenLDAP.*
+*Middleware includes: PostgreSQL, Neo4j, Kafka, Zookeeper, Redis, and OpenLDAP. Plaintext credentials have been externalized (`US-05`); see [`docs/arquitectura/BOOTSTRAP_ENV_US05.md`](docs/arquitectura/BOOTSTRAP_ENV_US05.md).*
 
 ### 2. Build & Run
 CircleGuard uses Gradle for parallel builds across services:
