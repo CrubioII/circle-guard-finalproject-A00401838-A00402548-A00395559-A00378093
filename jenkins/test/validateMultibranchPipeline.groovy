@@ -422,7 +422,15 @@ List<Integer> order = ["stage('Publish Images to Nexus')", "stage('Deploy to dev
                        "stage('E2E against dev')", "stage('Promote to stage')", "stage('Verify stage health')"]
     .collect { jenkinsfileText.indexOf(it) }
 assert order == order.sort(false) : 'Orden requerido: publicar -> dev -> health -> E2E -> stage -> health stage'
-assert !jenkinsfileText.contains('--env prod') : 'US-13 no despliega a prod (la aprobación de producción es US-31)'
+// US-31: prod solo puede aparecer DESPUÉS de la compuerta manual (nunca en el flujo automático dev -> stage).
+int approveStageIndex = jenkinsfileText.indexOf("stage('Approve prod release')")
+assert approveStageIndex > 0 : 'Falta la compuerta manual a prod (US-31)'
+assert (jenkinsfileText =~ /--env prod/).findAll().size() > 0
+int searchFrom = 0
+while ((searchFrom = jenkinsfileText.indexOf('--env prod', searchFrom)) >= 0) {
+    assert searchFrom > approveStageIndex : 'Un despliegue/verificación a prod aparece antes de la aprobación manual (US-31)'
+    searchFrom++
+}
 assert !(jenkinsfileText =~ /versionMap\.APP_VERSION \?: '0\.1\.0'\)\s*\n\s*echo "Desplegando/) :
     'El despliegue no debe usar una versión por defecto'
 println('[OK] Caso 17: Jenkinsfile despliega dev -> E2E -> stage en orden, con credenciales y registro de la decisión.')
@@ -528,5 +536,34 @@ assert notConfigured.status == 'NOT_CONFIGURED' && !notConfigured.deploy && notC
 assert multibranchFlow.prodApprovalDecision(
     [DECISION: 'APROBAR', VERSION: '', COMMENT: 'RFC', APPROVER: 'ana'], approvalCfg + [validatedVersion: '']).status == 'INVALID'
 println('[OK] Caso 21: aprobar/rechazar registran quién y qué versión; timeout, abort, versión no validada y falta de aprobadores no despliegan.')
+
+// -----------------------------------------------------------------------------
+// Caso 22: el Jenkinsfile cablea compuerta manual, despliegue, verificación y registro de prod (CA1-CA3)
+// -----------------------------------------------------------------------------
+[
+    "stage('Approve prod release')", "stage('Deploy to prod')", "stage('Verify prod health')",
+    'plan?.prodRelease == true && deployResults.verifyStage == \'SUCCESS\'',
+    'prodApproval?.deploy == true',
+    'input(', "submitter: approvers.join(',')", "submitterParameter: 'APPROVER'",
+    "choice(name: 'DECISION', choices: ['RECHAZAR', 'APROBAR']", "choice(name: 'VERSION', choices: [version]",
+    "string(name: 'COMMENT'", 'timeout(time: timeoutMinutes',
+    'multibranchFlow.parseProdApprovers(env.PROD_APPROVERS)',
+    'multibranchFlow.prodApprovalDecision(response',
+    'classifyApprovalInterruption(interruption, System.currentTimeMillis() - waitStartedMs, timeoutMinutes)',
+    "PROD_APPROVERS = \"\${env.CG_PROD_APPROVERS ?: ''}\"",
+    "PROD_HOST = \"\${env.CG_PROD_HOST ?: '3.19.74.9'}\"",
+    "./deploy/scripts/environment.sh deploy --env prod --version '\${prodApproval.version}'",
+    "./deploy/scripts/environment.sh verify --env prod",
+    './deploy/scripts/health-report-to-junit.sh reports/ci/health-prod.json reports/ci/junit/health-prod.xml',
+    "junit allowEmptyResults: true, testResults: 'reports/ci/junit/health-prod.xml'",
+    'reports/ci/prod-approval.json'
+].each { String required ->
+    assert jenkinsfileText.contains(required) : "El Jenkinsfile no contiene el fragmento de US-31: ${required}"
+}
+List<Integer> prodOrder = ["stage('Verify stage health')", "stage('Approve prod release')", "stage('Deploy to prod')",
+                           "stage('Verify prod health')", "stage('Release Gate')"].collect { jenkinsfileText.indexOf(it) }
+assert prodOrder == prodOrder.sort(false) : 'Orden requerido: stage verificado -> aprobación -> prod -> verificación prod'
+assert !jenkinsfileText.contains("choices: ['APROBAR', 'RECHAZAR']") : 'La opción por defecto del formulario debe ser RECHAZAR'
+println('[OK] Caso 22: Jenkinsfile exige aprobación antes de prod, despliega la versión aprobada y publica sus healthchecks en JUnit.')
 
 println('=== TODAS LAS PRUEBAS DEL MULTIBRANCH PIPELINE PASARON EXITOSAMENTE ===')

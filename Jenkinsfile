@@ -24,6 +24,14 @@
 //   CA3: Si fallan el despliegue, los healthchecks o los E2E, stage no se toca y la
 //        decisión queda en reports/ci/promotion-stage.json y en la descripción del build.
 //
+// US-31 — Aprobación manual y despliegue verificado a prod (vía A):
+//   CA1: Tras verificar stage, el build de main espera un `input` restringido a
+//        CG_PROD_APPROVERS (timeout CG_PROD_APPROVAL_TIMEOUT_MIN); sin aprobación, prod no se toca.
+//   CA2: Quién aprobó/rechazó, la versión y el comentario/RFC quedan en
+//        reports/ci/prod-approval.json, en la descripción del build y en el estado de GitHub.
+//   CA3: Tras desplegar, los healthchecks de prod se publican como pruebas JUnit
+//        (reports/ci/junit/health-prod.xml) y en reports/ci/health-prod.json.
+//
 // Requisitos del agente: JDK 21, Node.js 20+, librerías de sistema de Chromium (imagen
 // infra/bootstrap/jenkins), plugin htmlpublisher, git, openssh-client y permisos de
 // ejecución sobre ./gradlew. Credenciales: 'nexus-credentials' y 'circleguard-env-ssh'.
@@ -40,6 +48,37 @@ def plan = [:]
 def versionMap = [:]
 // US-13: resultado de cada compuerta de entrega continua (SUCCESS | FAILURE | NOT_RUN).
 def deployResults = [deployDev: 'NOT_RUN', verifyDev: 'NOT_RUN', e2eDev: 'NOT_RUN', promoteStage: 'NOT_RUN', verifyStage: 'NOT_RUN']
+// US-31: decisión de la compuerta manual a prod (multibranchFlow.prodApprovalDecision) y resultado del release.
+def prodApproval = [:]
+def prodResults = [deployProd: 'NOT_RUN', verifyProd: 'NOT_RUN']
+
+// US-31: distingue timeout de abort en la compuerta manual.
+// - TIMEOUT se detecta por el tiempo esperado (no requiere aprobaciones de sandbox).
+// - En un ABORTED se intenta leer quién abortó; el sandbox bloquea FlowInterruptedException.getCauses
+//   salvo que un administrador apruebe esa firma, y entonces se registra ABORTED sin usuario.
+//   Para dejar constancia de quién decide, el formulario ofrece RECHAZAR (registra al usuario siempre).
+// Cualquier excepción que no sea una interrupción del input se relanza (un error real no se oculta).
+// Se compara por nombre de clase para que el Jenkinsfile siga compilando fuera de Jenkins (caso 11).
+Map classifyApprovalInterruption(Throwable interruption, long waitedMs, int timeoutMinutes) {
+    if (interruption.getClass().getSimpleName() != 'FlowInterruptedException') {
+        throw interruption
+    }
+    // Margen de 5 s: el paso timeout corta al cumplirse el plazo.
+    if (waitedMs >= (timeoutMinutes * 60000L) - 5000L) {
+        return [outcome: 'TIMEOUT', abortedBy: '']
+    }
+    String abortedBy = ''
+    try {
+        for (def cause in interruption.causes) {
+            if (cause.getClass().getSimpleName() == 'Rejection' && cause.getUser() != null) {
+                abortedBy = cause.getUser().getId()
+            }
+        }
+    } catch (Throwable ignored) {
+        echo '[US-31] El sandbox no permite leer quién abortó (FlowInterruptedException.getCauses); se registra ABORTED sin usuario.'
+    }
+    return [outcome: 'ABORTED', abortedBy: abortedBy]
+}
 
 // La versión desplegada es SIEMPRE la calculada por US-12 y publicada en Nexus; nunca un valor por defecto.
 String requireReleaseVersion(Map versionMap) {
@@ -119,6 +158,11 @@ pipeline {
         DEPLOY_REGISTRY_URL = "${env.CG_REGISTRY_URL ?: '52.14.6.11:5000'}"
         ENV_SSH_CREDENTIALS_ID = 'circleguard-env-ssh'
         NEXUS_CREDENTIALS_ID = 'nexus-credentials'
+        // US-31: nodo de prod (US-05) y compuerta manual. CG_PROD_APPROVERS = IDs de usuario o
+        // grupos de Jenkins separados por comas; vacío => el release a prod se omite (no aprueba cualquiera).
+        PROD_HOST = "${env.CG_PROD_HOST ?: '3.19.74.9'}"
+        PROD_APPROVERS = "${env.CG_PROD_APPROVERS ?: ''}"
+        PROD_APPROVAL_TIMEOUT_MIN = "${env.CG_PROD_APPROVAL_TIMEOUT_MIN ?: '60'}"
     }
 
     stages {
@@ -440,6 +484,109 @@ pipeline {
             }
         }
 
+        // ---------------------------------------------------------------------
+        // US-31: aprobación manual y despliegue verificado a prod. Solo se ofrece la
+        // versión que esta misma ejecución validó en dev (E2E) y stage.
+        // ---------------------------------------------------------------------
+        stage('Approve prod release') {
+            when {
+                expression { plan?.prodRelease == true && deployResults.verifyStage == 'SUCCESS' }
+            }
+            steps {
+                script {
+                    String version = requireReleaseVersion(versionMap)
+                    List<String> approvers = multibranchFlow.parseProdApprovers(env.PROD_APPROVERS)
+                    int timeoutMinutes = Integer.parseInt(env.PROD_APPROVAL_TIMEOUT_MIN ?: '60')
+                    Map approvalConfig = [validatedVersion: version, approvers: approvers]
+                    int attempts = 0
+                    if (approvers.isEmpty()) {
+                        prodApproval = multibranchFlow.prodApprovalDecision([:], approvalConfig + [outcome: 'NOT_CONFIGURED'])
+                    } else {
+                        // CA1: el pipeline se detiene hasta que un aprobador autorizado decide (o vence el plazo).
+                        while (attempts < 3) {
+                            attempts++
+                            long waitStartedMs = System.currentTimeMillis()
+                            try {
+                                timeout(time: timeoutMinutes, unit: 'MINUTES') {
+                                    Map response = input(
+                                        id: 'ProdRelease',
+                                        message: "¿Aprobar el release ${version} a PRODUCCIÓN? (validado en dev + E2E y stage)",
+                                        ok: 'Enviar decisión',
+                                        submitter: approvers.join(','),
+                                        submitterParameter: 'APPROVER',
+                                        parameters: [
+                                            choice(name: 'DECISION', choices: ['RECHAZAR', 'APROBAR'],
+                                                   description: 'APROBAR despliega en prod; RECHAZAR deja prod intacto. Ambas quedan registradas.'),
+                                            choice(name: 'VERSION', choices: [version],
+                                                   description: 'Versión validada en dev (E2E) y stage en esta ejecución.'),
+                                            string(name: 'COMMENT', defaultValue: '', trim: true,
+                                                   description: 'Justificación o ID de RFC (obligatorio para aprobar).')
+                                        ]
+                                    )
+                                    prodApproval = multibranchFlow.prodApprovalDecision(response, approvalConfig + [outcome: 'SUBMITTED'])
+                                }
+                            } catch (Exception interruption) {
+                                prodApproval = multibranchFlow.prodApprovalDecision([:], approvalConfig +
+                                    classifyApprovalInterruption(interruption, System.currentTimeMillis() - waitStartedMs, timeoutMinutes))
+                            }
+                            if (prodApproval.status != 'INVALID') {
+                                break
+                            }
+                            echo "[US-31] Respuesta inválida (${attempts}/3): ${prodApproval.reason}"
+                        }
+                    }
+                    prodApproval = prodApproval + [attempts: attempts, timeoutMinutes: timeoutMinutes]
+                    echo "[US-31] ${prodApproval.status}: ${prodApproval.reason}"
+                    if (prodApproval.status == 'ABORTED') {
+                        currentBuild.result = 'ABORTED'
+                    } else if (prodApproval.status == 'INVALID') {
+                        error(prodApproval.reason)
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to prod') {
+            when {
+                expression { plan?.prodRelease == true && prodApproval?.deploy == true }
+            }
+            steps {
+                script {
+                    prodResults.deployProd = 'FAILURE'
+                    echo "Desplegando ${prodApproval.version} en PRODUCCIÓN (${env.PROD_HOST}), aprobado por ${prodApproval.approver} (US-31)..."
+                    withEnvironmentCredentials {
+                        sh "./deploy/scripts/environment.sh deploy --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}'"
+                    }
+                    prodResults.deployProd = 'SUCCESS'
+                }
+            }
+        }
+
+        stage('Verify prod health') {
+            when {
+                expression { plan?.prodRelease == true && prodApproval?.deploy == true && prodResults.deployProd == 'SUCCESS' }
+            }
+            steps {
+                script {
+                    prodResults.verifyProd = 'FAILURE'
+                    try {
+                        withEnvironmentCredentials {
+                            sh "./deploy/scripts/environment.sh verify --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}' --report reports/ci/health-prod.json"
+                        }
+                    } finally {
+                        // CA3: el resultado (sano o no) se publica como pruebas JUnit, un caso por contenedor.
+                        sh 'if [ -s reports/ci/health-prod.json ]; then ./deploy/scripts/health-report-to-junit.sh reports/ci/health-prod.json reports/ci/junit/health-prod.xml; fi'
+                    }
+                    prodResults.verifyProd = 'SUCCESS'
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'reports/ci/junit/health-prod.xml'
+                }
+            }
+        }
+
         stage('Release Gate') {
             when {
                 expression { plan?.deploymentAllowed == true }
@@ -448,7 +595,7 @@ pipeline {
                 script {
                     Map decision = multibranchFlow.requireDeploymentAllowed(flow, plan.targetEnv)
                     echo "Despliegue autorizado a '${decision.targetEnv}' (aprobación manual requerida: ${decision.requiresApproval})."
-                    echo 'dev y stage se despliegan automáticamente en main (US-13); la aprobación manual hacia prod se implementa en US-31.'
+                    echo 'dev y stage se despliegan automáticamente en main (US-13); prod se libera con la etapa "Approve prod release" de cada build de main (US-31).'
                     echo 'Esta compuerta garantiza que ningún Pull Request ni rama distinta de main alcance un ambiente.'
                     writeFile(
                         file: "reports/ci/release-gate-${decision.targetEnv}.json",
@@ -509,6 +656,31 @@ pipeline {
                         : ''
                     currentBuild.description = "${promotion.status}: ${promotion.reason}${stageNote}"
                     echo "[US-13] ${currentBuild.description}"
+                }
+                if (plan?.prodRelease == true) {
+                    // US-31 / CA2: quién aprobó o rechazó, qué versión y con qué resultado; siempre, también si no se llegó a la compuerta.
+                    Map approval = prodApproval ?: [
+                        targetEnv: 'prod', status: 'NOT_RUN', deploy: false,
+                        version  : versionMap?.APP_VERSION ?: '',
+                        reason   : 'La compuerta de prod no se ejecutó: la versión no quedó verificada en stage.'
+                    ]
+                    Map prodRecord = approval + [
+                        deployProd     : prodResults.deployProd,
+                        verifyProd     : prodResults.verifyProd,
+                        prodHost       : env.PROD_HOST,
+                        commit         : env.GIT_COMMIT ?: '',
+                        buildUrl       : env.BUILD_URL ?: '',
+                        buildNumber    : env.BUILD_NUMBER ?: '',
+                        buildStartedMs : currentBuild.startTimeInMillis
+                    ]
+                    sh 'mkdir -p reports/ci'
+                    writeFile file: 'reports/ci/prod-approval.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(prodRecord))
+                    String prodNote = "PROD ${approval.status}" +
+                        (approval.approver ? " por ${approval.approver}" : '') +
+                        (approval.version ? " (v${approval.version})" : '') +
+                        (approval.deploy ? " | despliegue=${prodResults.deployProd}, health=${prodResults.verifyProd}" : '')
+                    currentBuild.description = currentBuild.description ? "${currentBuild.description} | ${prodNote}" : prodNote
+                    echo "[US-31] ${prodNote} — ${approval.reason}"
                 }
             }
             junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml'
