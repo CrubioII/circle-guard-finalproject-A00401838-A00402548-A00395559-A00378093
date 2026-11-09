@@ -73,11 +73,21 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
     Map deployment = deploymentDecision(context, targetEnv)
 
     List<String> stages = ['Checkout & Context', 'Detect Changed Components']
+    if (runHeavyBuild) {
+        stages.add('Calculate SemVer')
+    }
     if (runBackendBuild) {
         stages.add('Compile & Test Backend')
     }
     if (runMobileBuild) {
         stages.add('Compile & Test Web')
+    }
+    if (runHeavyBuild) {
+        stages.add('Validate Compose Environments')
+    }
+    if (((context?.isMainBranch ?: false) as boolean) && runHeavyBuild) {
+        stages.add('Publish Images to Nexus')
+        stages.add('Generate Release Notes & Tag')
     }
     if (deployment.allowed) {
         stages.add('Release Gate')
