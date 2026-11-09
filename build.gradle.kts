@@ -6,13 +6,14 @@ plugins {
     kotlin("plugin.jpa") version "1.9.24" apply false
 }
 
-// US-31: servicios núcleo con umbral mínimo de cobertura de líneas (JaCoCo).
-// Gateway y los servicios complementarios quedan para US-32.
+// US-31 / US-32: servicios con umbral mínimo de cobertura de líneas (JaCoCo).
+// Notification, file y dashboard (US-32) publican reportes pero no tienen umbral obligatorio.
 val coreCoverageServices = setOf(
     "circleguard-auth-service",
     "circleguard-identity-service",
     "circleguard-promotion-service",
-    "circleguard-form-service"
+    "circleguard-form-service",
+    "circleguard-gateway-service"
 )
 val minimumCoreLineCoverage = java.math.BigDecimal("0.60")
 

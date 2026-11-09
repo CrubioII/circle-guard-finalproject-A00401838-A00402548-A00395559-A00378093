@@ -27,12 +27,14 @@ def detection = [:]
 def plan = [:]
 def versionMap = [:]
 
-// US-31: servicios núcleo con umbral mínimo de 60% de cobertura de líneas (gateway y complementarios en US-32).
+// US-31 / US-32: servicios con umbral mínimo de 60% de cobertura de líneas.
+// notification, file y dashboard publican pruebas y cobertura (US-32 / CA3) sin umbral obligatorio.
 List<String> CORE_COVERAGE_SERVICES = [
     'circleguard-auth-service',
     'circleguard-identity-service',
     'circleguard-promotion-service',
-    'circleguard-form-service'
+    'circleguard-form-service',
+    'circleguard-gateway-service'
 ]
 
 pipeline {
@@ -149,13 +151,13 @@ pipeline {
             }
         }
 
-        stage('Coverage Gate (servicios núcleo)') {
+        stage('Coverage Gate (núcleo + gateway)') {
             when {
                 expression { plan?.runBackendBuild == true && plan.backendServices.any { it in CORE_COVERAGE_SERVICES } }
             }
             steps {
                 script {
-                    // US-31 / CA1: falla el build si auth, identity, promotion o form bajan del 60% de líneas.
+                    // US-31 / US-32 CA1: falla el build si auth, identity, promotion, form o gateway bajan del 60% de líneas.
                     List<String> coreServices = plan.backendServices.findAll { it in CORE_COVERAGE_SERVICES }
                     String tasks = coreServices.collect { ":services:${it}:jacocoTestCoverageVerification" }.join(' ')
                     echo "Verificando cobertura de líneas >= 60% en: ${coreServices.join(', ')}"
@@ -274,7 +276,7 @@ pipeline {
         always {
             junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml'
             script {
-                // US-31 / CA3: publica la cobertura JaCoCo (tendencia + detalle por clase) y archiva los reportes HTML/XML.
+                // US-31 / US-32 CA3: publica la cobertura JaCoCo de los ocho servicios (tendencia + detalle por clase) y archiva los reportes HTML/XML.
                 if (sh(returnStatus: true, script: 'ls services/*/build/jacoco/test.exec >/dev/null 2>&1') == 0) {
                     jacoco(
                         execPattern: 'services/*/build/jacoco/test.exec',
