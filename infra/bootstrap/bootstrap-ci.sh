@@ -748,6 +748,58 @@ verify_all_healthchecks() {
     esac
 }
 
+configure_nexus_docker_hosted() {
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "[dry-run] Se omitiria la configuracion de Nexus Docker hosted repository."
+        return 0
+    fi
+    if [[ "$BOOTSTRAP_MODE" != "all" && "$BOOTSTRAP_MODE" != "nexus" ]]; then
+        return 0
+    fi
+
+    log_info "Configurando repositorio Docker hosted en Nexus (US-11)..."
+    local nexus_pass=""
+    if docker exec circleguard-nexus test -f /nexus-data/admin.password 2>/dev/null; then
+        nexus_pass=$(docker exec circleguard-nexus cat /nexus-data/admin.password 2>/dev/null || true)
+    fi
+    nexus_pass="${NEXUS_ADMIN_PASSWORD:-${nexus_pass}}"
+    if [[ -z "$nexus_pass" ]]; then
+        log_warn "No se pudo recuperar la contrasena de admin de Nexus; omitiendo creacion de repositorio Docker."
+        return 0
+    fi
+
+    # Activar DockerToken realm
+    curl -s -X PUT -u "admin:${nexus_pass}" \
+        -H "Content-Type: application/json" \
+        -d '["NexusAuthenticatingRealm", "DockerToken"]' \
+        http://localhost:8081/service/rest/v1/security/realms/active || true
+
+    # Crear repositorio circleguard-docker si no existe
+    if ! curl -s -u "admin:${nexus_pass}" http://localhost:8081/service/rest/v1/repositories | grep -q '"name" : "circleguard-docker"'; then
+        curl -s -X POST -u "admin:${nexus_pass}" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"circleguard-docker","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":true,"writePolicy":"ALLOW"},"docker":{"v1Enabled":false,"forceBasicAuth":true,"httpPort":5000}}' \
+            http://localhost:8081/service/rest/v1/repositories/docker/hosted || true
+        log_success "Repositorio Docker hosted 'circleguard-docker' creado en puerto 5000."
+    else
+        log_info "Repositorio Docker hosted 'circleguard-docker' ya existe."
+    fi
+
+    # Inyectar credencial nexus-credentials en Jenkins si el contenedor jenkins esta disponible
+    if docker ps --format '{{.Names}}' | grep -q "^circleguard-jenkins$"; then
+        local crumb_field crumb
+        crumb_field=$(curl -s -c /tmp/jk_c.txt -b /tmp/jk_c.txt "http://localhost:8080/crumbIssuer/api/json" | jq -r .crumbRequestField 2>/dev/null || true)
+        crumb=$(curl -s -c /tmp/jk_c.txt -b /tmp/jk_c.txt "http://localhost:8080/crumbIssuer/api/json" | jq -r .crumb 2>/dev/null || true)
+        if [[ -n "$crumb" && "$crumb" != "null" ]]; then
+            curl -s -c /tmp/jk_c.txt -b /tmp/jk_c.txt -H "${crumb_field}: ${crumb}" \
+                --data-urlencode "script=import com.cloudbees.plugins.credentials.*; import com.cloudbees.plugins.credentials.domains.*; import com.cloudbees.plugins.credentials.impl.*; def domain = Domain.global(); def store = SystemCredentialsProvider.getInstance().getStore(); def existing = store.getCredentials(domain).find { it.id == 'nexus-credentials' }; if (existing) { store.removeCredentials(domain, existing) }; def cred = new UsernamePasswordCredentialsImpl(CredentialsScope.GLOBAL, 'nexus-credentials', 'Credenciales para registro Docker en Nexus (US-11)', 'admin', '${nexus_pass}'); store.addCredentials(domain, cred);" \
+                http://localhost:8080/scriptText >/dev/null 2>&1 || true
+            log_success "Credencial 'nexus-credentials' inyectada en Jenkins."
+        fi
+        rm -f /tmp/jk_c.txt
+    fi
+}
+
 print_summary() {
     # shellcheck disable=SC1090
     source "$ENV_FILE"
@@ -798,6 +850,7 @@ main() {
     prepare_env_file
     deploy_ci_services
     verify_all_healthchecks
+    configure_nexus_docker_hosted
     print_summary
 }
 

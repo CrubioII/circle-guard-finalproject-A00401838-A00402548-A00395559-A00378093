@@ -25,6 +25,7 @@ import groovy.json.JsonOutput
 def flow = [:]
 def detection = [:]
 def plan = [:]
+def versionMap = [:]
 
 pipeline {
     agent any
@@ -100,6 +101,29 @@ pipeline {
             }
         }
 
+        stage('Calculate SemVer') {
+            when {
+                expression { plan?.runHeavyBuild == true }
+            }
+            steps {
+                script {
+                    echo 'Calculando version semantica dinamica a partir de commits (US-12)...'
+                    sh 'chmod +x infra/scripts/calculate-semver.sh'
+                    sh './infra/scripts/calculate-semver.sh --export reports/ci/version.env --format env'
+
+                    def lines = readFile('reports/ci/version.env').split('\n')
+                    for (int i = 0; i < lines.length; i++) {
+                        def entry = lines[i].trim()
+                        if (entry && entry.contains('=')) {
+                            def parts = entry.split('=', 2)
+                            versionMap[parts[0].trim()] = parts[1].trim()
+                        }
+                    }
+                    echo "Version SemVer resultante: ${versionMap.APP_VERSION} (Tag: ${versionMap.GIT_TAG}, Incremento: ${versionMap.SEMVER_BUMP})"
+                }
+            }
+        }
+
         stage('Compile & Test Backend') {
             when {
                 expression { plan?.runBackendBuild == true }
@@ -125,6 +149,60 @@ pipeline {
                 dir('mobile') {
                     sh 'npm ci --no-audit --no-fund'
                     sh 'npm run test -- --ci --watchAll=false'
+                }
+            }
+        }
+
+        stage('Validate Compose Environments') {
+            when {
+                expression { plan?.runHeavyBuild == true }
+            }
+            steps {
+                script {
+                    echo 'Validando archivos docker-compose para dev, stage y prod (US-08)...'
+                    sh 'chmod +x deploy/compose/validate-compose.sh'
+                    sh 'IMAGE_TAG="' + (versionMap.APP_VERSION ?: '0.1.0') + '" ./deploy/compose/validate-compose.sh'
+                }
+            }
+        }
+
+        stage('Publish Images to Nexus') {
+            when {
+                expression { flow?.isMainBranch == true && plan?.runHeavyBuild == true }
+            }
+            steps {
+                script {
+                    String semver = versionMap.APP_VERSION ?: '0.1.0'
+                    echo "Construyendo y publicando imagenes en Nexus con version semantica: ${semver} (US-11)..."
+                    withCredentials([usernamePassword(
+                        credentialsId: 'nexus-credentials',
+                        usernameVariable: 'NEXUS_USER',
+                        passwordVariable: 'NEXUS_PASSWORD'
+                    )]) {
+                        sh 'chmod +x infra/scripts/publish-docker-images.sh'
+                        sh """
+                            REGISTRY_URL="52.14.6.11:5000" \
+                            REGISTRY_USER="\${NEXUS_USER}" \
+                            REGISTRY_PASSWORD="\${NEXUS_PASSWORD}" \
+                            VERSION="${semver}" \
+                            ./infra/scripts/publish-docker-images.sh
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Generate Release Notes & Tag') {
+            when {
+                expression { flow?.isMainBranch == true }
+            }
+            steps {
+                script {
+                    String semver = versionMap.APP_VERSION ?: '0.1.0'
+                    echo "Generando Release Notes automaticas y tag Git para ${semver} (US-18 y US-12)..."
+                    sh 'chmod +x infra/scripts/generate-release-notes.sh infra/scripts/git-tag-release.sh'
+                    sh "./infra/scripts/generate-release-notes.sh --version '${semver}'"
+                    sh "./infra/scripts/git-tag-release.sh --version '${semver}'"
                 }
             }
         }
@@ -172,7 +250,7 @@ pipeline {
         }
         always {
             junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml'
-            archiveArtifacts artifacts: 'reports/ci/**', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'reports/ci/**,docs/release-notes/**', allowEmptyArchive: true
         }
     }
 }
