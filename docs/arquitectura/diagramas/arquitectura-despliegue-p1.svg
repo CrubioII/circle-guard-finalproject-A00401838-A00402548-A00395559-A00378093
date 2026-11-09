@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 940" width="1400" height="940" font-family="Helvetica, Arial, sans-serif">
+  <title>CircleGuard: despliegue en la nube (Parte 1, AWS us-east-2)</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#374151"/>
+    </marker>
+    <marker id="aB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5454E9"/>
+    </marker>
+    <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4CB978"/>
+    </marker>
+  </defs>
+  <rect width="1400" height="940" fill="#FFFFFF"/>
+  <text x="30" y="40" font-size="22" font-weight="bold" fill="#1A1A1A">CircleGuard: despliegue en la nube (Parte 1)</text>
+  <text x="30" y="63" font-size="13" fill="#6B7280">4 instancias EC2 aprovisionadas con scripts Bash idempotentes (infra/bootstrap/) y Docker Compose; sin configuración manual</text>
+
+  <!-- Columna izquierda: equipo, GitHub, Jira -->
+  <g font-size="12" fill="#374151">
+    <rect x="30" y="96" width="220" height="56" rx="28" fill="#F9FAFB" stroke="#9CA3AF"/>
+    <text x="140" y="120" font-size="14" font-weight="bold" text-anchor="middle" fill="#1A1A1A">Equipo SuperPoderosos</text>
+    <text x="140" y="138" text-anchor="middle">ramas feature/*, fix/*, docs/*</text>
+
+    <rect x="30" y="200" width="220" height="150" rx="8" fill="#FFFFFF" stroke="#1A1A1A" stroke-width="2"/>
+    <text x="140" y="225" font-size="15" font-weight="bold" text-anchor="middle" fill="#1A1A1A">GitHub</text>
+    <text x="140" y="244" text-anchor="middle">CrubioII/circle-guard-</text>
+    <text x="140" y="259" text-anchor="middle">finalproject-…(monorepo)</text>
+    <text x="44" y="284">• main protegida</text>
+    <text x="44" y="301">• PR + 1 aprobación</text>
+    <text x="44" y="318">• Conventional Commits</text>
+    <text x="44" y="335">• tags vX.Y.Z (SemVer)</text>
+
+    <rect x="30" y="420" width="220" height="74" rx="8" fill="#FFFFFF" stroke="#1A1A1A" stroke-width="1.5"/>
+    <text x="140" y="445" font-size="15" font-weight="bold" text-anchor="middle" fill="#1A1A1A">Jira</text>
+    <text x="140" y="464" text-anchor="middle">Tablero SuperPoderosos</text>
+    <text x="140" y="481" text-anchor="middle">circleguard777.atlassian.net</text>
+  </g>
+  <line x1="140" y1="152" x2="140" y2="198" stroke="#374151" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="148" y="180" font-size="11" fill="#374151">git push / Pull Request</text>
+  <line x1="140" y1="418" x2="140" y2="352" stroke="#9CA3AF" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <text x="148" y="390" font-size="11" fill="#6B7280">US-XX en ramas y PR</text>
+
+  <!-- Región AWS -->
+  <rect x="290" y="82" width="1090" height="830" rx="12" fill="#FBFBFE" stroke="#F0681A" stroke-width="2" stroke-dasharray="10 6"/>
+  <text x="310" y="108" font-size="15" font-weight="bold" fill="#F0681A">AWS · región us-east-2 · Amazon Linux 2023 · m7i-flex.large (8 GB RAM)</text>
+
+  <!-- Plano de control CI/CD -->
+  <rect x="310" y="124" width="520" height="400" rx="10" fill="#FFFFFF" stroke="#5454E9" stroke-width="2"/>
+  <text x="326" y="150" font-size="15" font-weight="bold" fill="#1A1A1A">circleguard-ci-server · 52.14.6.11</text>
+  <text x="326" y="169" font-size="12" fill="#374151">SG circleguard-ci-control-plane-sg: 22, 8080, 9000, 8081, 5000</text>
+  <text x="326" y="186" font-size="12" fill="#374151">docker-compose.ci.yml ← bootstrap-ci.sh (idempotente)</text>
+
+  <rect x="326" y="200" width="488" height="128" rx="8" fill="#EEF0FD" stroke="#5454E9"/>
+  <text x="342" y="224" font-size="15" font-weight="bold" fill="#1A1A1A">Jenkins 2.580.2 (JDK 21)  :8080 · :50000</text>
+  <g font-size="12" fill="#374151">
+    <text x="342" y="244">JCasC (jenkins/ci/jenkins.yaml) · job Multibranch circleguard-monorepo</text>
+    <text x="342" y="261">Shared Library circleguard-shared-lib (jenkins/vars/)</text>
+    <text x="342" y="278">Imagen propia: Gradle 8.5, Node 20, Docker CLI + Compose,</text>
+    <text x="342" y="295">dependencias de Playwright y openssh-client</text>
+    <text x="342" y="315">Credenciales: github-*, nexus-credentials, circleguard-env-ssh</text>
+  </g>
+
+  <rect x="326" y="350" width="236" height="158" rx="8" fill="#FFFFFF" stroke="#6B7280" stroke-dasharray="7 5"/>
+  <text x="342" y="374" font-size="15" font-weight="bold" fill="#1A1A1A">SonarQube 10.6  :9000</text>
+  <g font-size="12" fill="#374151">
+    <text x="342" y="394">+ PostgreSQL 16.4 dedicado</text>
+    <text x="342" y="411">(red ci-network)</text>
+    <text x="342" y="436" fill="#B42318" font-weight="bold">Quality gate aún no</text>
+    <text x="342" y="453" fill="#B42318" font-weight="bold">integrado al pipeline</text>
+    <text x="342" y="470" fill="#B42318">(US-10 sin fusionar)</text>
+  </g>
+
+  <rect x="578" y="350" width="236" height="158" rx="8" fill="#ECF8F1" stroke="#4CB978" stroke-width="2"/>
+  <text x="594" y="374" font-size="15" font-weight="bold" fill="#1A1A1A">Nexus OSS 3.70.1</text>
+  <g font-size="12" fill="#374151">
+    <text x="594" y="394">:8081 interfaz web</text>
+    <text x="594" y="411">:5000 registro Docker</text>
+    <text x="594" y="436">repositorio circleguard-docker</text>
+    <text x="594" y="453">circleguard/&lt;svc&gt;:X.Y.Z (<tspan font-weight="bold">nunca latest</tspan>)</text>
+    <text x="594" y="470">9 imágenes por versión</text>
+    <text x="594" y="490" fill="#2F7A50">← pull de los nodos (:5000)</text>
+  </g>
+  <line x1="696" y1="328" x2="696" y2="348" stroke="#4CB978" stroke-width="2" marker-end="url(#aG)"/>
+  <text x="704" y="342" font-size="11" fill="#2F7A50">docker push</text>
+  <line x1="444" y1="328" x2="444" y2="348" stroke="#9CA3AF" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#a)"/>
+
+  <!-- GitHub <-> Jenkins -->
+  <path d="M250,250 L324,250" stroke="#5454E9" stroke-width="2" fill="none" marker-end="url(#aB)"/>
+  <path d="M324,300 L250,300" stroke="#5454E9" stroke-width="1.5" fill="none" stroke-dasharray="5 4" marker-end="url(#aB)"/>
+  <text x="256" y="238" font-size="10.5" fill="#5454E9">webhook</text>
+  <text x="256" y="318" font-size="10.5" fill="#5454E9">estado del</text>
+  <text x="256" y="331" font-size="10.5" fill="#5454E9">commit</text>
+
+  <!-- Ambientes -->
+  <g font-size="12" fill="#374151">
+    <!-- dev -->
+    <rect x="900" y="124" width="460" height="236" rx="10" fill="#FFFFFF" stroke="#4CB978" stroke-width="2"/>
+    <text x="916" y="150" font-size="16" font-weight="bold" fill="#1A1A1A">dev · 52.15.213.209</text>
+    <text x="1344" y="150" text-anchor="end" font-weight="bold" fill="#2F7A50">automático</text>
+    <text x="916" y="170">SG circleguard-dev-sg (22, 8080, 8180, 8087) · red circleguard_dev_net</text>
+    <text x="916" y="187">/opt/circleguard/dev/.env (0600) · compose circleguard-dev</text>
+    <rect x="916" y="198" width="428" height="68" rx="6" fill="#EEF0FD" stroke="#C7CBF7"/>
+    <text x="928" y="218" font-weight="bold" fill="#1A1A1A">6 imágenes propias (X.Y.Z)</text>
+    <text x="928" y="236">web-client 8080 · auth 8180 · identity 8083</text>
+    <text x="928" y="253">promotion 8088 · form 8086 · gateway 8087</text>
+    <rect x="916" y="274" width="428" height="48" rx="6" fill="#FEF0E8" stroke="#F8C9AE"/>
+    <text x="928" y="294" font-weight="bold" fill="#1A1A1A">6 de middleware</text>
+    <text x="928" y="312">postgres · neo4j · zookeeper · kafka · redis · openldap</text>
+    <text x="916" y="344" fill="#6B7280">Middleware publicado en el host solo en dev (depuración)</text>
+
+    <!-- stage -->
+    <rect x="900" y="384" width="460" height="236" rx="10" fill="#FFFFFF" stroke="#F0681A" stroke-width="2"/>
+    <text x="916" y="410" font-size="16" font-weight="bold" fill="#1A1A1A">stage · 3.17.163.44</text>
+    <text x="1344" y="410" text-anchor="end" font-weight="bold" fill="#B5500F">tras E2E en dev</text>
+    <text x="916" y="430">SG circleguard-stage-sg (22, 8080, 8180, 8087) · circleguard_stage_net</text>
+    <text x="916" y="447">/opt/circleguard/stage/.env (0600) · compose circleguard-stage</text>
+    <rect x="916" y="458" width="428" height="68" rx="6" fill="#EEF0FD" stroke="#C7CBF7"/>
+    <text x="928" y="478" font-weight="bold" fill="#1A1A1A">6 imágenes propias (puertos +1000)</text>
+    <text x="928" y="496">web-client 9080 · auth 9180 · identity 9083</text>
+    <text x="928" y="513">promotion 9088 · form 9086 · gateway 9087</text>
+    <rect x="916" y="534" width="428" height="48" rx="6" fill="#FEF0E8" stroke="#F8C9AE"/>
+    <text x="928" y="554" font-weight="bold" fill="#1A1A1A">6 de middleware (solo red interna)</text>
+    <text x="928" y="572">límites de CPU/memoria · no-new-privileges · restart always</text>
+    <text x="916" y="604" fill="#6B7280">Solo se publica una versión ya validada en dev</text>
+
+    <!-- prod -->
+    <rect x="900" y="644" width="460" height="236" rx="10" fill="#FFFFFF" stroke="#B42318" stroke-width="2"/>
+    <text x="916" y="670" font-size="16" font-weight="bold" fill="#1A1A1A">prod · 3.19.74.9</text>
+    <text x="1344" y="670" text-anchor="end" font-weight="bold" fill="#B42318">aprobación manual</text>
+    <text x="916" y="690">SG circleguard-prod-sg (22, 8080, 8180, 8087) · circleguard_prod_net</text>
+    <text x="916" y="707">/opt/circleguard/prod/.env (0600) · compose circleguard-prod</text>
+    <rect x="916" y="718" width="428" height="68" rx="6" fill="#EEF0FD" stroke="#C7CBF7"/>
+    <text x="928" y="738" font-weight="bold" fill="#1A1A1A">6 imágenes propias (puertos +2000)</text>
+    <text x="928" y="756">web-client 10080 · auth 10180 · identity 10083</text>
+    <text x="928" y="773">promotion 10088 · form 10086 · gateway 10087</text>
+    <rect x="916" y="794" width="428" height="48" rx="6" fill="#FEF0E8" stroke="#F8C9AE"/>
+    <text x="928" y="814" font-weight="bold" fill="#1A1A1A">6 de middleware (solo red interna)</text>
+    <text x="928" y="832">logs json-file 50m × 5 · límites de recursos</text>
+    <text x="916" y="864" fill="#6B7280">input de Jenkins restringido a CG_PROD_APPROVERS (US-31)</text>
+  </g>
+
+  <!-- Jenkins -> ambientes por SSH -->
+  <g stroke="#374151" stroke-width="1.8" fill="none">
+    <path d="M814,264 L868,264 L868,242 L898,242" marker-end="url(#a)"/>
+    <path d="M868,264 L868,502 L898,502" marker-end="url(#a)"/>
+    <path d="M868,502 L868,762 L898,762" marker-end="url(#a)"/>
+  </g>
+  <text x="859" y="700" font-size="11.5" fill="#374151" transform="rotate(-90 859 700)">SSH/SCP :22 · deploy, verify y túneles E2E (environment.sh)</text>
+
+  <!-- Ambientes -> Nexus (pull) -->
+  <path d="M898,580 L884,580 L884,450 L816,450" stroke="#4CB978" stroke-width="1.6" stroke-dasharray="6 4" fill="none" marker-end="url(#aG)"/>
+
+  <!-- Aprovisionamiento y promoción -->
+  <rect x="310" y="548" width="520" height="160" rx="10" fill="#F9FAFB" stroke="#9CA3AF"/>
+  <text x="326" y="574" font-size="15" font-weight="bold" fill="#1A1A1A">Aprovisionamiento idempotente (E1.2)</text>
+  <g font-size="12" fill="#374151" font-family="Consolas, 'Courier New', monospace">
+    <text x="326" y="598">bootstrap-ci.sh --provision-aws</text>
+    <text x="326" y="616">bootstrap-env.sh all --provision-aws</text>
+    <text x="326" y="634">inject-jenkins-secrets.sh --env &lt;env&gt;</text>
+  </g>
+  <g font-size="12" fill="#374151">
+    <text x="326" y="660">Reutiliza SG e instancias por tag; sysctl, swap, Docker y daemon.json</text>
+    <text x="326" y="677">solo cambian si difieren; los secretos se generan una vez (openssl rand)</text>
+    <text x="326" y="694">y se conservan en /opt/circleguard/&lt;env&gt;/.env con permisos 0600.</text>
+  </g>
+
+  <rect x="310" y="726" width="520" height="168" rx="10" fill="#F9FAFB" stroke="#9CA3AF"/>
+  <text x="326" y="752" font-size="15" font-weight="bold" fill="#1A1A1A">Promoción inmutable (E1.5)</text>
+  <g font-size="12" fill="#374151">
+    <text x="326" y="776">Un build de main calcula X.Y.Z, publica una sola vez las imágenes y</text>
+    <text x="326" y="793">promueve esa misma etiqueta: dev → (E2E) → stage → (input) → prod.</text>
+    <text x="326" y="817">Rollback (US-14): infra/scripts/rollback.sh vuelve a desplegar la</text>
+    <text x="326" y="834">última versión estable registrada por ambiente.</text>
+    <text x="326" y="858">Los security groups no abren los puertos +1000/+2000: stage y prod</text>
+    <text x="326" y="875">se consultan por túnel SSH (ver README, «URLs de los ambientes»).</text>
+  </g>
+</svg>
