@@ -13,8 +13,12 @@
 //        'continuous-integration/jenkins/pr-head' o '.../main'; el job Multibranch
 //        y el webhook se declaran en jenkins/ci/jenkins.yaml.
 //
-// Requisitos del agente: JDK 21, Node.js 20+ (solo si cambia mobile/), git y
-// permisos de ejecución sobre ./gradlew.
+// US-34: etapa 'E2E Playwright' (headless) que publica reportes HTML y JUnit
+//        y falla el build si falla cualquier flujo E2E (incluidos los de US-17).
+//
+// Requisitos del agente: JDK 21, Node.js 20+ (solo si cambia mobile/ o e2e/),
+// librerías de sistema de Chromium (imagen infra/bootstrap/jenkins), plugin
+// htmlpublisher, git y permisos de ejecución sobre ./gradlew.
 // =============================================================================
 import groovy.json.JsonOutput
 
@@ -59,6 +63,12 @@ pipeline {
             name: 'TARGET_ENV',
             choices: ['none', 'dev', 'stage', 'prod'],
             description: 'Ambiente de despliegue solicitado. Solo la rama main puede desplegar; los Pull Requests siempre quedan bloqueados.'
+        )
+        string(
+            name: 'E2E_BASE_URL',
+            defaultValue: '',
+            trim: true,
+            description: 'US-34: URL del cliente web contra la que corre Playwright (p. ej. el ambiente stage). Vacío = exporta mobile/ y lo sirve localmente en el agente.'
         )
         booleanParam(
             name: 'PUBLISH_GITHUB_STATUS',
@@ -174,6 +184,57 @@ pipeline {
                 dir('mobile') {
                     sh 'npm ci --no-audit --no-fund'
                     sh 'npm run test -- --ci --watchAll=false'
+                }
+            }
+        }
+
+        stage('E2E Playwright') {
+            when {
+                expression { plan?.runMobileBuild == true || (params.E2E_BASE_URL?.trim() ? true : false) }
+            }
+            environment {
+                EXPO_NO_TELEMETRY = '1'
+            }
+            steps {
+                script {
+                    // CA1: BASE_URL parametrizable; vacío => playwright.config.ts sirve mobile/dist en el agente.
+                    String e2eBaseUrl = (params.E2E_BASE_URL ?: '').trim()
+                    if (e2eBaseUrl) {
+                        echo "Ejecutando E2E contra BASE_URL=${e2eBaseUrl} (APIs reales, E2E_MOCK_API=false)."
+                    } else {
+                        echo 'E2E_BASE_URL vacío: exportando el cliente web de Expo para servirlo en el agente (APIs simuladas).'
+                        dir('mobile') {
+                            sh 'test -d node_modules || npm ci --no-audit --no-fund'
+                            sh 'npx expo export --platform web'
+                        }
+                    }
+                    withEnv([
+                        "BASE_URL=${e2eBaseUrl}",
+                        "E2E_MOCK_API=${e2eBaseUrl ? 'false' : 'true'}"
+                    ]) {
+                        dir('e2e') {
+                            sh 'npm ci --no-audit --no-fund'
+                            // Las librerías de sistema ya vienen en la imagen de Jenkins; solo se descarga Chromium.
+                            sh 'npx playwright install chromium'
+                            // CA2 + CA3: headless (CI=true) y sin '|| true': cualquier spec fallido rompe la etapa y el build.
+                            sh 'npx playwright test'
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    // CA2: publica JUnit (tendencia de pruebas) y el reporte HTML navegable de Playwright.
+                    junit allowEmptyResults: true, testResults: 'e2e/reports/junit/*.xml'
+                    publishHTML(target: [
+                        reportName           : 'Playwright E2E',
+                        reportDir            : 'e2e/reports/html',
+                        reportFiles          : 'index.html',
+                        keepAll              : true,
+                        alwaysLinkToLastBuild: true,
+                        allowMissing         : true
+                    ])
+                    archiveArtifacts artifacts: 'e2e/reports/**,e2e/test-results/**', allowEmptyArchive: true
                 }
             }
         }
