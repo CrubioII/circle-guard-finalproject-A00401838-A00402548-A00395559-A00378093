@@ -22,6 +22,9 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.11.5")
     
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    // US-33 (SCRUM-112): pruebas de integración con PostgreSQL real en Testcontainers
+    testImplementation("org.testcontainers:junit-jupiter:1.19.3")
+    testImplementation("org.testcontainers:postgresql:1.19.3")
     testImplementation("org.springframework.kafka:spring-kafka-test")
     testImplementation("org.springframework.security:spring-security-test")
 }
