@@ -32,3 +32,21 @@ qr:
 
 server:
   port: 8082
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    # SMTP is an external, optional channel: do not fail health (nor app context in tests) because of it.
+    mail:
+      enabled: false
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
