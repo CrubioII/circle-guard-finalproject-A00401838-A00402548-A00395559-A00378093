@@ -49,6 +49,7 @@ import groovy.transform.Field
 @Field final List<String> INFRA_PATHS = [
     'docker-compose',
     'deploy/',
+    'e2e/',
     'infra/',
     'init-db.sql'
 ]

@@ -10,6 +10,12 @@ import groovy.transform.Field
 @Field final List<String> PRODUCTION_TARGET_ENVS = ['prod']
 @Field final String STATUS_CONTEXT_PR = 'continuous-integration/jenkins/pr-head'
 @Field final String STATUS_CONTEXT_MAIN = 'continuous-integration/jenkins/main'
+// US-13: etapas del despliegue automático a dev y de la promoción condicionada a stage.
+@Field final List<String> CONTINUOUS_DELIVERY_STAGES = [
+    'Deploy to dev', 'Verify dev health', 'E2E against dev', 'Promote to stage', 'Verify stage health'
+]
+// Compuertas que deben terminar en SUCCESS, en este orden, antes de promover a stage.
+@Field final List<String> PROMOTION_GATES = ['deployDev', 'verifyDev', 'e2eDev']
 
 /**
  * Punto de entrada por defecto: devuelve el contexto normalizado de la ejecución.
@@ -71,6 +77,12 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
     boolean runMobileBuild = runHeavyBuild && mobileChanged
 
     Map deployment = deploymentDecision(context, targetEnv)
+    // US-13: toda ejecución de main que publica imágenes despliega a dev y, si dev queda sano
+    // y los E2E pasan, promueve a stage. Los PR y las ramas feature nunca despliegan.
+    boolean autoDeployDev = ((context?.isMainBranch ?: false) as boolean) &&
+                            ((context?.canDeployProd ?: false) as boolean) &&
+                            !((context?.isPullRequest ?: false) as boolean) &&
+                            runHeavyBuild
 
     List<String> stages = ['Checkout & Context', 'Detect Changed Components']
     if (runHeavyBuild) {
@@ -88,6 +100,9 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
     if (((context?.isMainBranch ?: false) as boolean) && runHeavyBuild) {
         stages.add('Publish Images to Nexus')
         stages.add('Generate Release Notes & Tag')
+    }
+    if (autoDeployDev) {
+        stages.addAll(CONTINUOUS_DELIVERY_STAGES)
     }
     if (deployment.allowed) {
         stages.add('Release Gate')
@@ -112,6 +127,8 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
         deploymentAllowed        : deployment.allowed as boolean,
         deploymentRequiresApproval: deployment.requiresApproval as boolean,
         deploymentReason         : deployment.reason,
+        autoDeployDev            : autoDeployDev,
+        promoteToStage           : autoDeployDev,
         stages                   : stages
     ]
 }
@@ -168,7 +185,7 @@ Map deploymentDecision(Map context, String targetEnv) {
         allowed         : true,
         requiresApproval: requiresApproval,
         reason          : requiresApproval
-            ? "main autorizado a '${envName}' con aprobación manual obligatoria (la promoción gobernada se implementa en US-13)."
+            ? "main autorizado a '${envName}' con aprobación manual obligatoria (la aprobación de producción se implementa en US-31)."
             : "main autorizado a '${envName}'."
     ]
 }
@@ -183,6 +200,45 @@ Map requireDeploymentAllowed(Map context, String targetEnv) {
         error("Despliegue rechazado por multibranchFlow: ${decision.reason}")
     }
     return decision
+}
+
+/**
+ * US-13 (CA2 + CA3): decide si una versión desplegada en dev puede promoverse a stage.
+ *
+ * `results` mapea cada compuerta a su resultado: 'SUCCESS', 'FAILURE', 'SKIPPED' o 'NOT_RUN'.
+ *   deployDev  -> despliegue de la versión en dev
+ *   verifyDev  -> healthchecks de servicios y middleware en dev
+ *   e2eDev     -> flujos E2E contra dev
+ * Solo se promueve si las tres terminaron en SUCCESS. La primera compuerta no exitosa
+ * explica el bloqueo, que queda registrado en reports/ci/promotion-stage.json.
+ */
+Map promotionDecision(Map results, Map config = [:]) {
+    String version = config.version ?: ''
+    Map normalized = PROMOTION_GATES.collectEntries { String gate ->
+        [(gate): ((results?.get(gate) ?: 'NOT_RUN') as String).toUpperCase()]
+    }
+    List<String> blockedBy = PROMOTION_GATES.findAll { String gate -> normalized[gate] != 'SUCCESS' }
+    boolean promote = blockedBy.isEmpty()
+
+    Map gateLabels = [deployDev: 'despliegue en dev', verifyDev: 'healthchecks de dev', e2eDev: 'pruebas E2E contra dev']
+    String reason
+    if (promote) {
+        reason = "Versión ${version ?: '?'} promovida a stage: despliegue, healthchecks y E2E de dev exitosos."
+    } else {
+        String first = blockedBy[0]
+        reason = "Promoción a stage detenida: ${gateLabels[first]} = ${normalized[first]}" +
+                 (version ? " (versión ${version})." : '.')
+    }
+
+    return [
+        targetEnv : 'stage',
+        version   : version,
+        promote   : promote,
+        status    : promote ? 'PROMOTED' : 'BLOCKED',
+        gates     : normalized,
+        blockedBy : blockedBy,
+        reason    : reason
+    ]
 }
 
 /**
@@ -214,6 +270,7 @@ String formatPlanSummary(Map plan) {
         "Cliente web (mobile)  : ${plan?.mobileChanged}",
         "Ambiente solicitado   : ${plan?.targetEnv}",
         "Despliegue permitido  : ${plan?.deploymentAllowed} (${plan?.deploymentReason})",
+        "Despliegue auto (dev) : ${plan?.autoDeployDev} | Promoción a stage tras E2E: ${plan?.promoteToStage}",
         "Etapas a ejecutar     : ${(plan?.stages ?: []).join(' -> ')}",
         '====================================================='
     ].join('\n')

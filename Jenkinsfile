@@ -13,8 +13,16 @@
 //        'continuous-integration/jenkins/pr-head' o '.../main'; el job Multibranch
 //        y el webhook se declaran en jenkins/ci/jenkins.yaml.
 //
-// Requisitos del agente: JDK 21, Node.js 20+ (solo si cambia mobile/), git y
-// permisos de ejecución sobre ./gradlew.
+// US-13 — Despliegue automático a dev y promoción a stage tras E2E:
+//   CA1: Toda ejecución de main que publica imágenes despliega esa versión SemVer en
+//        dev y verifica los healthchecks de servicios y middleware.
+//   CA2: Los flujos E2E (e2e/, contrato de US-17) corren contra dev; solo si pasan
+//        se promueve la MISMA versión a stage.
+//   CA3: Si fallan el despliegue, los healthchecks o los E2E, stage no se toca y la
+//        decisión queda en reports/ci/promotion-stage.json y en la descripción del build.
+//
+// Requisitos del agente: JDK 21, Node.js 20+, git, openssh-client y permisos de
+// ejecución sobre ./gradlew. Credenciales: 'nexus-credentials' y 'circleguard-env-ssh'.
 // =============================================================================
 import groovy.json.JsonOutput
 
@@ -26,6 +34,29 @@ def flow = [:]
 def detection = [:]
 def plan = [:]
 def versionMap = [:]
+// US-13: resultado de cada compuerta de entrega continua (SUCCESS | FAILURE | NOT_RUN).
+def deployResults = [deployDev: 'NOT_RUN', verifyDev: 'NOT_RUN', e2eDev: 'NOT_RUN', promoteStage: 'NOT_RUN', verifyStage: 'NOT_RUN']
+
+// La versión desplegada es SIEMPRE la calculada por US-12 y publicada en Nexus; nunca un valor por defecto.
+String requireReleaseVersion(Map versionMap) {
+    String version = versionMap?.APP_VERSION ?: ''
+    if (!version) {
+        error('No hay versión SemVer calculada (APP_VERSION); no se despliega una versión no identificada.')
+    }
+    return version
+}
+
+// Credenciales SSH de los nodos (US-05) y del registro Nexus (US-11) para deploy/scripts/*.
+void withEnvironmentCredentials(Closure body) {
+    withCredentials([
+        sshUserPrivateKey(credentialsId: env.ENV_SSH_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
+        usernamePassword(credentialsId: env.NEXUS_CREDENTIALS_ID, usernameVariable: 'REGISTRY_USER', passwordVariable: 'REGISTRY_PASSWORD')
+    ]) {
+        withEnv(["REGISTRY_URL=${env.DEPLOY_REGISTRY_URL}"]) {
+            body()
+        }
+    }
+}
 
 pipeline {
     agent any
@@ -33,7 +64,8 @@ pipeline {
     options {
         timestamps()
         ansiColor('xterm')
-        timeout(time: 45, unit: 'MINUTES')
+        // US-13: build + publicación de 9 imágenes + despliegue dev + E2E + promoción a stage.
+        timeout(time: 90, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '10'))
         disableConcurrentBuilds(abortPrevious: true)
         skipDefaultCheckout(true)
@@ -60,6 +92,13 @@ pipeline {
     environment {
         GRADLE_OPTS = '-Dorg.gradle.daemon=false'
         CI = 'true'
+        // US-13: nodos de ambiente (US-05) y registro (US-11). Sobrescribibles con variables
+        // globales de Jenkins (CG_DEV_HOST, CG_STAGE_HOST, CG_REGISTRY_URL) sin tocar el repo.
+        DEV_HOST = "${env.CG_DEV_HOST ?: '52.15.213.209'}"
+        STAGE_HOST = "${env.CG_STAGE_HOST ?: '3.17.163.44'}"
+        DEPLOY_REGISTRY_URL = "${env.CG_REGISTRY_URL ?: '52.14.6.11:5000'}"
+        ENV_SSH_CREDENTIALS_ID = 'circleguard-env-ssh'
+        NEXUS_CREDENTIALS_ID = 'nexus-credentials'
     }
 
     stages {
@@ -162,6 +201,8 @@ pipeline {
                     echo 'Validando archivos docker-compose para dev, stage y prod (US-08)...'
                     sh 'chmod +x deploy/compose/validate-compose.sh'
                     sh 'IMAGE_TAG="' + (versionMap.APP_VERSION ?: '0.1.0') + '" ./deploy/compose/validate-compose.sh'
+                    // US-13: los scripts de despliegue/promoción se prueban también en los PR (sin Docker ni credenciales).
+                    sh 'chmod +x deploy/scripts/*.sh && ./deploy/scripts/test-deploy-scripts.sh'
                 }
             }
         }
@@ -207,6 +248,98 @@ pipeline {
             }
         }
 
+        // ---------------------------------------------------------------------
+        // US-13: entrega continua dev -> stage. Cada etapa marca su compuerta en
+        // FAILURE antes de empezar y en SUCCESS solo al terminar bien; si una falla,
+        // las siguientes se omiten y stage nunca recibe la versión.
+        // ---------------------------------------------------------------------
+        stage('Deploy to dev') {
+            when {
+                expression { plan?.autoDeployDev == true }
+            }
+            steps {
+                script {
+                    deployResults.deployDev = 'FAILURE'
+                    String version = requireReleaseVersion(versionMap)
+                    echo "Desplegando automáticamente ${version} en dev (${env.DEV_HOST}) (US-13 / CA1)..."
+                    withEnvironmentCredentials {
+                        sh "./deploy/scripts/environment.sh deploy --env dev --version '${version}' --host '${env.DEV_HOST}'"
+                    }
+                    deployResults.deployDev = 'SUCCESS'
+                }
+            }
+        }
+
+        stage('Verify dev health') {
+            when {
+                expression { plan?.autoDeployDev == true }
+            }
+            steps {
+                script {
+                    deployResults.verifyDev = 'FAILURE'
+                    String version = requireReleaseVersion(versionMap)
+                    echo "Verificando healthchecks de los 12 contenedores de dev para ${version} (US-13 / CA1)..."
+                    withEnvironmentCredentials {
+                        sh "./deploy/scripts/environment.sh verify --env dev --version '${version}' --host '${env.DEV_HOST}' --report reports/ci/health-dev.json"
+                    }
+                    deployResults.verifyDev = 'SUCCESS'
+                }
+            }
+        }
+
+        stage('E2E against dev') {
+            when {
+                expression { plan?.autoDeployDev == true }
+            }
+            steps {
+                script {
+                    deployResults.e2eDev = 'FAILURE'
+                    echo 'Ejecutando flujos E2E contra dev (US-13 / CA2; contrato e2e/ ampliable por US-17)...'
+                    withEnvironmentCredentials {
+                        sh "./deploy/scripts/run-e2e.sh --env dev --host '${env.DEV_HOST}'"
+                    }
+                    deployResults.e2eDev = 'SUCCESS'
+                }
+            }
+        }
+
+        stage('Promote to stage') {
+            when {
+                expression { plan?.promoteToStage == true }
+            }
+            steps {
+                script {
+                    String version = requireReleaseVersion(versionMap)
+                    Map promotion = multibranchFlow.promotionDecision(deployResults, [version: version])
+                    if (!promotion.promote) {
+                        error(promotion.reason)
+                    }
+                    deployResults.promoteStage = 'FAILURE'
+                    echo "${promotion.reason} Desplegando en stage (${env.STAGE_HOST})..."
+                    withEnvironmentCredentials {
+                        sh "./deploy/scripts/environment.sh deploy --env stage --version '${version}' --host '${env.STAGE_HOST}'"
+                    }
+                    deployResults.promoteStage = 'SUCCESS'
+                }
+            }
+        }
+
+        stage('Verify stage health') {
+            when {
+                expression { plan?.promoteToStage == true }
+            }
+            steps {
+                script {
+                    deployResults.verifyStage = 'FAILURE'
+                    String version = requireReleaseVersion(versionMap)
+                    withEnvironmentCredentials {
+                        sh "./deploy/scripts/environment.sh verify --env stage --version '${version}' --host '${env.STAGE_HOST}' --report reports/ci/health-stage.json"
+                    }
+                    deployResults.verifyStage = 'SUCCESS'
+                }
+            }
+        }
+
         stage('Release Gate') {
             when {
                 expression { plan?.deploymentAllowed == true }
@@ -215,7 +348,7 @@ pipeline {
                 script {
                     Map decision = multibranchFlow.requireDeploymentAllowed(flow, plan.targetEnv)
                     echo "Despliegue autorizado a '${decision.targetEnv}' (aprobación manual requerida: ${decision.requiresApproval})."
-                    echo 'La promoción material dev -> stage -> prod y el bloque input de aprobación se implementan en US-13.'
+                    echo 'dev y stage se despliegan automáticamente en main (US-13); la aprobación manual hacia prod se implementa en US-31.'
                     echo 'Esta compuerta garantiza que ningún Pull Request ni rama distinta de main alcance un ambiente.'
                     writeFile(
                         file: "reports/ci/release-gate-${decision.targetEnv}.json",
@@ -237,7 +370,9 @@ pipeline {
         failure {
             script {
                 if (params.PUBLISH_GITHUB_STATUS) {
-                    publishBuildStatus(state: 'FAILURE', flow: flow, description: 'CircleGuard CI falló')
+                    // Si la entrega continua se detuvo, el estado de GitHub explica qué compuerta lo bloqueó (CA3).
+                    String failureDescription = currentBuild.description ?: 'CircleGuard CI falló'
+                    publishBuildStatus(state: 'FAILURE', flow: flow, description: failureDescription)
                 }
             }
         }
@@ -248,9 +383,36 @@ pipeline {
                 }
             }
         }
+        // Declarative ejecuta `always` antes que success/failure: el registro de la promoción
+        // ya existe cuando se publica el estado en GitHub.
         always {
-            junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml'
-            archiveArtifacts artifacts: 'reports/ci/**,docs/release-notes/**', allowEmptyArchive: true
+            script {
+                if (plan?.autoDeployDev == true) {
+                    // US-13 / CA3: la decisión de promoción queda registrada SIEMPRE, también si falló.
+                    Map promotion = multibranchFlow.promotionDecision(deployResults, [version: versionMap?.APP_VERSION ?: ''])
+                    Map record = promotion + [
+                        gatesDetail    : deployResults,
+                        stageDeployed  : deployResults.promoteStage == 'SUCCESS',
+                        stageHealthy   : deployResults.verifyStage == 'SUCCESS',
+                        devHost        : env.DEV_HOST,
+                        stageHost      : env.STAGE_HOST,
+                        registry       : env.DEPLOY_REGISTRY_URL,
+                        commit         : env.GIT_COMMIT ?: '',
+                        buildUrl       : env.BUILD_URL ?: '',
+                        buildNumber    : env.BUILD_NUMBER ?: '',
+                        buildStartedMs : currentBuild.startTimeInMillis
+                    ]
+                    sh 'mkdir -p reports/ci'
+                    writeFile file: 'reports/ci/promotion-stage.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(record))
+                    String stageNote = promotion.promote && deployResults.verifyStage != 'SUCCESS'
+                        ? " | stage: despliegue=${deployResults.promoteStage}, health=${deployResults.verifyStage}"
+                        : ''
+                    currentBuild.description = "${promotion.status}: ${promotion.reason}${stageNote}"
+                    echo "[US-13] ${currentBuild.description}"
+                }
+            }
+            junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml,reports/e2e/junit.xml'
+            archiveArtifacts artifacts: 'reports/**,docs/release-notes/**', allowEmptyArchive: true
         }
     }
 }

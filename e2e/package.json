@@ -1,0 +1,16 @@
+{
+  "name": "circleguard-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Flujos E2E de CircleGuard ejecutados contra un ambiente desplegado (US-13; ampliable por US-17).",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:list": "playwright test --list"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

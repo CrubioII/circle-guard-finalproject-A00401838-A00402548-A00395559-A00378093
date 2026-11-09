@@ -16,6 +16,13 @@ File utilsScriptFile = new File(repoRoot, 'jenkins/vars/pipelineUtils.groovy')
 File cascFile = new File(repoRoot, 'jenkins/ci/jenkins.yaml')
 File webhookScript = new File(repoRoot, 'jenkins/ci/setup-github-webhook.sh')
 
+// En Windows CreateProcess resuelve 'bash' al lanzador de WSL (System32) antes que al PATH;
+// se prefiere $BASH_EXE o Git Bash. En Linux/Jenkins siempre es 'bash'.
+boolean isWindowsHost = System.getProperty('os.name').toLowerCase().contains('windows')
+String bashExecutable = System.getenv('BASH_EXE') ?:
+    (['C:/Program Files/Git/bin/bash.exe', 'C:/Program Files (x86)/Git/bin/bash.exe']
+        .find { String candidate -> isWindowsHost && new File(candidate).exists() } ?: 'bash')
+
 [jenkinsfile, flowScriptFile, statusScriptFile, detectScriptFile, utilsScriptFile, cascFile, webhookScript].each { File file ->
     assert file.exists() : "No existe el archivo requerido: ${file.path}"
 }
@@ -299,9 +306,10 @@ println('[OK] Caso 12: JCasC registra la Shared Library y el job Multibranch con
 try {
     Process yamlCheck = new ProcessBuilder(
         'python3', '-c',
-        'import yaml; data = yaml.safe_load(open("jenkins/ci/jenkins.yaml", encoding="utf-8")); ' +
-        'assert data["unclassified"]["globalLibraries"]["libraries"][0]["name"] == "circleguard-shared-lib"; ' +
-        'assert "multibranchPipelineJob" in data["jobs"][0]["script"]; print("YAML_OK")'
+        // Comillas simples dentro del código Python: en Windows ProcessBuilder elimina las comillas dobles.
+        "import yaml; data = yaml.safe_load(open('jenkins/ci/jenkins.yaml', encoding='utf-8')); " +
+        "assert data['unclassified']['globalLibraries']['libraries'][0]['name'] == 'circleguard-shared-lib'; " +
+        "assert 'multibranchPipelineJob' in data['jobs'][0]['script']; print('YAML_OK')"
     ).directory(repoRoot).redirectErrorStream(true).start()
     String yamlOutput = yamlCheck.inputStream.getText('UTF-8')
     int yamlExit = yamlCheck.waitFor()
@@ -321,7 +329,7 @@ try {
 // -----------------------------------------------------------------------------
 // Caso 14: script de webhook idempotente y con secreto enmascarado (CA3)
 // -----------------------------------------------------------------------------
-Process webhookTest = new ProcessBuilder('bash', 'jenkins/test/validateWebhookScript.sh')
+Process webhookTest = new ProcessBuilder(bashExecutable, 'jenkins/test/validateWebhookScript.sh')
     .directory(repoRoot)
     .redirectErrorStream(true)
     .start()
@@ -331,5 +339,111 @@ println(webhookOutput.readLines().collect { "  ${it}" }.join('\n'))
 assert webhookExit == 0 : 'La validacion del webhook de GitHub fallo'
 assert webhookOutput.contains('VALIDACION DEL WEBHOOK DE GITHUB COMPLETADA')
 println('[OK] Caso 14: webhook idempotente con gh/curl (POST -> PATCH) y secreto enmascarado.')
+
+// =============================================================================
+// US-13 — Despliegue automático a dev y promoción a stage tras E2E
+// =============================================================================
+List<String> cdStages = ['Deploy to dev', 'Verify dev health', 'E2E against dev', 'Promote to stage', 'Verify stage health']
+
+// -----------------------------------------------------------------------------
+// Caso 15: solo main con build pesado despliega a dev y planifica la promoción (CA1)
+// -----------------------------------------------------------------------------
+Map mainCdPlan = multibranchFlow.planPipeline(mainContext, prDetection, [targetEnv: 'none'])
+assert mainCdPlan.autoDeployDev == true : 'main con build pesado debe desplegar automáticamente a dev'
+assert mainCdPlan.promoteToStage == true
+assert mainCdPlan.stages.containsAll(cdStages)
+int tagIndex = mainCdPlan.stages.indexOf('Generate Release Notes & Tag')
+assert cdStages.collect { mainCdPlan.stages.indexOf(it) } == (1..cdStages.size()).collect { tagIndex + it } :
+    'Las etapas de entrega continua deben ir, en orden, después de publicar y etiquetar la versión'
+
+[prContext, featureContext].each { Map ctx ->
+    Map p = multibranchFlow.planPipeline(ctx, prDetection, [targetEnv: 'dev'])
+    assert p.autoDeployDev == false : "${ctx.branchName} no debe desplegar automáticamente"
+    assert p.promoteToStage == false
+    assert !p.stages.any { cdStages.contains(it) } : "${ctx.branchName} no debe planificar etapas de despliegue"
+}
+Map mainDocsPlan = multibranchFlow.planPipeline(mainContext, docsDetection, [targetEnv: 'none'])
+assert mainDocsPlan.autoDeployDev == false : 'Un cambio solo de documentación en main no publica imágenes ni despliega'
+println('[OK] Caso 15: main despliega a dev automáticamente; PR, feature y docs-only no despliegan.')
+
+// -----------------------------------------------------------------------------
+// Caso 16: la promoción a stage exige deploy + healthchecks + E2E exitosos (CA2 + CA3)
+// -----------------------------------------------------------------------------
+Map promoted = multibranchFlow.promotionDecision([deployDev: 'SUCCESS', verifyDev: 'SUCCESS', e2eDev: 'SUCCESS'], [version: '1.4.0'])
+assert promoted.promote == true && promoted.status == 'PROMOTED' && promoted.blockedBy == []
+assert promoted.targetEnv == 'stage' && promoted.version == '1.4.0'
+assert promoted.reason.contains('1.4.0')
+
+Map e2eBlocked = multibranchFlow.promotionDecision([deployDev: 'SUCCESS', verifyDev: 'SUCCESS', e2eDev: 'FAILURE'], [version: '1.4.0'])
+assert e2eBlocked.promote == false && e2eBlocked.status == 'BLOCKED'
+assert e2eBlocked.blockedBy == ['e2eDev'] && e2eBlocked.reason.contains('E2E')
+
+Map healthBlocked = multibranchFlow.promotionDecision([deployDev: 'SUCCESS', verifyDev: 'FAILURE', e2eDev: 'NOT_RUN'])
+assert healthBlocked.promote == false
+assert healthBlocked.blockedBy == ['verifyDev', 'e2eDev'] && healthBlocked.reason.contains('healthchecks')
+
+Map deployBlocked = multibranchFlow.promotionDecision([deployDev: 'FAILURE'])
+assert deployBlocked.promote == false && deployBlocked.blockedBy[0] == 'deployDev'
+assert deployBlocked.gates == [deployDev: 'FAILURE', verifyDev: 'NOT_RUN', e2eDev: 'NOT_RUN']
+
+assert multibranchFlow.promotionDecision([:]).promote == false : 'Sin resultados nunca se promueve'
+assert multibranchFlow.promotionDecision(null).promote == false
+assert multibranchFlow.promotionDecision([deployDev: 'success', verifyDev: 'Success', e2eDev: 'SUCCESS']).promote == true
+assert multibranchFlow.promotionDecision([deployDev: 'SUCCESS', verifyDev: 'SUCCESS', e2eDev: 'SKIPPED']).promote == false :
+    'E2E omitidos no habilitan la promoción'
+println('[OK] Caso 16: promoción a stage solo con deploy + healthchecks + E2E en SUCCESS; bloqueos explicados.')
+
+// -----------------------------------------------------------------------------
+// Caso 17: el Jenkinsfile cablea despliegue, verificación, E2E, promoción y registro (CA1-CA3)
+// -----------------------------------------------------------------------------
+[
+    "stage('Deploy to dev')", "stage('Verify dev health')", "stage('E2E against dev')",
+    "stage('Promote to stage')", "stage('Verify stage health')",
+    'plan?.autoDeployDev == true', 'plan?.promoteToStage == true',
+    './deploy/scripts/environment.sh deploy --env dev',
+    './deploy/scripts/environment.sh verify --env dev',
+    './deploy/scripts/run-e2e.sh --env dev',
+    './deploy/scripts/environment.sh deploy --env stage',
+    './deploy/scripts/environment.sh verify --env stage',
+    'multibranchFlow.promotionDecision(deployResults',
+    'reports/ci/promotion-stage.json', 'reports/ci/health-dev.json', 'reports/e2e/junit.xml',
+    'requireReleaseVersion(versionMap)',
+    "ENV_SSH_CREDENTIALS_ID = 'circleguard-env-ssh'", "NEXUS_CREDENTIALS_ID = 'nexus-credentials'",
+    'sshUserPrivateKey(', 'currentBuild.description'
+].each { String required ->
+    assert jenkinsfileText.contains(required) : "El Jenkinsfile no contiene el fragmento de US-13: ${required}"
+}
+List<Integer> order = ["stage('Publish Images to Nexus')", "stage('Deploy to dev')", "stage('Verify dev health')",
+                       "stage('E2E against dev')", "stage('Promote to stage')", "stage('Verify stage health')"]
+    .collect { jenkinsfileText.indexOf(it) }
+assert order == order.sort(false) : 'Orden requerido: publicar -> dev -> health -> E2E -> stage -> health stage'
+assert !jenkinsfileText.contains('--env prod') : 'US-13 no despliega a prod (la aprobación de producción es US-31)'
+assert !(jenkinsfileText =~ /versionMap\.APP_VERSION \?: '0\.1\.0'\)\s*\n\s*echo "Desplegando/) :
+    'El despliegue no debe usar una versión por defecto'
+println('[OK] Caso 17: Jenkinsfile despliega dev -> E2E -> stage en orden, con credenciales y registro de la decisión.')
+
+// -----------------------------------------------------------------------------
+// Caso 18: scripts de despliegue (validaciones, SSH/SCP, secretos, puertos) (CA1 + CA3)
+// -----------------------------------------------------------------------------
+Process deployTests = new ProcessBuilder(bashExecutable, 'deploy/scripts/test-deploy-scripts.sh')
+    .directory(repoRoot).redirectErrorStream(true).start()
+String deployTestsOutput = deployTests.inputStream.getText('UTF-8')
+int deployTestsExit = deployTests.waitFor()
+println(deployTestsOutput.readLines().findAll { it.contains('[FAIL]') || it.contains('RESULTADO') }.collect { "  ${it}" }.join('\n'))
+assert deployTestsExit == 0 : "deploy/scripts/test-deploy-scripts.sh falló:\n${deployTestsOutput}"
+println('[OK] Caso 18: deploy/scripts validados (SemVer, ambientes, SSH/SCP, contraseña fuera de argumentos, puertos).')
+
+// -----------------------------------------------------------------------------
+// Caso 19: contrato de la suite E2E (e2e/) que consume el pipeline y amplía US-17 (CA2)
+// -----------------------------------------------------------------------------
+File e2eDir = new File(repoRoot, 'e2e')
+String e2ePackage = new File(e2eDir, 'package.json').getText('UTF-8')
+assert e2ePackage.contains('"test:e2e"') && e2ePackage.contains('"@playwright/test": "1.48.2"')
+assert new File(e2eDir, 'package-lock.json').exists() : 'npm ci requiere e2e/package-lock.json'
+String e2eConfig = new File(e2eDir, 'playwright.config.ts').getText('UTF-8')
+assert e2eConfig.contains("'junit'") && e2eConfig.contains('E2E_REPORT_DIR')
+List<String> specs = new File(e2eDir, 'tests').listFiles().findAll { it.name.endsWith('.spec.ts') }*.name.sort()
+assert specs.containsAll(['auth-identity.spec.ts', 'gate-qr.spec.ts', 'health.spec.ts', 'web-client.spec.ts']) : "Specs E2E: ${specs}"
+println("[OK] Caso 19: suite E2E con ${specs.size()} flujos y reporte JUnit para Jenkins.")
 
 println('=== TODAS LAS PRUEBAS DEL MULTIBRANCH PIPELINE PASARON EXITOSAMENTE ===')

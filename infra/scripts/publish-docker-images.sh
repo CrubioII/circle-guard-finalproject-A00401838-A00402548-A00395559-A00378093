@@ -76,12 +76,15 @@ done
 web_dockerfile="mobile/Dockerfile"
 if [[ -f "${web_dockerfile}" ]]; then
   web_target="${REGISTRY_URL}/${REGISTRY_NAMESPACE}/mobile:${VERSION}"
+  # Nombre que consumen deploy/compose/docker-compose.<env>.yml (US-08) y el despliegue de US-13.
+  web_compose_target="${REGISTRY_URL}/${REGISTRY_NAMESPACE}/web-client:${VERSION}"
   echo "==> Construyendo cliente web ${web_target}..."
-  docker build -f "${web_dockerfile}" -t "${web_target}" mobile/
+  docker build -f "${web_dockerfile}" -t "${web_target}" -t "${web_compose_target}" mobile/
 
   if [[ "${DO_PUSH}" == "true" ]]; then
     echo "==> Publicando cliente web ${web_target}..."
     docker push "${web_target}"
+    docker push "${web_compose_target}"
   fi
 else
   echo "ADVERTENCIA: No se encontró ${web_dockerfile}, omitiendo cliente web." >&2
