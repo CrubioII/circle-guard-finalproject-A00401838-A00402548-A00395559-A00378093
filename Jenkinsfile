@@ -13,15 +13,19 @@
 //        'continuous-integration/jenkins/pr-head' o '.../main'; el job Multibranch
 //        y el webhook se declaran en jenkins/ci/jenkins.yaml.
 //
+// US-34: etapa 'E2E Playwright' (headless) que publica reportes HTML y JUnit
+//        y falla el build si falla cualquier flujo E2E (incluidos los de US-17).
+//
 // US-13 — Despliegue automático a dev y promoción a stage tras E2E:
 //   CA1: Toda ejecución de main que publica imágenes despliega esa versión SemVer en
 //        dev y verifica los healthchecks de servicios y middleware.
-//   CA2: Los flujos E2E (e2e/, contrato de US-17) corren contra dev; solo si pasan
-//        se promueve la MISMA versión a stage.
+//   CA2: Los flujos E2E de US-17 (más los contratos @deployed) corren contra los servicios
+//        REALES de dev; solo si pasan se promueve la MISMA versión a stage.
 //   CA3: Si fallan el despliegue, los healthchecks o los E2E, stage no se toca y la
 //        decisión queda en reports/ci/promotion-stage.json y en la descripción del build.
 //
-// Requisitos del agente: JDK 21, Node.js 20+, git, openssh-client y permisos de
+// Requisitos del agente: JDK 21, Node.js 20+, librerías de sistema de Chromium (imagen
+// infra/bootstrap/jenkins), plugin htmlpublisher, git, openssh-client y permisos de
 // ejecución sobre ./gradlew. Credenciales: 'nexus-credentials' y 'circleguard-env-ssh'.
 // =============================================================================
 import groovy.json.JsonOutput
@@ -58,6 +62,16 @@ void withEnvironmentCredentials(Closure body) {
     }
 }
 
+// US-31 / US-32: servicios con umbral mínimo de 60% de cobertura de líneas.
+// notification, file y dashboard publican pruebas y cobertura (US-32 / CA3) sin umbral obligatorio.
+List<String> CORE_COVERAGE_SERVICES = [
+    'circleguard-auth-service',
+    'circleguard-identity-service',
+    'circleguard-promotion-service',
+    'circleguard-form-service',
+    'circleguard-gateway-service'
+]
+
 pipeline {
     agent any
 
@@ -81,6 +95,12 @@ pipeline {
             name: 'TARGET_ENV',
             choices: ['none', 'dev', 'stage', 'prod'],
             description: 'Ambiente de despliegue solicitado. Solo la rama main puede desplegar; los Pull Requests siempre quedan bloqueados.'
+        )
+        string(
+            name: 'E2E_BASE_URL',
+            defaultValue: '',
+            trim: true,
+            description: 'US-34: URL del cliente web contra la que corre Playwright (p. ej. el ambiente stage). Vacío = exporta mobile/ y lo sirve localmente en el agente.'
         )
         booleanParam(
             name: 'PUBLISH_GITHUB_STATUS',
@@ -169,13 +189,28 @@ pipeline {
             }
             steps {
                 script {
-                    // JaCoCo se habilita en US-10 (aún no está aplicado en build.gradle.kts).
+                    // US-31: JaCoCo aplicado en build.gradle.kts; cada servicio genera su reporte XML/HTML.
                     String gradleCommand = pipelineUtils.buildGradleCommandForServices(
                         plan.backendServices,
-                        [includeTests: true, includeJacoco: false, daemon: false]
+                        [includeTests: true, includeJacoco: true, daemon: false]
                     )
                     echo "Servicios backend afectados (${plan.backendServices.size()}): ${plan.backendServices.join(', ')}"
                     sh "${gradleCommand}"
+                }
+            }
+        }
+
+        stage('Coverage Gate (núcleo + gateway)') {
+            when {
+                expression { plan?.runBackendBuild == true && plan.backendServices.any { it in CORE_COVERAGE_SERVICES } }
+            }
+            steps {
+                script {
+                    // US-31 / US-32 CA1: falla el build si auth, identity, promotion, form o gateway bajan del 60% de líneas.
+                    List<String> coreServices = plan.backendServices.findAll { it in CORE_COVERAGE_SERVICES }
+                    String tasks = coreServices.collect { ":services:${it}:jacocoTestCoverageVerification" }.join(' ')
+                    echo "Verificando cobertura de líneas >= 60% en: ${coreServices.join(', ')}"
+                    sh "./gradlew ${tasks} --no-daemon --stacktrace"
                 }
             }
         }
@@ -188,6 +223,57 @@ pipeline {
                 dir('mobile') {
                     sh 'npm ci --no-audit --no-fund'
                     sh 'npm run test -- --ci --watchAll=false'
+                }
+            }
+        }
+
+        stage('E2E Playwright') {
+            when {
+                expression { plan?.runMobileBuild == true || (params.E2E_BASE_URL?.trim() ? true : false) }
+            }
+            environment {
+                EXPO_NO_TELEMETRY = '1'
+            }
+            steps {
+                script {
+                    // CA1: BASE_URL parametrizable; vacío => playwright.config.ts sirve mobile/dist en el agente.
+                    String e2eBaseUrl = (params.E2E_BASE_URL ?: '').trim()
+                    if (e2eBaseUrl) {
+                        echo "Ejecutando E2E contra BASE_URL=${e2eBaseUrl} (APIs reales, E2E_MOCK_API=false)."
+                    } else {
+                        echo 'E2E_BASE_URL vacío: exportando el cliente web de Expo para servirlo en el agente (APIs simuladas).'
+                        dir('mobile') {
+                            sh 'test -d node_modules || npm ci --no-audit --no-fund'
+                            sh 'npx expo export --platform web'
+                        }
+                    }
+                    withEnv([
+                        "BASE_URL=${e2eBaseUrl}",
+                        "E2E_MOCK_API=${e2eBaseUrl ? 'false' : 'true'}"
+                    ]) {
+                        dir('e2e') {
+                            sh 'npm ci --no-audit --no-fund'
+                            // Las librerías de sistema ya vienen en la imagen de Jenkins; solo se descarga Chromium.
+                            sh 'npx playwright install chromium'
+                            // CA2 + CA3: headless (CI=true) y sin '|| true': cualquier spec fallido rompe la etapa y el build.
+                            sh 'npx playwright test'
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    // CA2: publica JUnit (tendencia de pruebas) y el reporte HTML navegable de Playwright.
+                    junit allowEmptyResults: true, testResults: 'e2e/reports/junit/*.xml'
+                    publishHTML(target: [
+                        reportName           : 'Playwright E2E',
+                        reportDir            : 'e2e/reports/html',
+                        reportFiles          : 'index.html',
+                        keepAll              : true,
+                        alwaysLinkToLastBuild: true,
+                        allowMissing         : true
+                    ])
+                    archiveArtifacts artifacts: 'e2e/reports/**,e2e/test-results/**', allowEmptyArchive: true
                 }
             }
         }
@@ -294,11 +380,25 @@ pipeline {
             steps {
                 script {
                     deployResults.e2eDev = 'FAILURE'
-                    echo 'Ejecutando flujos E2E contra dev (US-13 / CA2; contrato e2e/ ampliable por US-17)...'
+                    echo 'Ejecutando contra los servicios REALES de dev los flujos E2E de US-17 (@us17, @smoke) y los contratos @deployed (US-13 / CA2)...'
                     withEnvironmentCredentials {
                         sh "./deploy/scripts/run-e2e.sh --env dev --host '${env.DEV_HOST}'"
                     }
                     deployResults.e2eDev = 'SUCCESS'
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'e2e/reports/dev/junit/*.xml'
+                    publishHTML(target: [
+                        reportName           : 'Playwright E2E (dev)',
+                        reportDir            : 'e2e/reports/dev/html',
+                        reportFiles          : 'index.html',
+                        keepAll              : true,
+                        alwaysLinkToLastBuild: true,
+                        allowMissing         : true
+                    ])
+                    archiveArtifacts artifacts: 'e2e/reports/dev/**,e2e/test-results/dev/**', allowEmptyArchive: true
                 }
             }
         }
@@ -411,8 +511,20 @@ pipeline {
                     echo "[US-13] ${currentBuild.description}"
                 }
             }
-            junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml,reports/e2e/junit.xml'
-            archiveArtifacts artifacts: 'reports/**,docs/release-notes/**', allowEmptyArchive: true
+            junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml'
+            script {
+                // US-31 / US-32 CA3: publica la cobertura JaCoCo de los ocho servicios (tendencia + detalle por clase) y archiva los reportes HTML/XML.
+                if (sh(returnStatus: true, script: 'ls services/*/build/jacoco/test.exec >/dev/null 2>&1') == 0) {
+                    jacoco(
+                        execPattern: 'services/*/build/jacoco/test.exec',
+                        classPattern: 'services/*/build/classes/java/main',
+                        sourcePattern: 'services/*/src/main/java',
+                        exclusionPattern: '**/*Application.class'
+                    )
+                }
+            }
+            // reports/ci/** incluye promotion-stage.json y health-<env>.json (US-13).
+            archiveArtifacts artifacts: 'reports/ci/**,docs/release-notes/**,services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
         }
     }
 }

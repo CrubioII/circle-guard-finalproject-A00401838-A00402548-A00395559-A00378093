@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { endpoints, targetEnv } from './support/env';
+import { endpoints, targetEnv } from '../../support/endpoints';
 
 // Flujo 4 — El cliente web servido por nginx entrega la SPA y la configuración de runtime
 // generada al arrancar el contenedor (US-07), apuntando a los servicios del ambiente.
-test.describe('Cliente web', () => {
+test.describe('Cliente web desplegado @deployed', () => {
   test('sirve la SPA exportada por Expo', async ({ request }) => {
     const response = await request.get(`${endpoints.web}/`, { headers: { Accept: 'text/html' } });
     expect(response.status()).toBe(200);

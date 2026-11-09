@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { endpoints, seededUser } from './support/env';
+import { endpoints, seededUser } from '../../support/endpoints';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Flujo 2 — Login dual-chain (LDAP -> local) que anonimiza la identidad vía identity-service
 // y emite un JWT; y contrato de la bóveda de identidades (mapeo determinista real -> anónimo).
-test.describe('Autenticación y anonimización', () => {
+test.describe('Autenticación y anonimización @deployed', () => {
   test('login de usuario sembrado devuelve JWT Bearer y anonymousId', async ({ request }) => {
     const response = await request.post(`${endpoints.auth}/api/v1/auth/login`, {
       data: { username: seededUser.username, password: seededUser.password },

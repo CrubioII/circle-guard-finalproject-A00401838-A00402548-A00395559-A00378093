@@ -20,7 +20,7 @@ Deploy to dev ─► Verify dev health ─► E2E against dev ─► Promote to 
 |---|---|---|
 | `Deploy to dev` | Copia por SCP `deploy/compose/docker-compose.dev.yml` y los scripts a `/opt/circleguard/dev/compose/stack/`. Luego, por SSH: `docker login` (contraseña por stdin), `pull` y `up -d --wait` con `IMAGE_TAG=<versión US-12>`. Persiste `IMAGE_TAG` en el `.env` y registra `DEPLOYED_VERSION` | `deploy/scripts/environment.sh deploy` → `deploy-env.sh` |
 | `Verify dev health` | Por SSH en el nodo: los 12 contenedores deben estar `healthy`, las 6 imágenes propias deben ejecutar exactamente `…/circleguard/<svc>:<versión>`, y cada servicio debe responder `/actuator/health/readiness` = `UP` y el web `/healthz`. Guarda `reports/ci/health-dev.json` | `environment.sh verify` → `verify-env-health.sh` |
-| `E2E against dev` | Abre túneles SSH hacia los puertos de dev y ejecuta la suite Playwright de `e2e/`. Publica `reports/e2e/junit.xml` | `deploy/scripts/run-e2e.sh` |
+| `E2E against dev` | Abre túneles SSH hacia dev y ejecuta contra los **servicios reales** los flujos de US-17 (`@us17`, `@smoke`) y los contratos `@deployed`. Publica `e2e/reports/dev/` (JUnit y HTML) | `deploy/scripts/run-e2e.sh` |
 | `Promote to stage` | `multibranchFlow.promotionDecision(...)` exige `SUCCESS` en las tres compuertas anteriores y despliega **la misma versión** en stage | `environment.sh deploy --env stage` |
 | `Verify stage health` | La misma verificación de salud, ahora en stage. Guarda `reports/ci/health-stage.json` | `environment.sh verify --env stage` |
 
@@ -58,27 +58,35 @@ Requisitos en los nodos (ya los cumple US-05):
 
 La contraseña del registro nunca va en argumentos ni en disco: viaja por stdin de SSH hasta `docker login --password-stdin`. `test-deploy-scripts.sh` lo verifica.
 
-## Suite E2E (`e2e/`): contrato para US-17
+## Suite E2E (`e2e/`): qué corre contra dev
 
-Es Playwright API testing (`@playwright/test` 1.48.2), sin navegadores. Las URLs se configuran por variables:
+El framework es el de US-34 (Playwright, `e2e/playwright.config.ts`) y los flujos de negocio son los de US-17. El pipeline los ejecuta **dos veces**, con propósitos distintos:
 
-`E2E_AUTH_URL`, `E2E_IDENTITY_URL`, `E2E_PROMOTION_URL`, `E2E_FORM_URL`, `E2E_GATEWAY_URL`, `E2E_WEB_URL`. También `E2E_TARGET_ENV`, `E2E_USERNAME`/`E2E_PASSWORD` (por defecto el usuario semilla `staff_guard`) y `E2E_REPORT_DIR`.
+| Etapa | Cuándo | Contra qué | Qué corre |
+|---|---|---|---|
+| `E2E Playwright` (US-34) | Antes de publicar, si cambia `mobile/` o `e2e/` | `mobile/dist` servido en el agente, con **APIs simuladas** (`E2E_MOCK_API=true`) | Proyecto `chromium`: flujos `@us17` y smoke `@smoke` |
+| `E2E against dev` (US-13) | Después de desplegar en dev, en cada build de `main` | **Servicios reales de dev** a través de túneles SSH (`E2E_MOCK_API=false`) | Proyecto `chromium` (`@us17` y `@smoke`, ahora contra el backend real) más el proyecto `deployed-api` (`tests/deployed/`, `@deployed`) |
 
-| Archivo | Flujo |
+En modo real, los flujos de US-17 que dependen de respuestas simuladas se omiten (`test.skip(!mockApiEnabled)`); así lo decidió US-17. Sus contrapartes reales las cubren los contratos `@deployed`:
+
+| `tests/deployed/` | Contrato contra el backend real |
 |---|---|
 | `health.spec.ts` | Readiness `UP` de los 5 servicios, más `/healthz` del web |
-| `auth-identity.spec.ts` | Login dual-chain que devuelve un JWT Bearer y un `anonymousId`. Una contraseña incorrecta da 401. El `anonymousId` del login coincide con el de identity, y el mapeo de identity es determinista y sin colisiones |
-| `gate-qr.spec.ts` | Generar un QR exige autenticación. Un QR emitido por auth es aceptado por gateway (`GREEN`). **La vigencia real del QR coincide con `expiresIn`**. Una firma alterada da `RED` |
-| `web-client.spec.ts` | Se sirve la SPA y `runtime-config.js` contiene las URLs del ambiente |
+| `auth-identity.spec.ts` | Login dual-chain que devuelve un JWT Bearer y un `anonymousId`. Una contraseña incorrecta da 401. El `anonymousId` coincide con el de identity, y el mapeo es determinista y sin colisiones |
+| `gate-qr.spec.ts` | Generar un QR exige autenticación. Un QR real es aceptado por gateway (`GREEN`). **La vigencia real del QR coincide con `expiresIn`**. Una firma alterada da `RED` |
+| `web-client.spec.ts` | Se sirve la SPA y el `runtime-config.js` real contiene las URLs del ambiente |
 
-US-17 agrega sus flujos como nuevos `*.spec.ts` en `e2e/tests/`. El pipeline no cambia: cualquier test que falle bloquea la promoción.
+Cómo llega el navegador a dev (`deploy/scripts/run-e2e.sh`):
 
-## Defecto encontrado por los E2E: QR que nace caducado
+- **El cliente web se sirve por un túnel en `http://localhost:8081`.** El CORS de auth-service solo permite los orígenes `localhost:8080` y `localhost:8081`, y el 8080 del agente lo ocupa Jenkins. El puerto se cambia con `E2E_WEB_LOCAL_PORT`, pero debe seguir siendo un origen permitido.
+- **Los servicios se alcanzan por túneles en `127.0.0.1:28xxx`.** Con `E2E_RUNTIME_CONFIG_FROM_ENV=1`, el fixture `runtimeConfigFromEnv` de `support/fixtures.ts` reescribe `/runtime-config.js` para que el navegador use esos túneles, sin depender del `PUBLIC_HOST` del nodo. El contenido real de ese archivo lo valida `deployed/web-client.spec.ts`.
+- **Los reportes de esta corrida van a `e2e/reports/dev/`** (JUnit y HTML *Playwright E2E (dev)*) y no se mezclan con los de la etapa previa al despliegue.
 
-`auth-service/src/main/resources/application.yml` define `qr.expiration: 300`, pero `QrTokenService` interpreta ese valor en **milisegundos**. El QR nacía con `exp == iat`, es decir, caducado, aunque la API anuncia `"expiresIn": "60"`. La validación en gateway fallaba de forma intermitente: a veces pasaba en un reintento.
+Para agregar un flujo: los de negocio van en `tests/flows/` (convenciones de US-17) y los contratos que solo tienen sentido contra un despliegue real van en `tests/deployed/`. El pipeline no cambia, y cualquier test que falle bloquea la promoción.
 
-- **En los despliegues se corrige por configuración.** Los tres `docker-compose.<env>.yml` definen `QR_EXPIRATION=${QR_EXPIRATION_MS:-60000}` (60 s) en auth-service.
-- **Pendiente para el equipo de la aplicación:** corregir el valor o la unidad en el `application.yml`, que sigue afectando a `bootRun` local. El test "la vigencia real del QR coincide con `expiresIn`" protege contra una regresión.
+## Defecto que detectaron los E2E: QR que nacía caducado
+
+`qr.expiration: 300` se interpretaba en **milisegundos**, así que el QR nacía con `exp == iat` aunque la API anuncia `"expiresIn": "60"`. La validación en gateway fallaba de forma intermitente. `main` lo corrigió en el código (`e89bb5f`, `qr.expiration: 60000`). El contrato "la vigencia real del QR coincide con `expiresIn`" protege contra una regresión.
 
 ## Validación
 

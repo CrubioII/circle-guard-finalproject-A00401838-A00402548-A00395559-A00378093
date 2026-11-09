@@ -147,6 +147,11 @@ We maintain high system integrity via multi-level testing:
 |:---|:---|
 | `./gradlew test` | Full system suite (Unit + Integration) |
 | `./gradlew :services:<name>:test` | Single service testing |
+| `./gradlew test jacocoTestCoverageVerification` | Tests + JaCoCo line-coverage gate (≥60%) for auth, identity, promotion, form and gateway (US-31, US-32) |
+
+**Coverage (US-31, US-32):** every `test` run produces a JaCoCo report at `services/<name>/build/reports/jacoco/test/html/index.html` (XML next to it) for all eight services. The ≥60% line-coverage rule is enforced on auth, identity, promotion, form and gateway; notification, file and dashboard publish their test and coverage reports without a mandatory threshold. In Jenkins, the `Coverage Gate (núcleo + gateway)` stage runs the verification and the build publishes the JUnit results and the JaCoCo reports through the JaCoCo plugin and as archived artifacts.
+
+**E2E (US-34):** the Playwright suite lives in [`e2e/`](e2e/). It runs headless against `BASE_URL` (or, when empty, against the Expo web export in `mobile/dist` served locally) and writes HTML (`e2e/reports/html`) and JUnit (`e2e/reports/junit/results.xml`) reports. In Jenkins, the `E2E Playwright` stage publishes both and fails the build if any flow fails. Run it with `cd e2e && npm ci && npx playwright install chromium && npm test`. Docs: [`docs/agil/PLAYWRIGHT_E2E_US34.md`](docs/agil/PLAYWRIGHT_E2E_US34.md).
 
 **Note**: Integration tests use **Testcontainers** to spawn ephemeral Neo4j and PostgreSQL instances for zero-side-effect validation.
 

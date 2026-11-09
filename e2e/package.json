@@ -2,13 +2,21 @@
   "name": "circleguard-e2e",
   "version": "1.0.0",
   "private": true,
-  "description": "Flujos E2E de CircleGuard ejecutados contra un ambiente desplegado (US-13; ampliable por US-17).",
+  "description": "Pruebas E2E con Playwright del cliente web de CircleGuard (US-34 framework, US-17 flujos).",
   "scripts": {
-    "test:e2e": "playwright test",
-    "test:e2e:list": "playwright test --list"
+    "test": "playwright test",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:flows": "playwright test --grep @us17",
+    "test:deployed": "playwright test --project=chromium --project=deployed-api",
+    "test:headed": "playwright test --headed",
+    "install:browsers": "playwright install chromium",
+    "report": "playwright show-report reports/html",
+    "serve:dist": "node scripts/serve-dist.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.48.2"
+    "@playwright/test": "1.63.0",
+    "@types/node": "20.19.25",
+    "typescript": "5.9.3"
   },
   "engines": {
     "node": ">=20"

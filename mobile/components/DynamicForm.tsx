@@ -12,14 +12,20 @@ interface Question {
 interface DynamicFormProps {
   questions: Question[];
   onSubmit: (responses: Record<string, any>) => void;
+  /** Notifica al contenedor cada cambio de respuesta (US-17: el envío usaba respuestas vacías). */
+  onChange?: (responses: Record<string, any>) => void;
   submitLabel?: string;
 }
 
-export const DynamicForm: React.FC<DynamicFormProps> = ({ questions, onSubmit }) => {
+export const DynamicForm: React.FC<DynamicFormProps> = ({ questions, onSubmit, onChange }) => {
   const [responses, setResponses] = useState<Record<string, any>>({});
 
   const handleUpdate = (id: string, value: any) => {
-    setResponses(prev => ({ ...prev, [id]: value }));
+    setResponses(prev => {
+      const next = { ...prev, [id]: value };
+      onChange?.(next);
+      return next;
+    });
   };
 
   return (

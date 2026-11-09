@@ -93,6 +93,7 @@ assert prPlan.deploymentRequested == false
 assert prPlan.deploymentAllowed == false
 assert prPlan.stages.contains('Compile & Test Backend')
 assert prPlan.stages.contains('Compile & Test Web')
+assert prPlan.stages.contains('E2E Playwright') // US-34: los cambios en el cliente web ejecutan Playwright
 assert !prPlan.stages.contains('Release Gate')
 println('[OK] Caso 1: PR detecta backend + mobile y no solicita despliegue.')
 
@@ -254,6 +255,10 @@ String jenkinsfileText = jenkinsfile.getText('UTF-8')
     "publishBuildStatus(state: 'FAILURE'",
     'plan?.runBackendBuild == true',
     'plan?.runMobileBuild == true',
+    "stage('E2E Playwright')",
+    "sh 'npx playwright test'",
+    'e2e/reports/junit/*.xml',
+    'publishHTML(',
     'plan?.deploymentAllowed == true',
     'checkout scm',
     'post {'
@@ -406,7 +411,7 @@ println('[OK] Caso 16: promoción a stage solo con deploy + healthchecks + E2E e
     './deploy/scripts/environment.sh deploy --env stage',
     './deploy/scripts/environment.sh verify --env stage',
     'multibranchFlow.promotionDecision(deployResults',
-    'reports/ci/promotion-stage.json', 'reports/ci/health-dev.json', 'reports/e2e/junit.xml',
+    'reports/ci/promotion-stage.json', 'reports/ci/health-dev.json', 'e2e/reports/dev/junit/*.xml', "reportName           : 'Playwright E2E (dev)'",
     'requireReleaseVersion(versionMap)',
     "ENV_SSH_CREDENTIALS_ID = 'circleguard-env-ssh'", "NEXUS_CREDENTIALS_ID = 'nexus-credentials'",
     'sshUserPrivateKey(', 'currentBuild.description'
@@ -434,16 +439,25 @@ assert deployTestsExit == 0 : "deploy/scripts/test-deploy-scripts.sh falló:\n${
 println('[OK] Caso 18: deploy/scripts validados (SemVer, ambientes, SSH/SCP, contraseña fuera de argumentos, puertos).')
 
 // -----------------------------------------------------------------------------
-// Caso 19: contrato de la suite E2E (e2e/) que consume el pipeline y amplía US-17 (CA2)
+// Caso 19: la compuerta E2E contra dev ejecuta los flujos de US-17 en modo real + contratos @deployed (CA2)
 // -----------------------------------------------------------------------------
 File e2eDir = new File(repoRoot, 'e2e')
 String e2ePackage = new File(e2eDir, 'package.json').getText('UTF-8')
-assert e2ePackage.contains('"test:e2e"') && e2ePackage.contains('"@playwright/test": "1.48.2"')
+assert e2ePackage.contains('"test:deployed"') && e2ePackage.contains('"@playwright/test"')
 assert new File(e2eDir, 'package-lock.json').exists() : 'npm ci requiere e2e/package-lock.json'
 String e2eConfig = new File(e2eDir, 'playwright.config.ts').getText('UTF-8')
-assert e2eConfig.contains("'junit'") && e2eConfig.contains('E2E_REPORT_DIR')
-List<String> specs = new File(e2eDir, 'tests').listFiles().findAll { it.name.endsWith('.spec.ts') }*.name.sort()
-assert specs.containsAll(['auth-identity.spec.ts', 'gate-qr.spec.ts', 'health.spec.ts', 'web-client.spec.ts']) : "Specs E2E: ${specs}"
-println("[OK] Caso 19: suite E2E con ${specs.size()} flujos y reporte JUnit para Jenkins.")
+assert e2eConfig.contains("name: 'deployed-api'") && e2eConfig.contains('E2E_TARGET_ENV') && e2eConfig.contains('E2E_REPORT_DIR')
+assert e2eConfig.contains("testIgnore: '**/deployed/**'") : 'La etapa E2E previa al despliegue (US-34) no debe ejecutar los contratos @deployed'
+List<String> deployedSpecs = new File(e2eDir, 'tests/deployed').listFiles().findAll { it.name.endsWith('.spec.ts') }*.name.sort()
+assert deployedSpecs.containsAll(['auth-identity.spec.ts', 'gate-qr.spec.ts', 'health.spec.ts', 'web-client.spec.ts']) : "Specs @deployed: ${deployedSpecs}"
+List<String> us17Flows = new File(e2eDir, 'tests/flows').listFiles().findAll { it.name.endsWith('.spec.ts') }*.name.sort()
+assert us17Flows.containsAll(['access-validation.spec.ts', 'health-questionnaire.spec.ts', 'login.spec.ts']) : "Flujos US-17: ${us17Flows}"
+String runE2e = new File(repoRoot, 'deploy/scripts/run-e2e.sh').getText('UTF-8')
+['export E2E_MOCK_API=false', 'export E2E_RUNTIME_CONFIG_FROM_ENV=1', '--project=chromium --project=deployed-api',
+ 'npx playwright install chromium', 'E2E_REPORT_DIR="reports/${ENV_NAME}"'].each { String required ->
+    assert runE2e.contains(required) : "deploy/scripts/run-e2e.sh no contiene: ${required}"
+}
+assert new File(e2eDir, 'support/fixtures.ts').getText('UTF-8').contains('E2E_RUNTIME_CONFIG_FROM_ENV')
+println("[OK] Caso 19: dev se valida con ${us17Flows.size()} flujos US-17 reales + ${deployedSpecs.size()} contratos @deployed.")
 
 println('=== TODAS LAS PRUEBAS DEL MULTIBRANCH PIPELINE PASARON EXITOSAMENTE ===')

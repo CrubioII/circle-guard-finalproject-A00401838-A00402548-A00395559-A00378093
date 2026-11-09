@@ -6,6 +6,17 @@ plugins {
     kotlin("plugin.jpa") version "1.9.24" apply false
 }
 
+// US-31 / US-32: servicios con umbral mínimo de cobertura de líneas (JaCoCo).
+// Notification, file y dashboard (US-32) publican reportes pero no tienen umbral obligatorio.
+val coreCoverageServices = setOf(
+    "circleguard-auth-service",
+    "circleguard-identity-service",
+    "circleguard-promotion-service",
+    "circleguard-form-service",
+    "circleguard-gateway-service"
+)
+val minimumCoreLineCoverage = java.math.BigDecimal("0.60")
+
 allprojects {
     group = "com.circleguard"
     version = "1.0.0-SNAPSHOT"
@@ -18,6 +29,12 @@ allprojects {
 subprojects {
     apply(plugin = "java")
     apply(plugin = "org.jetbrains.kotlin.jvm")
+    apply(plugin = "jacoco")
+
+    extensions.configure<JacocoPluginExtension> {
+        toolVersion = "0.8.12"
+    }
+
     extensions.configure<JavaPluginExtension> {
         toolchain {
             languageVersion.set(JavaLanguageVersion.of(21))
@@ -45,6 +62,30 @@ subprojects {
 
     tasks.withType<Test> {
         useJUnitPlatform()
+        finalizedBy(tasks.named("jacocoTestReport"))
+    }
+
+    tasks.named<JacocoReport>("jacocoTestReport") {
+        dependsOn(tasks.named("test"))
+        reports {
+            xml.required.set(true)
+            html.required.set(true)
+            csv.required.set(false)
+        }
+    }
+
+    tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+        dependsOn(tasks.named("jacocoTestReport"))
+        violationRules {
+            rule {
+                isEnabled = project.name in coreCoverageServices
+                limit {
+                    counter = "LINE"
+                    value = "COVEREDRATIO"
+                    minimum = minimumCoreLineCoverage
+                }
+            }
+        }
     }
 }
 

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { endpoints } from './support/env';
+import { endpoints } from '../../support/endpoints';
 
 // Flujo 1 — Todos los servicios núcleo responden "UP" en su grupo readiness
 // (que incluye sus dependencias: db, neo4j, redis, ldap) y el cliente web está sano.
@@ -11,7 +11,7 @@ const services: Array<[string, string]> = [
   ['gateway-service', endpoints.gateway],
 ];
 
-test.describe('Salud del ambiente desplegado', () => {
+test.describe('Salud del ambiente desplegado @deployed', () => {
   for (const [name, baseUrl] of services) {
     test(`${name} está listo (readiness UP)`, async ({ request }) => {
       const response = await request.get(`${baseUrl}/actuator/health/readiness`);

@@ -1,5 +1,5 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
-import { endpoints, seededUser } from './support/env';
+import { endpoints, seededUser } from '../../support/endpoints';
 
 async function loginToken(request: APIRequestContext): Promise<string> {
   const response = await request.post(`${endpoints.auth}/api/v1/auth/login`, {
@@ -11,7 +11,7 @@ async function loginToken(request: APIRequestContext): Promise<string> {
 
 // Flujo 3 — Ingreso al campus: auth emite un QR firmado y de corta duración; gateway-service
 // valida firma + vigencia (secreto QR compartido) y consulta el estado de salud en Redis.
-test.describe('Ingreso al campus con QR', () => {
+test.describe('Ingreso al campus con QR @deployed', () => {
   test('generar QR requiere autenticación', async ({ request }) => {
     const response = await request.get(`${endpoints.auth}/api/v1/auth/qr/generate`);
     expect([401, 403]).toContain(response.status());

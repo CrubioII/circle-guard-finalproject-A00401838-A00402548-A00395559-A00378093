@@ -93,6 +93,7 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
     }
     if (runMobileBuild) {
         stages.add('Compile & Test Web')
+        stages.add('E2E Playwright') // US-34
     }
     if (runHeavyBuild) {
         stages.add('Validate Compose Environments')

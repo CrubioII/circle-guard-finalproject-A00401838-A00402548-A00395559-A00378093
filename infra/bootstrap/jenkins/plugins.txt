@@ -1,4 +1,4 @@
-# Plugins requeridos por el plano de control CI/CD de CircleGuard (US-04, US-09, US-30, US-10)
+# Plugins requeridos por el plano de control CI/CD de CircleGuard (US-04, US-09, US-30, US-10, US-34)
 configuration-as-code
 job-dsl
 workflow-aggregator
@@ -15,3 +15,4 @@ junit
 timestamper
 ansicolor
 ws-cleanup
+htmlpublisher

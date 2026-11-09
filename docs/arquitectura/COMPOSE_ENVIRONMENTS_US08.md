@@ -94,7 +94,6 @@ Los `application.yml` no se modifican. Cada valor se sobrescribe por variable de
 | `SPRING_DATA_REDIS_HOST`/`PORT`/`PASSWORD` | `spring.data.redis.*` | promotion, gateway |
 | `SPRING_LDAP_URLS`/`BASE`/`USERNAME`/`PASSWORD` | `spring.ldap.*` | auth |
 | `IDENTITY_SERVICE_URL` | `identity.service.url` | auth |
-| `QR_EXPIRATION` (`${QR_EXPIRATION_MS:-60000}`, en ms) | `qr.expiration` | auth. Corrige el `300` (0,3 s) del `application.yml`; ver US-13 |
 | `JWT_SECRET` y `QR_SECRET` | `jwt.secret` y `qr.secret` | auth, identity, promotion, gateway |
 | `VAULT_SECRET`, `VAULT_SALT` y `VAULT_HASHSALT` | `vault.secret`, `vault.salt` y `vault.hash-salt` | identity |
 
