@@ -38,16 +38,23 @@ test.describe('Inicio de sesión @us17', () => {
     await session.clear();
     await api.json('POST', '/api/v1/auth/login', { message: 'Bad credentials' }, 401);
 
+    // En web la app usa window.alert(): se captura y se cierra para que la página siga activa.
+    const alerts: string[] = [];
+    page.on('dialog', async (dialog) => {
+      alerts.push(dialog.message());
+      await dialog.accept();
+    });
+
     await page.goto('/login');
     await page.getByPlaceholder('Username').fill('intruso');
     await page.getByPlaceholder('Password').fill('incorrecta');
-
-    const dialog = page.waitForEvent('dialog');
     await page.getByText('SIGN IN', { exact: true }).click();
-    const alert = await dialog;
-    expect(alert.message()).toContain('401');
-    await alert.dismiss();
 
-    await expect(page).toHaveURL(/\/login$/);
+    await expect.poll(() => alerts.join(' | ')).toContain('401');
+    // Sigue en el formulario de login y sin sesión guardada.
+    await expect(page.getByPlaceholder('Username')).toBeVisible();
+    await expect(page.getByText('SIGN IN', { exact: true })).toBeVisible();
+    const storedToken = await page.evaluate((k) => window.localStorage.getItem(k), STORAGE_KEYS.token);
+    expect(storedToken).toBeNull();
   });
 });
