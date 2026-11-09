@@ -86,6 +86,7 @@ assert prPlan.deploymentRequested == false
 assert prPlan.deploymentAllowed == false
 assert prPlan.stages.contains('Compile & Test Backend')
 assert prPlan.stages.contains('Compile & Test Web')
+assert prPlan.stages.contains('E2E Playwright') // US-34: los cambios en el cliente web ejecutan Playwright
 assert !prPlan.stages.contains('Release Gate')
 println('[OK] Caso 1: PR detecta backend + mobile y no solicita despliegue.')
 
@@ -247,6 +248,10 @@ String jenkinsfileText = jenkinsfile.getText('UTF-8')
     "publishBuildStatus(state: 'FAILURE'",
     'plan?.runBackendBuild == true',
     'plan?.runMobileBuild == true',
+    "stage('E2E Playwright')",
+    "sh 'npx playwright test'",
+    'e2e/reports/junit/*.xml',
+    'publishHTML(',
     'plan?.deploymentAllowed == true',
     'checkout scm',
     'post {'

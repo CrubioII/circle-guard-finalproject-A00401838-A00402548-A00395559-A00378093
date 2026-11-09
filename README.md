@@ -151,6 +151,8 @@ We maintain high system integrity via multi-level testing:
 
 **Coverage (US-31):** every `test` run produces a JaCoCo report at `services/<name>/build/reports/jacoco/test/html/index.html` (XML next to it). The ≥60% line-coverage rule is enforced only on the four core services; gateway and the complementary services are tracked in US-32. In Jenkins, the `Coverage Gate (servicios núcleo)` stage runs the verification and the build publishes the reports through the JaCoCo plugin and as archived artifacts.
 
+**E2E (US-34):** the Playwright suite lives in [`e2e/`](e2e/). It runs headless against `BASE_URL` (or, when empty, against the Expo web export in `mobile/dist` served locally) and writes HTML (`e2e/reports/html`) and JUnit (`e2e/reports/junit/results.xml`) reports. In Jenkins, the `E2E Playwright` stage publishes both and fails the build if any flow fails. Run it with `cd e2e && npm ci && npx playwright install chromium && npm test`. Docs: [`docs/agil/PLAYWRIGHT_E2E_US34.md`](docs/agil/PLAYWRIGHT_E2E_US34.md).
+
 **Note**: Integration tests use **Testcontainers** to spawn ephemeral Neo4j and PostgreSQL instances for zero-side-effect validation.
 
 ---

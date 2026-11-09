@@ -106,6 +106,21 @@ assert docsResult.mobileChanged == false
 println("[OK] Caso 4: Cambios exclusivos de documentacion detectados con skipCiBuild=true.")
 
 // -------------------------------------------------------------------------
+// Caso 4b (US-34): Cambios en la suite E2E (e2e/) activan el cliente web para ejecutar Playwright
+// -------------------------------------------------------------------------
+Map e2eResult = detectChangedServices.call([
+    changedFilesOverride: [
+        'e2e/playwright.config.ts',
+        'e2e/tests/flows/login.spec.ts'
+    ]
+])
+assert e2eResult.mobileChanged == true
+assert e2eResult.skipCiBuild == false
+assert e2eResult.backendServices.isEmpty()
+assert e2eResult.allComponents == ['mobile']
+println("[OK] Caso 4b: Cambios en e2e/ activan la etapa web y la ejecucion E2E de Playwright.")
+
+// -------------------------------------------------------------------------
 // Caso 5: Ejecución forzada (forceAll: true) para releases completos
 // -------------------------------------------------------------------------
 Map forceAllResult = detectChangedServices.call([
