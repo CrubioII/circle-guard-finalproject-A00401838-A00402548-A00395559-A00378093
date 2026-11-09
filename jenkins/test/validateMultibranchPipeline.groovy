@@ -508,6 +508,16 @@ assert multibranchFlow.prodApprovalDecision(
     'Sin aprobador identificado no se despliega'
 assert multibranchFlow.prodApprovalDecision(
     [DECISION: 'TALVEZ', VERSION: '1.4.0', COMMENT: 'RFC-015', APPROVER: 'ana'], approvalCfg).deploy == false
+// Jenkins deja a los administradores responder cualquier input: solo cuentan los de CG_PROD_APPROVERS.
+Map intruder = multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.4.0', COMMENT: 'RFC-016', APPROVER: 'eve'], approvalCfg)
+assert intruder.status == 'INVALID' && !intruder.deploy && intruder.reason.contains('eve')
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'RECHAZAR', VERSION: '1.4.0', COMMENT: 'no', APPROVER: 'eve'], approvalCfg).status == 'INVALID' :
+    'Un no autorizado tampoco puede rechazar'
+assert multibranchFlow.prodApprovalDecision(
+    [DECISION: 'APROBAR', VERSION: '1.4.0', COMMENT: 'RFC-017', APPROVER: 'ANA'], approvalCfg).status == 'APPROVED' :
+    'Los IDs de usuario de Jenkins no distinguen mayúsculas'
 
 Map timedOut = multibranchFlow.prodApprovalDecision([:], approvalCfg + [outcome: 'TIMEOUT'])
 assert timedOut.status == 'TIMEOUT' && !timedOut.deploy

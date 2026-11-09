@@ -251,8 +251,9 @@ Map promotionDecision(Map results, Map config = [:]) {
 }
 
 /**
- * US-31: lista de aprobadores de prod a partir de CG_PROD_APPROVERS (IDs de usuario o
- * grupos de Jenkins separados por comas o espacios). Vacía = no hay quién apruebe.
+ * US-31: lista de aprobadores de prod a partir de CG_PROD_APPROVERS (IDs de usuario de Jenkins
+ * separados por comas o espacios). Vacía = no hay quién apruebe. Se exigen IDs de usuario (no grupos)
+ * porque prodApprovalDecision valida que quien responde esté en la lista.
  */
 List<String> parseProdApprovers(String raw) {
     return (raw ?: '').split(/[,\s]+/).collect { it.trim() }.findAll { !it.isEmpty() }.unique()
@@ -310,6 +311,12 @@ Map prodApprovalDecision(Map response, Map config = [:]) {
     }
     if (!approver) {
         return result('INVALID', false, 'La respuesta de aprobación no identifica a quien decidió (submitterParameter vacío).')
+    }
+    // Defensa en profundidad: Jenkins deja responder cualquier `input` a los administradores aunque no
+    // estén en `submitter` (con loggedInUsersCanDoAnything lo son todos). Solo cuenta quien esté en la lista.
+    if (!approvers.any { String allowed -> allowed.equalsIgnoreCase(approver) }) {
+        return result('INVALID', false,
+            "El usuario '${approver}' no está autorizado para decidir releases a prod (CG_PROD_APPROVERS: ${approvers.join(', ')}).")
     }
     if (decision == PROD_DECISION_REJECT) {
         return result('REJECTED', false, "Release a prod de ${version ?: validated} RECHAZADO por ${approver}" +
