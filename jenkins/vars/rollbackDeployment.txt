@@ -1,0 +1,10 @@
+# `rollbackDeployment` — Rollback a la última versión estable (`US-14` / CA2)
+
+Pasos de la Shared Library que envuelven `infra/scripts/rollback.sh`:
+
+1. `rollbackDeployment(env: 'stage', targetVersion: '1.2.0')`: redespliega el ambiente con la versión indicada. Si `targetVersion` va vacío, restaura la última versión estable registrada (`last_stable_version`).
+2. `rollbackDeployment.markDeployed(env: 'stage', version: semver)`: registra la versión recién desplegada, antes del smoke test.
+3. `rollbackDeployment.markStable(env: 'stage', version: semver)`: registra la versión como estable cuando el smoke test / healthcheck pasa.
+
+Parámetros opcionales: `host` (IP del nodo; redespliega por SSH con `deploy/scripts/environment.sh` de US-13), `registryUrl` (registro Docker) y `dryRun`.
+Solo acepta versiones SemVer (`X.Y.Z` o `X.Y.Z-rc.N`) y nunca `latest`.
