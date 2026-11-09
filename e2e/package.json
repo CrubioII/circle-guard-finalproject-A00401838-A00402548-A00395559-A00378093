@@ -7,6 +7,7 @@
     "test": "playwright test",
     "test:smoke": "playwright test --grep @smoke",
     "test:flows": "playwright test --grep @us17",
+    "test:deployed": "playwright test --project=chromium --project=deployed-api",
     "test:headed": "playwright test --headed",
     "install:browsers": "playwright install chromium",
     "report": "playwright show-report reports/html",

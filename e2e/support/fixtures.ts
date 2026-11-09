@@ -8,8 +8,14 @@
  *   - `session`: siembra/limpia la sesión anónima que el cliente web guarda en localStorage.
  *   - `api`: simula respuestas del backend (/api/v1/**) cuando el pipeline corre sin
  *     microservicios levantados. Con E2E_MOCK_API=false las peticiones van al backend real.
+ *   - `runtimeConfigFromEnv` (US-13, automático): con E2E_RUNTIME_CONFIG_FROM_ENV=1 sirve
+ *     /runtime-config.js con las URLs E2E_*_URL, para que el cliente web hable con los servicios
+ *     a través de los túneles SSH de deploy/scripts/run-e2e.sh en vez del PUBLIC_HOST del nodo.
  */
 import { test as base, expect, type Page, type Route } from '@playwright/test';
+import { endpoints } from './endpoints';
+
+const runtimeConfigFromEnv = process.env.E2E_RUNTIME_CONFIG_FROM_ENV === '1';
 
 export const STORAGE_KEYS = {
   anonymousId: 'circleguard_anon_id',
@@ -73,7 +79,33 @@ export const test = base.extend<{
   consoleErrors: string[];
   session: SessionHelper;
   api: ApiMock;
+  runtimeConfigFromEnv: void;
 }>({
+  runtimeConfigFromEnv: [
+    async ({ page }, use) => {
+      if (runtimeConfigFromEnv) {
+        const config = {
+          APP_ENV: process.env.E2E_TARGET_ENV || 'e2e',
+          API_BASE_URL: endpoints.gateway,
+          GATEWAY_BASE_URL: endpoints.gateway,
+          AUTH_BASE_URL: endpoints.auth,
+          IDENTITY_BASE_URL: endpoints.identity,
+          PROMOTION_BASE_URL: endpoints.promotion,
+          FORM_BASE_URL: endpoints.form,
+        };
+        await page.route('**/runtime-config.js', (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: 'application/javascript',
+            body: `window.__CIRCLEGUARD_CONFIG__ = Object.freeze(${JSON.stringify(config)});`,
+          })
+        );
+      }
+      await use();
+    },
+    { auto: true },
+  ],
+
   consoleErrors: async ({ page }, use) => {
     const errors: string[] = [];
     page.on('pageerror', (err) => {

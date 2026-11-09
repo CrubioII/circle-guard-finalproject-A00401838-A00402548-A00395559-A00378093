@@ -107,13 +107,13 @@ if [[ "${ENV_NAME}" == "dev" ]]; then
       echo "   [FAIL] ${name}: ${url}"; failures=$((failures + 1))
     fi
   }
-  probe auth-service      "http://localhost:8180/actuator/health/readiness"
-  probe identity-service  "http://localhost:8083/actuator/health/readiness"
-  probe promotion-service "http://localhost:8088/actuator/health/readiness"
-  probe form-service      "http://localhost:8086/actuator/health/readiness"
-  probe gateway-service   "http://localhost:8087/actuator/health/readiness"
-  probe web-client        "http://localhost:8080/healthz"
-  probe web-runtime-cfg   "http://localhost:8080/runtime-config.js"
+  probe auth-service      "http://127.0.0.1:8180/actuator/health/readiness"
+  probe identity-service  "http://127.0.0.1:8083/actuator/health/readiness"
+  probe promotion-service "http://127.0.0.1:8088/actuator/health/readiness"
+  probe form-service      "http://127.0.0.1:8086/actuator/health/readiness"
+  probe gateway-service   "http://127.0.0.1:8087/actuator/health/readiness"
+  probe web-client        "http://127.0.0.1:8080/healthz"
+  probe web-runtime-cfg   "http://127.0.0.1:8080/runtime-config.js"
 fi
 
 log "5/5 Resultado"

@@ -30,6 +30,8 @@ RUN set -eux; \
         unzip \
         xz-utils \
         git \
+        # Cliente SSH/SCP: despliegue a los nodos dev/stage y túneles E2E (US-13)
+        openssh-client \
         # Dependencias de sistema requeridas por Playwright (Chromium / WebKit / Firefox headless)
         libnss3 \
         libnspr4 \

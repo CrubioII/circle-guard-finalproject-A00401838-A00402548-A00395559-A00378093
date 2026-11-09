@@ -23,7 +23,12 @@
 #   - github-token       (Secret text con PAT; API del servidor GitHub y Branch Source).
 #   - github-credentials (Username with password: usuario + PAT; clonado de la libreria
 #                         y paso githubNotify).
+#   - nexus-credentials  (Username with password: publicación de imágenes, US-11, y
+#                         descarga en los nodos de ambiente durante el despliegue, US-13).
+#   - circleguard-env-ssh (SSH Username with private key: usuario ec2-user + llave de los
+#                         nodos dev/stage de US-05; despliegue y túneles E2E de US-13).
 # Variables de entorno esperadas por este archivo: JENKINS_URL.
+# Variables globales opcionales (US-13): CG_DEV_HOST, CG_STAGE_HOST, CG_REGISTRY_URL.
 # =============================================================================
 jenkins:
   systemMessage: |

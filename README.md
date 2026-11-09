@@ -167,6 +167,7 @@ The repository root contains the [`Jenkinsfile`](Jenkinsfile) consumed by the **
 - **Validate locally:** `./jenkins/test/run-multibranch-validation.sh` or `./gradlew validateJenkinsMultibranchPipeline`
 - **Shared library (US-09):** [`docs/agil/JENKINS_SHARED_LIBRARY_US09.md`](docs/agil/JENKINS_SHARED_LIBRARY_US09.md)
 - **Per-environment full stack (US-08):** [`deploy/compose/docker-compose.{dev,stage,prod}.yml`](deploy/compose/) — middleware + 5 core services + web client, SemVer image tags (never `latest`) and `service_healthy` startup ordering. Docs: [`docs/arquitectura/COMPOSE_ENVIRONMENTS_US08.md`](docs/arquitectura/COMPOSE_ENVIRONMENTS_US08.md). Validate with `./gradlew validateComposeEnvironments`; full bring-up test with `bash deploy/compose/smoke-up.sh`.
+- **Continuous delivery dev → stage (US-13):** every `main` build that publishes images auto-deploys that SemVer to **dev**, verifies health, runs the [`e2e/`](e2e/) Playwright flows and promotes the same version to **stage** only if they pass; the decision is recorded in `reports/ci/promotion-stage.json`. Docs: [`docs/arquitectura/DEPLOY_PROMOTION_US13.md`](docs/arquitectura/DEPLOY_PROMOTION_US13.md). Requires Jenkins credentials `circleguard-env-ssh` + `nexus-credentials`.
 
 ---
 
