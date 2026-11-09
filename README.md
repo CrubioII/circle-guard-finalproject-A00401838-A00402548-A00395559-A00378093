@@ -161,6 +161,7 @@ The repository root contains the [`Jenkinsfile`](Jenkinsfile) consumed by the **
 - **Setup (JCasC, job, webhook):** [`docs/agil/JENKINS_MULTIBRANCH_US30.md`](docs/agil/JENKINS_MULTIBRANCH_US30.md)
 - **Validate locally:** `./jenkins/test/run-multibranch-validation.sh` or `./gradlew validateJenkinsMultibranchPipeline`
 - **Shared library (US-09):** [`docs/agil/JENKINS_SHARED_LIBRARY_US09.md`](docs/agil/JENKINS_SHARED_LIBRARY_US09.md)
+- **Per-environment full stack (US-08):** [`deploy/compose/docker-compose.{dev,stage,prod}.yml`](deploy/compose/) — middleware + 5 core services + web client, SemVer image tags (never `latest`) and `service_healthy` startup ordering. Docs: [`docs/arquitectura/COMPOSE_ENVIRONMENTS_US08.md`](docs/arquitectura/COMPOSE_ENVIRONMENTS_US08.md). Validate with `./gradlew validateComposeEnvironments`; full bring-up test with `bash deploy/compose/smoke-up.sh`.
 
 ---
 

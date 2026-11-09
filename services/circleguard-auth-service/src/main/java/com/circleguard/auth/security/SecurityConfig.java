@@ -1,6 +1,7 @@
 package com.circleguard.auth.security;
 
 import com.circleguard.auth.service.CustomUserDetailsService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.ldap.core.support.LdapContextSource;
@@ -53,13 +54,21 @@ public class SecurityConfig {
         return builder.build();
     }
 
+    /**
+     * LDAP connection settings are externalized (spring.ldap.* / SPRING_LDAP_* env vars) so the same
+     * image can target the per-environment OpenLDAP container (US-08). Defaults keep local bootRun working.
+     */
     @Bean
-    public LdapContextSource contextSource() {
+    public LdapContextSource contextSource(
+            @Value("${spring.ldap.urls:ldap://localhost:389}") String url,
+            @Value("${spring.ldap.base:dc=circleguard,dc=edu}") String base,
+            @Value("${spring.ldap.username:cn=admin,dc=circleguard,dc=edu}") String userDn,
+            @Value("${spring.ldap.password:admin}") String password) {
         LdapContextSource contextSource = new LdapContextSource();
-        contextSource.setUrl("ldap://localhost:389");
-        contextSource.setBase("dc=circleguard,dc=edu");
-        contextSource.setUserDn("cn=admin,dc=circleguard,dc=edu");
-        contextSource.setPassword("admin");
+        contextSource.setUrl(url);
+        contextSource.setBase(base);
+        contextSource.setUserDn(userDn);
+        contextSource.setPassword(password);
         return contextSource;
     }
 

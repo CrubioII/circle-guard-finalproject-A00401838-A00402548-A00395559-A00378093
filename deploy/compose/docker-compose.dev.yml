@@ -1,0 +1,359 @@
+# =============================================================================
+# CircleGuard — Pila completa del ambiente DEV (US-08 / CA1, CA2, CA3)
+#
+# Despliega: middleware (PostgreSQL, Neo4j, Zookeeper + Kafka, Redis, OpenLDAP),
+# los 5 servicios núcleo (auth, identity, promotion, form, gateway) y el cliente web.
+#
+# Reglas de esta pila:
+#   - Imágenes propias: ${REGISTRY_URL}/circleguard/<servicio>:${IMAGE_TAG}
+#     IMAGE_TAG sigue SemVer (ej. 1.2.0); si no se define se usa APP_VERSION (US-05).
+#     Si ninguno está definido, compose falla: NUNCA se usa el tag mutable latest.
+#   - Imágenes de terceros fijadas a versión exacta.
+#   - Todo contenedor tiene healthcheck funcional y todo depends_on usa
+#     condition: service_healthy.
+#
+# Particularidades de DEV: middleware publicado en el host para depurar y la sección
+# build: permite construir las imágenes localmente con el tag SemVer.
+#
+# Uso (desde la raíz del repositorio):
+#   bash infra/bootstrap/inject-jenkins-secrets.sh --env dev --output deploy/compose/.env.dev
+#   docker compose --env-file deploy/compose/.env.dev -f deploy/compose/docker-compose.dev.yml build
+#   docker compose --env-file deploy/compose/.env.dev -f deploy/compose/docker-compose.dev.yml up -d --wait
+# Validación: bash deploy/compose/validate-compose.sh
+# =============================================================================
+
+name: circleguard-dev
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-spring-healthcheck: &spring-healthcheck
+  # Grupo readiness de Actuator: estado de la app + dependencias (db, neo4j, redis, ldap).
+  test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:$${SERVER_PORT}/actuator/health/readiness || exit 1"]
+  interval: 15s
+  timeout: 5s
+  retries: 10
+  start_period: 120s
+
+x-spring-service: &spring-service
+  restart: unless-stopped
+  logging: *default-logging
+  healthcheck: *spring-healthcheck
+
+x-spring-env: &spring-env
+  SPRING_PROFILES_ACTIVE: "${SPRING_PROFILES_ACTIVE:-dev}"
+  SPRING_DATASOURCE_USERNAME: "${POSTGRES_USER:?POSTGRES_USER es obligatorio}"
+  SPRING_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD es obligatorio}"
+  JWT_SECRET: "${JWT_SECRET:?JWT_SECRET es obligatorio}"
+  QR_SECRET: "${QR_SECRET:?QR_SECRET es obligatorio}"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Middleware
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER es obligatorio}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD es obligatorio}"
+      POSTGRES_DB: "${POSTGRES_DB:-circleguard}"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Crea circleguard_auth, _identity, _promotion, _form y _dashboard en el primer arranque.
+      - ${INIT_DB_SCRIPT:-../../init-db.sql}:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" && psql -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d circleguard_auth -tAc 'SELECT 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  neo4j:
+    image: neo4j:5.26.0
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?NEO4J_PASSWORD es obligatorio}"
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_connector_bolt_listen__address: ":7687"
+      NEO4J_dbms_connector_bolt_advertised__address: ":7687"
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    volumes:
+      - neo4jdata:/data
+    healthcheck:
+      # Consulta Cypher real sobre Bolt con las credenciales de NEO4J_AUTH (usuario/clave).
+      test: ["CMD-SHELL", "cypher-shell -a bolt://localhost:7687 -u \"$${NEO4J_AUTH%%/*}\" -p \"$${NEO4J_AUTH#*/}\" 'RETURN 1' >/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo srvr | nc -w 2 localhost 2181 | grep -q Mode"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      # INTERNAL: tráfico entre contenedores. EXTERNAL: clientes en el host (bootRun, herramientas).
+      KAFKA_LISTENERS: "INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka:29092,EXTERNAL://${KAFKA_ADVERTISED_HOST:-localhost}:${KAFKA_PORT:-9092}"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7.2.5-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      # redis-cli usa REDISCLI_AUTH automáticamente; evita exponer la clave en la línea de comandos.
+      REDISCLI_AUTH: "${REDIS_PASSWORD:?REDIS_PASSWORD es obligatorio}"
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$${REDISCLI_AUTH}\""]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  openldap:
+    image: osixia/openldap:1.5.0
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      LDAP_ORGANISATION: "${LDAP_ORGANISATION:-CircleGuard}"
+      LDAP_DOMAIN: "${LDAP_DOMAIN:-circleguard.edu}"
+      LDAP_BASE_DN: "${LDAP_BASE_DN:-dc=circleguard,dc=edu}"
+      LDAP_ADMIN_PASSWORD: "${LDAP_ADMIN_PASSWORD:?LDAP_ADMIN_PASSWORD es obligatorio}"
+    ports:
+      - "${LDAP_PORT:-389}:389"
+      - "${LDAPS_PORT:-636}:636"
+    volumes:
+      - ldapdata:/var/lib/ldap
+      - ldapconfig:/etc/ldap/slapd.d
+    healthcheck:
+      # Bind autenticado del administrador: prueba que el directorio responde y la base DN existe.
+      test: ["CMD-SHELL", "ldapwhoami -x -H ldap://localhost:389 -D \"cn=admin,$${LDAP_BASE_DN}\" -w \"$${LDAP_ADMIN_PASSWORD}\" >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Servicios núcleo (imágenes multi-stage no root de US-06)
+  # ---------------------------------------------------------------------------
+  identity-service:
+    <<: *spring-service
+    image: "${REGISTRY_URL:?REGISTRY_URL es obligatorio}/circleguard/identity-service:${IMAGE_TAG:-${APP_VERSION:?IMAGE_TAG o APP_VERSION (SemVer) es obligatorio}}"
+    build:
+      context: ../..
+      dockerfile: services/circleguard-identity-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      <<: *spring-env
+      SERVER_PORT: "8083"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/circleguard_identity"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      VAULT_SECRET: "${VAULT_SECRET:?VAULT_SECRET es obligatorio}"
+      VAULT_SALT: "${VAULT_SALT:?VAULT_SALT es obligatorio}"
+      # vault.hash-salt: el binding relajado de Spring exige VAULT_HASHSALT (sin guion bajo intermedio).
+      VAULT_HASHSALT: "${VAULT_HASH_SALT:?VAULT_HASH_SALT es obligatorio}"
+      MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: "readinessState,db"
+    ports:
+      - "${IDENTITY_SERVICE_PORT:-8083}:8083"
+
+  auth-service:
+    <<: *spring-service
+    image: "${REGISTRY_URL:?REGISTRY_URL es obligatorio}/circleguard/auth-service:${IMAGE_TAG:-${APP_VERSION:?IMAGE_TAG o APP_VERSION (SemVer) es obligatorio}}"
+    build:
+      context: ../..
+      dockerfile: services/circleguard-auth-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openldap:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    environment:
+      <<: *spring-env
+      SERVER_PORT: "8180"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/circleguard_auth"
+      SPRING_LDAP_URLS: "ldap://openldap:389"
+      SPRING_LDAP_BASE: "${LDAP_BASE_DN:-dc=circleguard,dc=edu}"
+      SPRING_LDAP_USERNAME: "cn=admin,${LDAP_BASE_DN:-dc=circleguard,dc=edu}"
+      SPRING_LDAP_PASSWORD: "${LDAP_ADMIN_PASSWORD:?LDAP_ADMIN_PASSWORD es obligatorio}"
+      IDENTITY_SERVICE_URL: "http://identity-service:8083"
+      MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: "readinessState,db,ldap"
+    ports:
+      - "${AUTH_SERVICE_PORT:-8180}:8180"
+
+  promotion-service:
+    <<: *spring-service
+    image: "${REGISTRY_URL:?REGISTRY_URL es obligatorio}/circleguard/promotion-service:${IMAGE_TAG:-${APP_VERSION:?IMAGE_TAG o APP_VERSION (SemVer) es obligatorio}}"
+    build:
+      context: ../..
+      dockerfile: services/circleguard-promotion-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *spring-env
+      SERVER_PORT: "8088"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/circleguard_promotion"
+      SPRING_NEO4J_URI: "bolt://neo4j:7687"
+      SPRING_NEO4J_AUTHENTICATION_USERNAME: "${NEO4J_USER:-neo4j}"
+      SPRING_NEO4J_AUTHENTICATION_PASSWORD: "${NEO4J_PASSWORD:?NEO4J_PASSWORD es obligatorio}"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      SPRING_DATA_REDIS_HOST: "redis"
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD es obligatorio}"
+      MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: "readinessState,db,neo4j,redis"
+    ports:
+      - "${PROMOTION_SERVICE_PORT:-8088}:8088"
+
+  form-service:
+    <<: *spring-service
+    image: "${REGISTRY_URL:?REGISTRY_URL es obligatorio}/circleguard/form-service:${IMAGE_TAG:-${APP_VERSION:?IMAGE_TAG o APP_VERSION (SemVer) es obligatorio}}"
+    build:
+      context: ../..
+      dockerfile: services/circleguard-form-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      <<: *spring-env
+      SERVER_PORT: "8086"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/circleguard_form"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: "readinessState,db"
+    ports:
+      - "${FORM_SERVICE_PORT:-8086}:8086"
+
+  gateway-service:
+    <<: *spring-service
+    image: "${REGISTRY_URL:?REGISTRY_URL es obligatorio}/circleguard/gateway-service:${IMAGE_TAG:-${APP_VERSION:?IMAGE_TAG o APP_VERSION (SemVer) es obligatorio}}"
+    build:
+      context: ../..
+      dockerfile: services/circleguard-gateway-service/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *spring-env
+      SERVER_PORT: "8087"
+      SPRING_DATA_REDIS_HOST: "redis"
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD es obligatorio}"
+      MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: "readinessState,redis"
+    ports:
+      - "${GATEWAY_SERVICE_PORT:-8087}:8087"
+
+  # ---------------------------------------------------------------------------
+  # Cliente web (Expo export + nginx no root de US-07)
+  # ---------------------------------------------------------------------------
+  web-client:
+    image: "${REGISTRY_URL:?REGISTRY_URL es obligatorio}/circleguard/web-client:${IMAGE_TAG:-${APP_VERSION:?IMAGE_TAG o APP_VERSION (SemVer) es obligatorio}}"
+    build:
+      context: ../../mobile
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      promotion-service:
+        condition: service_healthy
+      form-service:
+        condition: service_healthy
+      gateway-service:
+        condition: service_healthy
+    environment:
+      # El navegador llama directamente a cada servicio por su puerto publicado en PUBLIC_HOST.
+      APP_ENV: "dev"
+      AUTH_BASE_URL: "http://${PUBLIC_HOST:-localhost}:${AUTH_SERVICE_PORT:-8180}"
+      IDENTITY_BASE_URL: "http://${PUBLIC_HOST:-localhost}:${IDENTITY_SERVICE_PORT:-8083}"
+      PROMOTION_BASE_URL: "http://${PUBLIC_HOST:-localhost}:${PROMOTION_SERVICE_PORT:-8088}"
+      FORM_BASE_URL: "http://${PUBLIC_HOST:-localhost}:${FORM_SERVICE_PORT:-8086}"
+      GATEWAY_BASE_URL: "http://${PUBLIC_HOST:-localhost}:${GATEWAY_SERVICE_PORT:-8087}"
+      API_BASE_URL: "http://${PUBLIC_HOST:-localhost}:${GATEWAY_SERVICE_PORT:-8087}"
+    ports:
+      - "${WEB_CLIENT_PORT:-8080}:8080"
+    healthcheck:
+      # /healthz responde UP y runtime-config.js confirma que el entrypoint generó la configuración.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz && wget -q -O - http://127.0.0.1:8080/runtime-config.js | grep -q __CIRCLEGUARD_CONFIG__"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  pgdata:
+  neo4jdata:
+  redisdata:
+  ldapdata:
+  ldapconfig:
+
+networks:
+  default:
+    # Red aislada por ambiente creada por infra/bootstrap/bootstrap-env.sh (US-05). Es external:
+    # compose rechaza reutilizar una red que no creó él mismo. En local: smoke-up.sh la crea, o
+    #   docker network create circleguard_dev_net
+    name: "${DOCKER_NETWORK_NAME:-circleguard_dev_net}"
+    external: true
