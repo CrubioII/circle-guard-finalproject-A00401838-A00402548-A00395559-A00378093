@@ -22,5 +22,8 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     runtimeOnly("org.postgresql:postgresql")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    // US-33 (SCRUM-112): pruebas de integración con PostgreSQL real en Testcontainers
+    testImplementation("org.testcontainers:junit-jupiter:1.19.3")
+    testImplementation("org.testcontainers:postgresql:1.19.3")
     testImplementation("org.springframework.security:spring-security-test")
 }
