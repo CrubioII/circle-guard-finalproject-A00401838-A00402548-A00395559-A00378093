@@ -24,7 +24,9 @@ jwt:
 
 qr:
   secret: "my-qr-secret-key-for-dev-1234567890"
-  expiration: 300
+  # Milisegundos: 60 s, igual que el "expiresIn" que anuncia QrTokenController
+  # y el ciclo de rotacion del cliente (mobile/hooks/useQrToken.ts).
+  expiration: 60000
 
 server:
   port: 8180
