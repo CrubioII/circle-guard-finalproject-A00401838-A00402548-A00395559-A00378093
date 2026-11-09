@@ -26,6 +26,14 @@ def flow = [:]
 def detection = [:]
 def plan = [:]
 
+// US-31: servicios núcleo con umbral mínimo de 60% de cobertura de líneas (gateway y complementarios en US-32).
+List<String> CORE_COVERAGE_SERVICES = [
+    'circleguard-auth-service',
+    'circleguard-identity-service',
+    'circleguard-promotion-service',
+    'circleguard-form-service'
+]
+
 pipeline {
     agent any
 
@@ -106,13 +114,28 @@ pipeline {
             }
             steps {
                 script {
-                    // JaCoCo se habilita en US-10 (aún no está aplicado en build.gradle.kts).
+                    // US-31: JaCoCo aplicado en build.gradle.kts; cada servicio genera su reporte XML/HTML.
                     String gradleCommand = pipelineUtils.buildGradleCommandForServices(
                         plan.backendServices,
-                        [includeTests: true, includeJacoco: false, daemon: false]
+                        [includeTests: true, includeJacoco: true, daemon: false]
                     )
                     echo "Servicios backend afectados (${plan.backendServices.size()}): ${plan.backendServices.join(', ')}"
                     sh "${gradleCommand}"
+                }
+            }
+        }
+
+        stage('Coverage Gate (servicios núcleo)') {
+            when {
+                expression { plan?.runBackendBuild == true && plan.backendServices.any { it in CORE_COVERAGE_SERVICES } }
+            }
+            steps {
+                script {
+                    // US-31 / CA1: falla el build si auth, identity, promotion o form bajan del 60% de líneas.
+                    List<String> coreServices = plan.backendServices.findAll { it in CORE_COVERAGE_SERVICES }
+                    String tasks = coreServices.collect { ":services:${it}:jacocoTestCoverageVerification" }.join(' ')
+                    echo "Verificando cobertura de líneas >= 60% en: ${coreServices.join(', ')}"
+                    sh "./gradlew ${tasks} --no-daemon --stacktrace"
                 }
             }
         }
@@ -172,7 +195,18 @@ pipeline {
         }
         always {
             junit allowEmptyResults: true, testResults: '**/build/test-results/test/*.xml'
-            archiveArtifacts artifacts: 'reports/ci/**', allowEmptyArchive: true
+            script {
+                // US-31 / CA3: publica la cobertura JaCoCo (tendencia + detalle por clase) y archiva los reportes HTML/XML.
+                if (sh(returnStatus: true, script: 'ls services/*/build/jacoco/test.exec >/dev/null 2>&1') == 0) {
+                    jacoco(
+                        execPattern: 'services/*/build/jacoco/test.exec',
+                        classPattern: 'services/*/build/classes/java/main',
+                        sourcePattern: 'services/*/src/main/java',
+                        exclusionPattern: '**/*Application.class'
+                    )
+                }
+            }
+            archiveArtifacts artifacts: 'reports/ci/**, services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
         }
     }
 }

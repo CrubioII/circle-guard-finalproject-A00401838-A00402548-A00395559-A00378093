@@ -147,6 +147,9 @@ We maintain high system integrity via multi-level testing:
 |:---|:---|
 | `./gradlew test` | Full system suite (Unit + Integration) |
 | `./gradlew :services:<name>:test` | Single service testing |
+| `./gradlew test jacocoTestCoverageVerification` | Tests + JaCoCo line-coverage gate (≥60%) for auth, identity, promotion and form (US-31) |
+
+**Coverage (US-31):** every `test` run produces a JaCoCo report at `services/<name>/build/reports/jacoco/test/html/index.html` (XML next to it). The ≥60% line-coverage rule is enforced only on the four core services; gateway and the complementary services are tracked in US-32. In Jenkins, the `Coverage Gate (servicios núcleo)` stage runs the verification and the build publishes the reports through the JaCoCo plugin and as archived artifacts.
 
 **Note**: Integration tests use **Testcontainers** to spawn ephemeral Neo4j and PostgreSQL instances for zero-side-effect validation.
 
