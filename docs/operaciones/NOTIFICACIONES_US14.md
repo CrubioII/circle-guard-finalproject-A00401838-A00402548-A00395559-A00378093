@@ -30,7 +30,7 @@ build termina ──> post { cleanup } ──> notifyPipeline ──> curl POST 
 | `jenkins/vars/notifyPipeline.groovy` | Paso de la Shared Library: arma el mensaje (embed de Discord), aplica la política y lo envía. |
 | `jenkins/vars/notifyPipeline.txt` | Ayuda del paso en Jenkins. |
 | `Jenkinsfile` | Registra la etapa en curso en cada etapa y llama al paso en `post { cleanup }`. Parámetro `NOTIFY_DISCORD`. |
-| `jenkins/test/validateNotifyPipeline.groovy` | 7 casos de prueba sin Jenkins ni red. |
+| `jenkins/test/validateNotifyPipeline.groovy` | 8 casos de prueba sin Jenkins ni red. |
 | `jenkins/test/run-notify-validation.sh` | Ejecuta las pruebas con Groovy (local o descargado). |
 
 ## 3. Cuándo se notifica
@@ -69,7 +69,7 @@ bash jenkins/test/run-notify-validation.sh
 ./gradlew validateJenkinsNotifications
 ```
 
-Cubre: fallo en `main` con todos los datos, fallo en un PR (enlace y rama destino), la política de la sección 3, el mensaje de recuperación, la credencial ausente y Discord con error (solo advertencias), el modo `dry-run`, el commit real tras el merge de un PR y el recorte a los límites de Discord. También comprueba que la URL del webhook nunca se interpole en el comando ni aparezca en el log.
+Cubre: fallo en `main` con todos los datos, fallo en un PR (enlace y rama destino), la política de la sección 3, el mensaje de recuperación, la credencial ausente y Discord con error (solo advertencias), el modo `dry-run`, el commit real tras el merge de un PR y el recorte a los límites de Discord y que las firmas de los métodos sean compatibles con el intérprete CPS de Jenkins (sin parámetros primitivos ni por defecto, que fallan al cargar el paso con `load`). También comprueba que la URL del webhook nunca se interpole en el comando ni aparezca en el log.
 
 ## 7. Evidencia
 

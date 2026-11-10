@@ -121,8 +121,10 @@ void notifyPipelineSafely(Map config) {
         }
         def notifier = load 'jenkins/vars/notifyPipeline.groovy'
         notifier.call(config)
-    } catch (Exception err) {
-        echo "[US-14] Advertencia: no se pudo enviar la notificación del pipeline: ${err.message}"
+    } catch (Throwable err) {
+        // Throwable y no solo Exception: un error del intérprete (p. ej. NoSuchMethodError)
+        // tampoco debe cambiar el resultado del build.
+        echo "[US-14] Advertencia: no se pudo enviar la notificación del pipeline: ${err}"
     }
 }
 
