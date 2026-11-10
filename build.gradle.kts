@@ -111,6 +111,17 @@ val validateJenkinsMultibranchPipeline by tasks.registering {
     }
 }
 
+val validateJenkinsNotifications by tasks.registering {
+    group = "verification"
+    description = "Valida el paso notifyPipeline (notificaciones del pipeline en Discord) sin Jenkins ni red (US-14 / SCRUM-70)"
+    doLast {
+        val scriptFile = file("jenkins/test/validateNotifyPipeline.groovy")
+        check(scriptFile.exists()) { "No se encontro el script de validacion: ${scriptFile.path}" }
+        System.setProperty("circleguard.repoRoot", projectDir.absolutePath)
+        groovy.lang.GroovyShell().evaluate(scriptFile)
+    }
+}
+
 val validateComposeEnvironments by tasks.registering(Exec::class) {
     group = "verification"
     description = "Valida deploy/compose/docker-compose.{dev,stage,prod}.yml: pila completa, SemVer sin latest y healthchecks con service_healthy (US-08)"
