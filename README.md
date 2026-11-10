@@ -311,7 +311,7 @@ Cada servicio expone su documentación OpenAPI en `http://localhost:<puerto>/swa
 | Notificaciones del pipeline en Discord (US-14) | [`docs/operaciones/NOTIFICACIONES_US14.md`](docs/operaciones/NOTIFICACIONES_US14.md) |
 | Aprobación manual de prod (US-31) | [`docs/arquitectura/PROD_APPROVAL_US31.md`](docs/arquitectura/PROD_APPROVAL_US31.md) |
 | E2E con Playwright (US-34) | [`docs/agil/PLAYWRIGHT_E2E_US34.md`](docs/agil/PLAYWRIGHT_E2E_US34.md) |
-| Informe de la Parte 1 y cómo regenerarlo | [`docs/informe/README.md`](docs/informe/README.md) |
+| Informe de la Parte 1 (PDF y [Markdown](docs/informe/INFORME_PARTE1.md)) y cómo regenerarlo | [`docs/informe/README.md`](docs/informe/README.md) |
 | Uso de IA generativa | [`IAG_REGISTRO.md`](IAG_REGISTRO.md) |
 
 ## 10. Seguridad, secretos y costos

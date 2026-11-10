@@ -244,7 +244,7 @@
   <li><b>README operativo</b> (<code>README.md</code>): estructura del repositorio, URLs de ambientes y herramientas, matriz de puertos, reproducción paso a paso (bootstrap de CI y ambientes, configuración de Jenkins y primera ejecución), operación del pipeline, aprobación, rollback, pruebas e índice de documentos.</li>
   <li><b>Diagramas</b> en <code>docs/arquitectura/</code>: arquitectura de microservicios y de despliegue en la nube (<code>ARQUITECTURA_P1.md</code>) y flujo del pipeline (<code>PIPELINE_CICD.md</code>). Son SVG versionados, editables como texto y renderizados por GitHub.</li>
   <li><b>Bitácora de IAG</b> (<code>IAG_REGISTRO.md</code>): declaración de Nivel 3, prompts con su contenido propio y la verificación hecha, y reflexión crítica.</li>
-  <li><b>Este informe</b>: <code>docs/informe/informe-parte1.html</code>, compilado a PDF con <code>node docs/informe/scripts/build-pdf.mjs</code>. Las capturas de Jenkins y Nexus se regeneran con <code>capture-evidence.mjs</code>.</li>
+  <li><b>Este informe</b>: <code>docs/informe/informe-parte1.html</code>, compilado a PDF con <code>node docs/informe/scripts/build-pdf.mjs</code> y a Markdown (<code>INFORME_PARTE1.md</code>) con <code>python docs/informe/scripts/build-md.py</code>. Las capturas de Jenkins y Nexus se regeneran con <code>capture-evidence.mjs</code>.</li>
 </ul>
 
 <h2 class="pb">10. Brechas y plan de acción</h2>
