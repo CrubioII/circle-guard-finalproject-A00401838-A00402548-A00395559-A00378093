@@ -131,11 +131,11 @@ println('[OK] Caso 2: fallo en PR con enlace al Pull Request y versión ausente 
 // -----------------------------------------------------------------------------
 reset()
 step = loadStep()
-assert step.shouldNotify('SUCCESS', false, 'SUCCESS').notify == false
-assert step.shouldNotify('SUCCESS', true, 'SUCCESS').notify == true
-assert step.shouldNotify('SUCCESS', false, 'FAILURE').notify == true
-assert step.shouldNotify('ABORTED', false, 'SUCCESS').notify == true
-assert step.shouldNotify('UNSTABLE', false, null).notify == true
+assert step.shouldNotify('SUCCESS', false, 'SUCCESS', false).notify == false
+assert step.shouldNotify('SUCCESS', true, 'SUCCESS', null).notify == true
+assert step.shouldNotify('SUCCESS', false, 'FAILURE', null).notify == true
+assert step.shouldNotify('ABORTED', false, 'SUCCESS', null).notify == true
+assert step.shouldNotify('UNSTABLE', false, null, null).notify == true
 assert step.shouldNotify('SUCCESS', false, 'SUCCESS', true).notify == true
 result = step.call(status: 'SUCCESS', flow: prFlow, previousStatus: 'SUCCESS')
 assert result.notify == false && result.sent == false
@@ -193,4 +193,13 @@ assert result.payload.embeds[0].fields.find { it.name == 'Detalle' }.value == 'R
 assert step.normalizeStatus('raro') == 'FAILURE' && step.normalizeStatus(null) == 'SUCCESS'
 println('[OK] Caso 7: commit real tras merge de PR, campo de detalle y límites de Discord.')
 
-println('=== notifyPipeline: 7 casos superados ===')
+// Caso 8: compatibilidad con el intérprete CPS de Jenkins (script cargado con `load`):
+// sin parámetros por defecto ni primitivos en las firmas de los métodos.
+scriptFile.getText('UTF-8').readLines().findAll { it ==~ /^(private\s+)?(Map|String|long|boolean|int|void|Object)\s+\w+\(.*\)\s*\{\s*$/ }.each { String signature ->
+    String params = signature.substring(signature.indexOf('(') + 1, signature.lastIndexOf(')'))
+    assert !params.contains('=') : "Parámetro con valor por defecto (no soportado por CPS en load): ${signature}"
+    assert !(params ==~ /.*\b(boolean|int|long)\s+\w+.*/) : "Parámetro primitivo (no soportado por CPS en load): ${signature}"
+}
+println('[OK] Caso 8: firmas compatibles con el intérprete CPS de Jenkins.')
+
+println('=== notifyPipeline: 8 casos superados ===')

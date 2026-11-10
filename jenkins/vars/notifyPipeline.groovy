@@ -38,9 +38,9 @@
  * - force (Boolean): notifica aunque la política diga que no hace falta.
  * - dryRun (Boolean): no envía; devuelve el payload calculado.
  */
-Map call(Map config = [:]) {
+Map call(Map config) {
     Map info = collectBuildInfo(config)
-    Map decision = shouldNotify(info.status, info.isMainBranch as boolean, info.previousStatus, config.force as boolean)
+    Map decision = shouldNotify(info.status, info.isMainBranch, info.previousStatus, config.force)
     boolean dryRun = config.containsKey('dryRun')
         ? (config.dryRun as boolean)
         : (env?.NOTIFY_PIPELINE_DRY_RUN == 'true')
@@ -61,11 +61,13 @@ Map call(Map config = [:]) {
 
 /**
  * Política de notificación (pura, sin efectos): devuelve [notify: Boolean, reason: String].
+ * Todos los parámetros son Object y sin valores por defecto: el intérprete CPS de Jenkins no
+ * resuelve bien métodos con parámetros primitivos o por defecto en scripts cargados con `load`.
  */
-Map shouldNotify(Object rawStatus, boolean isMainBranch, Object rawPreviousStatus, boolean force = false) {
+Map shouldNotify(Object rawStatus, Object isMainBranch, Object rawPreviousStatus, Object force) {
     String status = normalizeStatus(rawStatus)
     String previous = (rawPreviousStatus ?: '').toString().trim().toUpperCase()
-    if (force) {
+    if (force as boolean) {
         return [notify: true, reason: 'Notificación forzada.']
     }
     if (status != 'SUCCESS') {
@@ -74,7 +76,7 @@ Map shouldNotify(Object rawStatus, boolean isMainBranch, Object rawPreviousStatu
     if (previous && previous != 'SUCCESS') {
         return [notify: true, reason: "El build se recuperó (el anterior terminó en ${previous})."]
     }
-    if (isMainBranch) {
+    if (isMainBranch as boolean) {
         return [notify: true, reason: 'Build exitoso de main (entrega).']
     }
     return [notify: false, reason: 'Build exitoso en una rama o PR sin fallo previo.']
@@ -84,7 +86,7 @@ Map shouldNotify(Object rawStatus, boolean isMainBranch, Object rawPreviousStatu
  * Reúne rama, commit, autor, versión, etapa y enlaces del build. Los overrides de
  * config tienen prioridad; lo que falte se lee de env, currentBuild y git.
  */
-Map collectBuildInfo(Map config = [:]) {
+Map collectBuildInfo(Map config) {
     Map flow = (config.flow instanceof Map ? config.flow : [:]) as Map
     String status = normalizeStatus(config.status ?: safeCurrentResult())
     String previousStatus = (config.previousStatus ?: safePreviousResult() ?: '').toString()
@@ -179,7 +181,7 @@ Map buildPayload(Map info) {
 }
 
 /** Envía el payload con curl; la URL del webhook solo existe dentro de withCredentials. */
-Map sendToDiscord(Map payload, String credentialsId) {
+Map sendToDiscord(Object payload, Object credentialsId) {
     String payloadFile = 'reports/ci/discord-notification.json'
     try {
         sh 'mkdir -p reports/ci'
@@ -215,16 +217,17 @@ String normalizeStatus(Object rawStatus) {
     return 'FAILURE'
 }
 
-Map statusStyle(String status, String previousStatus) {
-    switch (status) {
+Map statusStyle(Object status, Object previousStatus) {
+    String previous = (previousStatus ?: '').toString()
+    switch ((status ?: '').toString()) {
         case 'SUCCESS':
-            boolean recovered = previousStatus && previousStatus.toUpperCase() != 'SUCCESS'
+            boolean recovered = previous && previous.toUpperCase() != 'SUCCESS'
             return [
                 icon       : '✅',
                 label      : recovered ? 'RECUPERADO' : 'ÉXITO',
                 color      : 3066993,
                 description: recovered
-                    ? "El pipeline vuelve a estar en verde (el build anterior terminó en ${previousStatus.toUpperCase()})."
+                    ? "El pipeline vuelve a estar en verde (el build anterior terminó en ${previous.toUpperCase()})."
                     : 'El pipeline terminó correctamente.'
             ]
         case 'UNSTABLE':
@@ -240,13 +243,14 @@ Map statusStyle(String status, String previousStatus) {
     }
 }
 
-private Map field(String name, String value, boolean inline) {
-    return [name: truncate(name, 256), value: truncate(value ?: '-', 1024), inline: inline]
+private Map field(Object name, Object value, Object inline) {
+    return [name: truncate(name, 256), value: truncate(value ?: '-', 1024), inline: inline as boolean]
 }
 
-private String truncate(String value, int max) {
-    String text = value ?: ''
-    return text.length() > max ? text.substring(0, max - 3) + '...' : text
+private String truncate(Object value, Object max) {
+    String text = (value ?: '').toString()
+    int limit = max as int
+    return text.length() > limit ? text.substring(0, limit - 3) + '...' : text
 }
 
 private String firstLine(Object message) {
@@ -260,8 +264,8 @@ private String shortCommit(Object sha) {
     return value.length() > 7 && value ==~ /^[0-9a-fA-F]+$/ ? value.substring(0, 7) : (value ?: 'desconocido')
 }
 
-String formatDuration(long durationMs) {
-    long totalSeconds = (long) (durationMs / 1000L)
+String formatDuration(Object durationMs) {
+    long totalSeconds = (long) ((durationMs as long) / 1000L)
     long minutes = (long) (totalSeconds / 60L)
     long seconds = totalSeconds % 60L
     return minutes > 0 ? "${minutes} min ${seconds} s" : "${seconds} s"
