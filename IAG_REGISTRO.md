@@ -118,6 +118,15 @@ Cada fila registra el **contenido propio** que el equipo entregó a la IA, el **
 | Resultado | README reescrito como guía de reproducción, 3 diagramas SVG versionados, `PIPELINE_CICD.md`, `ARQUITECTURA_P1.md`, este anexo, un informe HTML compilado a PDF y un script de captura de evidencias |
 | Verificación | Comprobamos cada URL, IP, puerto y comando contra los scripts y contra los servicios en ejecución. Las suites locales se ejecutaron otra vez y sus resultados están en el informe |
 
+Actualización tras el *merge* de US-14 (notificaciones) a `main`:
+
+| | |
+|---|---|
+| Contenido propio | Los commits nuevos de `main` (PR #21 y #24) |
+| Prompt | «la rama main remota fue actualizada, puedes traer los cambios y actualizar la documentacion?» |
+| Resultado | *Merge* de `main` sin conflictos y actualización del README, `PIPELINE_CICD.md`, el informe y este anexo: notificaciones en Discord, credencial `discord-webhook`, parámetro `NOTIFY_DISCORD` y el build #18 de `main` en verde |
+| Verificación | Ejecutamos `run-notify-validation.sh` (8 casos) y consultamos la API de Jenkins: build #18 en `SUCCESS`, 0.2.0 en stage, notificación enviada (HTTP 204). La misma consulta mostró que el tag `v0.2.0` no llega a GitHub, y lo declaramos como brecha |
+
 ### 5.7 Prompts de los demás integrantes
 
 Cada integrante agrega aquí sus prompts más relevantes con el mismo formato (contenido propio, prompt, resultado y verificación). Las historias de cada integrante se tomaron del historial de Git de `main`; ajústalas si la asignación de Jira es distinta:
@@ -143,6 +152,8 @@ La IA aceleró el trabajo, pero varias de sus respuestas **eran incorrectas o in
    - no hay notificaciones de fallo;
    - el último build de `main` fallaba en un E2E;
    - Jenkins estaba configurado sin autenticación.
+
+   Al 10 de noviembre, las notificaciones (US-14) y el build verde de `main` (#18) ya están resueltos; SonarQube y la autenticación siguen pendientes.
 
    Algunos documentos anteriores afirmaban más de lo implementado. Decidimos declarar estas brechas en el informe (sección de brechas de `PIPELINE_CICD.md`) en lugar de ocultarlas, y priorizarlas en el siguiente sprint.
 6. **Entornos que engañan.** En Windows, `bash` resolvía a WSL, `localhost` a IPv6 y `python3` al alias vacío de Microsoft Store. Varios fallos que parecían del código eran del entorno.

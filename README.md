@@ -34,7 +34,7 @@ mobile/                         cliente Expo (web export servido por nginx) + Do
 e2e/                            pruebas E2E con Playwright (flujos, smoke y contratos @deployed)
 Jenkinsfile                     pipeline Multibranch (raíz)
 jenkins/vars/                   Shared Library: detectChangedServices, multibranchFlow, pipelineUtils,
-                                publishBuildStatus, rollbackDeployment
+                                publishBuildStatus, rollbackDeployment, notifyPipeline (Discord)
 jenkins/ci/                     JCasC (jenkins.yaml) y registro idempotente del webhook de GitHub
 jenkins/test/                   validadores del pipeline y de la Shared Library
 infra/bootstrap/                scripts Bash idempotentes: plano de control CI/CD y ambientes
@@ -155,6 +155,7 @@ El script no levanta la aplicación: la primera versión la despliega el pipelin
    | `github-credentials` | Username with password (usuario + PAT) | Clonar la Shared Library y publicar estados de commit |
    | `nexus-credentials` | Username with password | `docker push` desde Jenkins y `docker login` en los nodos |
    | `circleguard-env-ssh` | SSH Username with private key (`ec2-user` + llave de los nodos) | Despliegue, verificación y túneles E2E |
+   | `discord-webhook` | Secret text (URL del webhook del canal `#pipeline`) | Notificaciones del pipeline (US-14). Si falta, el build solo deja una advertencia |
 
 3. **Variables globales** (*Manage Jenkins → System → Global properties*):
 
@@ -179,9 +180,12 @@ Haz *merge* de un PR a `main`, o pulsa *Build with Parameters* en el job `main` 
 
 1. calcula la versión;
 2. compila y prueba;
-3. publica las 9 imágenes `X.Y.Z` en Nexus y etiqueta `vX.Y.Z`;
+3. publica las 9 imágenes `X.Y.Z` en Nexus y etiqueta `vX.Y.Z` (por ahora el tag queda solo en el workspace de Jenkins; ver las brechas en [`PIPELINE_CICD.md`](docs/arquitectura/PIPELINE_CICD.md));
 4. despliega en dev, verifica la salud y corre los E2E contra dev;
-5. promueve a stage y espera la aprobación de prod.
+5. promueve a stage y espera la aprobación de prod. Si `CG_PROD_APPROVERS` está vacía, omite prod y lo registra como `NOT_CONFIGURED`;
+6. publica el resultado en el canal `#pipeline` de Discord.
+
+Ejemplo verificado: el build #18 de `main` (commit `ab2aa2a`) publicó `0.2.0`, la desplegó en dev y en stage con todos los healthchecks en verde y avisó en Discord.
 
 Para comprobar el resultado:
 
@@ -209,6 +213,7 @@ El detalle de cada etapa está en [`docs/arquitectura/PIPELINE_CICD.md`](docs/ar
 | `FORCE_FULL_BUILD` | `false` | Construye los 8 servicios y el cliente web aunque no hayan cambiado |
 | `TARGET_ENV` | `none` | Pide la compuerta `Release Gate` hacia un ambiente. Solo `main` puede usarla |
 | `E2E_BASE_URL` | vacío | Corre Playwright contra una URL en vez del *export* local |
+| `NOTIFY_DISCORD` | `true` | Publica el resultado en el canal `#pipeline` de Discord (US-14) |
 | `PUBLISH_GITHUB_STATUS` | `true` | Publica los estados de commit |
 
 ### 5.3 Aprobar o rechazar un release a prod (US-31)
@@ -242,6 +247,7 @@ El script vuelve a desplegar imágenes que ya están en Nexus con el mismo compo
 | Salud por ambiente | `reports/ci/health-<env>.json`; prod también como JUnit |
 | Imágenes publicadas | <http://52.14.6.11:8081/service/rest/repository/browse/circleguard-docker/v2/circleguard/> |
 | Estado en GitHub | Checks del commit o del PR |
+| Avisos del equipo | Canal `#pipeline` del servidor de Discord **CircleGuard CI**: fallos, abortos, inestables y recuperaciones de cualquier rama, y éxitos de `main`. Ver [`NOTIFICACIONES_US14.md`](docs/operaciones/NOTIFICACIONES_US14.md) |
 
 ## 6. Desarrollo local
 
@@ -271,6 +277,7 @@ Cada servicio expone su documentación OpenAPI en `http://localhost:<puerto>/swa
 | `cd e2e && npm ci && npx playwright install chromium && npm test` | Flujos E2E de login, cuestionario y validación QR | Verde |
 | `./gradlew validateJenkinsSharedLibrary` | Shared Library | 6 casos |
 | `./gradlew validateJenkinsMultibranchPipeline` | Plan multibranch, compuertas de despliegue, promoción y aprobación de prod | 22 casos |
+| `./gradlew validateJenkinsNotifications` (o `bash jenkins/test/run-notify-validation.sh`) | Paso `notifyPipeline`: mensaje, política de envío y errores de Discord, sin red | 8 casos |
 | `./gradlew validateComposeEnvironments` | `docker-compose.{dev,stage,prod}.yml` | 53 verificaciones |
 | `bash deploy/scripts/test-deploy-scripts.sh` | Scripts de despliegue, SSH, salud y JUnit | 40 pruebas |
 | `bash infra/bootstrap/test-bootstrap-ci-idempotency.sh` | Idempotencia del plano de control | 39 pruebas |
@@ -301,6 +308,7 @@ Cada servicio expone su documentación OpenAPI en `http://localhost:<puerto>/swa
 | Shared Library (US-09) y Multibranch (US-30) | [`docs/agil/JENKINS_SHARED_LIBRARY_US09.md`](docs/agil/JENKINS_SHARED_LIBRARY_US09.md) y [`docs/agil/JENKINS_MULTIBRANCH_US30.md`](docs/agil/JENKINS_MULTIBRANCH_US30.md) |
 | Despliegue a dev y promoción a stage (US-13) | [`docs/arquitectura/DEPLOY_PROMOTION_US13.md`](docs/arquitectura/DEPLOY_PROMOTION_US13.md) |
 | Rollback (US-14) | [`docs/operaciones/ROLLBACK_US14.md`](docs/operaciones/ROLLBACK_US14.md) |
+| Notificaciones del pipeline en Discord (US-14) | [`docs/operaciones/NOTIFICACIONES_US14.md`](docs/operaciones/NOTIFICACIONES_US14.md) |
 | Aprobación manual de prod (US-31) | [`docs/arquitectura/PROD_APPROVAL_US31.md`](docs/arquitectura/PROD_APPROVAL_US31.md) |
 | E2E con Playwright (US-34) | [`docs/agil/PLAYWRIGHT_E2E_US34.md`](docs/agil/PLAYWRIGHT_E2E_US34.md) |
 | Informe de la Parte 1 y cómo regenerarlo | [`docs/informe/README.md`](docs/informe/README.md) |

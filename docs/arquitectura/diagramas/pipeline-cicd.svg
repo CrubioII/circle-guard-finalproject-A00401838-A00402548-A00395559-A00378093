@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1060" width="1500" height="1060" font-family="Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1080" width="1500" height="1080" font-family="Helvetica, Arial, sans-serif">
   <title>CircleGuard: flujo del pipeline CI/CD (Jenkinsfile multibranch)</title>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
@@ -225,20 +225,21 @@
   </g>
 
   <!-- ===== post ===== -->
-  <rect x="30" y="814" width="1440" height="86" rx="10" fill="#F9FAFB" stroke="#9CA3AF"/>
-  <text x="44" y="836" font-size="13" font-weight="bold" fill="#1A1A1A">post { always } (todas las ejecuciones)</text>
+  <rect x="30" y="814" width="1440" height="106" rx="10" fill="#F9FAFB" stroke="#9CA3AF"/>
+  <text x="44" y="836" font-size="13" font-weight="bold" fill="#1A1A1A">post { always } y post { cleanup } (todas las ejecuciones)</text>
   <g font-size="12" fill="#374151">
     <text x="44" y="858">publishBuildStatus → estado del commit en GitHub (continuous-integration/jenkins/pr-head y …/main) · junit (backend, E2E, salud de prod) · JaCoCo · Playwright HTML</text>
     <text x="44" y="878">archiveArtifacts reports/** (plan, versión, promotion-stage.json, prod-approval.json) · descripción del build con la decisión de promoción y de prod</text>
+    <text x="44" y="898">cleanup → notifyPipeline (US-14): canal #pipeline de Discord con rama, commit, autor, versión, etapa fallida y log · fallos, abortos y recuperaciones siempre; éxitos solo en main · nunca cambia el resultado</text>
   </g>
 
   <!-- Brechas -->
-  <rect x="30" y="918" width="1440" height="118" rx="10" fill="#FFFFFF" stroke="#B42318" stroke-width="1.4" stroke-dasharray="8 5"/>
-  <text x="44" y="940" font-size="13" font-weight="bold" fill="#B42318">Brechas frente a E1.4 y E1.5 al 9 de noviembre de 2026 (no están en el Jenkinsfile de main)</text>
+  <rect x="30" y="938" width="1440" height="118" rx="10" fill="#FFFFFF" stroke="#B42318" stroke-width="1.4" stroke-dasharray="8 5"/>
+  <text x="44" y="960" font-size="13" font-weight="bold" fill="#B42318">Brechas frente a E1.4 y E1.5 al 10 de noviembre de 2026 (pendientes en main)</text>
   <g font-size="12" fill="#374151">
-    <text x="44" y="962">• <tspan font-weight="bold">Análisis SonarQube con quality gate bloqueante</tspan>: el servidor existe (52.14.6.11:9000), pero la etapa (US-10) no está fusionada. Iría entre Coverage Gate y Compile &amp; Test Web.</text>
-    <text x="44" y="982">• <tspan font-weight="bold">Notificaciones automáticas de fallo</tspan> (correo, Slack o Discord): no hay paso de notificación en post { failure }.</text>
-    <text x="44" y="1002">• <tspan font-weight="bold">Pruebas de integración</tspan>: hay 3 con Testcontainers (auth↔PostgreSQL, identity↔PostgreSQL, gateway↔Redis); falta una entre servicios (form → Kafka → promotion).</text>
-    <text x="44" y="1022">• <tspan font-weight="bold">Rollback</tspan>: el script existe y tiene pruebas, pero aún no hay etapa Rollback ni parámetro ROLLBACK_TARGET_VERSION en el Jenkinsfile.</text>
+    <text x="44" y="982">• <tspan font-weight="bold">Análisis SonarQube con quality gate bloqueante</tspan>: el servidor existe (52.14.6.11:9000), pero la etapa (US-10) no está fusionada. Iría entre Coverage Gate y Compile &amp; Test Web.</text>
+    <text x="44" y="1002">• <tspan font-weight="bold">Tag de release</tspan>: git-tag-release.sh crea vX.Y.Z en el workspace de Jenkins, pero no lo empuja a GitHub. Prod: CG_PROD_APPROVERS vacía → NOT_CONFIGURED.</text>
+    <text x="44" y="1022">• <tspan font-weight="bold">Pruebas de integración</tspan>: hay 3 con Testcontainers (auth↔PostgreSQL, identity↔PostgreSQL, gateway↔Redis); falta una entre servicios (form → Kafka → promotion).</text>
+    <text x="44" y="1042">• <tspan font-weight="bold">Rollback</tspan>: el script existe y tiene pruebas, pero aún no hay etapa Rollback ni parámetro ROLLBACK_TARGET_VERSION en el Jenkinsfile.</text>
   </g>
 </svg>

@@ -40,6 +40,7 @@ Las genera `node docs/informe/scripts/capture-evidence.mjs`. Usa `MAIN_BUILD=<n>
 | `e1-4-github-webhook.png` | GitHub → Settings → Webhooks → `/github-webhook/` → Recent Deliveries (200) | Dueño del repositorio |
 | `e1-4-sonarqube-quality-gate.png` | SonarQube → proyecto → Quality Gate (cuando se fusione US-10) | Responsable de US-10 |
 | `e1-5-git-tags.png` | GitHub → Tags (`v0.1.x`) | Cualquiera |
-| `e1-5-jenkins-main-cd-stages.png` | Stage View de un build de `main` con `Deploy to dev` → `Verify stage health` en verde | Tras reactivar el nodo de Jenkins |
-| `e1-5-jenkins-prod-approval-input.png` | Build detenido en `Approve prod release` → *Input requested* | Un aprobador de `CG_PROD_APPROVERS` |
+| `e1-5-jenkins-main-cd-stages.png` | Stage View del build #18 de `main` con `Deploy to dev` → `Verify stage health` en verde | Cualquiera |
+| `e1-5-discord-notification.png` | Discord → servidor **CircleGuard CI** → canal `#pipeline`: mensaje de un build (rama, commit, versión, etapa, log) | Quien administra el servidor de Discord |
+| `e1-5-jenkins-prod-approval-input.png` | Build detenido en `Approve prod release` → *Input requested* (requiere definir `CG_PROD_APPROVERS`) | Un aprobador de `CG_PROD_APPROVERS` |
 | `e1-6-playwright-report.png` | Artefacto `e2e/reports/html/index.html` de un build verde | Responsable de US-34 o US-17 |

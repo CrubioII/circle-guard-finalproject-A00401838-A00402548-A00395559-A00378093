@@ -74,7 +74,7 @@
     <tr><th>SonarQube</th><td><a href="http://52.14.6.11:9000/">http://52.14.6.11:9000/</a></td></tr>
     <tr><th>Ambientes</th><td>dev <code>52.15.213.209</code> · stage <code>3.17.163.44</code> · prod <code>3.19.74.9</code> (puertos en la sección 1)</td></tr>
     <tr><th>Uso de IA generativa</th><td>Nivel 3: Colaboración con IAG. Anexo en <code>IAG_REGISTRO.md</code> y resumen en el anexo B</td></tr>
-    <tr><th>Fecha de corte de la evidencia</th><td><span id="fecha-corte">9 de noviembre de 2026</span></td></tr>
+    <tr><th>Fecha de corte de la evidencia</th><td><span id="fecha-corte">10 de noviembre de 2026</span></td></tr>
   </table>
 </section>
 
@@ -111,15 +111,15 @@
   <tr><th style="width:9%">Cód.</th><th style="width:24%">Entregable</th><th style="width:12%">Estado</th><th>Evidencia principal</th></tr>
   <tr><td>E1.1</td><td>Gestión ágil y branching</td><td><span class="badge partial">Parcial</span></td><td>Tablero Jira con historias y criterios de aceptación; estrategia GitHub Flow y Conventional Commits; PR revisados. Falta versionar la planeación, la <i>review</i> y la retrospectiva de los sprints 0 y 1</td></tr>
   <tr><td>E1.2</td><td>Infraestructura en la nube con Bash</td><td><span class="badge ok">Cumplido</span></td><td>4 EC2, <code>bootstrap-ci.sh</code> y <code>bootstrap-env.sh</code> idempotentes (39 y 38 pruebas), Docker Compose y secretos externalizados</td></tr>
-  <tr><td>E1.3</td><td>Empaquetamiento inmutable</td><td><span class="badge ok">Cumplido</span></td><td>Dockerfile multi-stage sin root para 8 servicios y para el web; imágenes 0.1.0 a 0.1.2 en Nexus; compose por ambiente con healthchecks (53 verificaciones)</td></tr>
-  <tr><td>E1.4</td><td>Pipeline Jenkins (CI)</td><td><span class="badge partial">Parcial</span></td><td>Multibranch con webhook, Shared Library, ejecución selectiva, JaCoCo y publicación. <b>Falta</b> la etapa SonarQube con quality gate bloqueante (US-10)</td></tr>
-  <tr><td>E1.5</td><td>Entrega continua y promoción</td><td><span class="badge partial">Parcial</span></td><td>SemVer automático y tag (build #11 → v0.1.2). Despliegue a dev, E2E, stage y aprobación manual a prod implementados y validados (casos 15 a 22). Rollback con pruebas. <b>Falta</b> la ejecución real en <code>main</code> y las notificaciones de fallo</td></tr>
-  <tr><td>E1.6</td><td>Pruebas automatizadas</td><td><span class="badge partial">Parcial</span></td><td>196 pruebas en el build #11, cobertura de líneas ≥ 60 % en los 5 servicios núcleo, 3 flujos E2E Playwright y 3 integraciones con Testcontainers. <b>Falta</b> una integración entre servicios y un build verde de <code>main</code> con los E2E</td></tr>
+  <tr><td>E1.3</td><td>Empaquetamiento inmutable</td><td><span class="badge ok">Cumplido</span></td><td>Dockerfile multi-stage sin root para 8 servicios y para el web; imágenes 0.1.0 a 0.2.0 en Nexus; compose por ambiente con healthchecks (53 verificaciones)</td></tr>
+  <tr><td>E1.4</td><td>Pipeline Jenkins (CI)</td><td><span class="badge partial">Parcial</span></td><td>Multibranch con webhook, Shared Library, ejecución selectiva, JaCoCo, publicación y build #18 de <code>main</code> en verde. <b>Falta</b> la etapa SonarQube con quality gate bloqueante (US-10)</td></tr>
+  <tr><td>E1.5</td><td>Entrega continua y promoción</td><td><span class="badge partial">Parcial</span></td><td>Build #18 de <code>main</code>: SemVer 0.2.0, despliegue a dev, E2E contra dev y promoción a stage en verde. Aprobación manual a prod implementada y validada (casos 20 a 22). Notificaciones en Discord (US-14) en ejecución. Rollback con pruebas. <b>Falta</b> configurar los aprobadores de prod, empujar el tag a GitHub y la etapa de rollback en el pipeline</td></tr>
+  <tr><td>E1.6</td><td>Pruebas automatizadas</td><td><span class="badge partial">Parcial</span></td><td>236 pruebas en el build #18 (0 fallos), 94 % de líneas en el agregado y ≥ 60 % en los 5 servicios núcleo, 3 flujos E2E Playwright corridos contra dev y 3 integraciones con Testcontainers. <b>Falta</b> una integración entre servicios</td></tr>
   <tr><td>E1.7</td><td>Change management y release notes</td><td><span class="badge ok">Cumplido</span></td><td>Plantilla de RFC, política por tipo de cambio, release notes y CHANGELOG automáticos, tags <code>vX.Y.Z</code></td></tr>
   <tr><td>E1.8</td><td>Documentación</td><td><span class="badge ok">Cumplido</span></td><td>README operativo, diagramas de arquitectura y del pipeline, anexo IAG y este informe</td></tr>
 </table>
 
-<div class="alert"><b>Estado operativo al corte.</b> El nodo de Jenkins está <b>offline</b>: quedan 988 KiB libres de 29,93 GiB en <code>/var/jenkins_home</code> del servidor de CI. Por eso los merges de los PR #18 a #20 (US-17, US-13 y US-14) no se construyeron. El último build de <code>main</code> es el #14, que falló en el flujo E2E de login inválido; la corrección (<code>c94d846</code>) ya está en <code>main</code>. El plan de acción de la sección 10 libera espacio y vuelve a ejecutar <code>main</code>. Después hay que repetir las capturas con <code>MAIN_BUILD=&lt;n&gt;</code>.</div>
+<div class="alert"><b>Estado operativo al corte.</b> Se liberó espacio en el servidor de CI y el nodo de Jenkins volvió a estar en línea, con <code>htmlpublisher</code> instalado. El build #18 de <code>main</code> (commit <code>ab2aa2a</code>, que incluye US-13, US-14, US-17 y US-31) terminó en <b>SUCCESS</b>: publicó 0.2.0, la desplegó en dev y en stage y avisó en Discord. Los builds #15 a #17 fallaron en <code>Deploy to dev</code> y la compuerta bloqueó la promoción, como se espera. Siguen abiertos dos riesgos: Jenkins no tiene autenticación y <code>CG_PROD_APPROVERS</code> está vacía, así que el release a prod se omitió (<code>NOT_CONFIGURED</code>).</div>
 
 <h2 class="pb">2. E1.1 Gestión ágil y branching</h2>
 <p>El backlog está en Jira (proyecto <b>SuperPoderosos</b>, <code>circleguard777</code>), con épicas por entregable: EPIC-01 a EPIC-05. Cada historia tiene ficha de valoración, criterios de aceptación medibles y subtareas en puntos de historia. La estrategia es <b>GitHub Flow orientado a trunk-based</b>, con promoción inmutable entre ambientes:</p>
@@ -133,9 +133,9 @@
   <figure data-capture="e1-1-jira-board.png" data-how="Jira → SuperPoderosos → Backlog o tablero, con historias, puntos y épicas visibles">Figura 2. Tablero y backlog en Jira.</figure>
   <figure data-capture="e1-1-jira-sprints.png" data-how="Jira → Sprints 0 y 1: objetivo, historias cerradas, review y retrospectiva">Figura 3. Sprint 0 y Sprint 1 (planeación, review y retrospectiva).</figure>
   <figure data-capture="e1-1-github-branch-protection.png" data-how="GitHub → Settings → Branches → regla de main (PR obligatorio, 1 aprobación, status checks)">Figura 4. Regla de protección de <code>main</code>.</figure>
-  <figure data-capture="e1-1-github-pull-requests.png" data-how="GitHub → Pull requests → Closed, con revisores y checks de Jenkins">Figura 5. Pull Requests revisados por pares (#1 a #20).</figure>
+  <figure data-capture="e1-1-github-pull-requests.png" data-how="GitHub → Pull requests → Closed, con revisores y checks de Jenkins">Figura 5. Pull Requests revisados por pares (#1 a #24).</figure>
 </div>
-<p>Trazabilidad: al corte, todo cambio entró a <code>main</code> por Pull Request, hasta el #20. Cada PR referencia su historia en el nombre de la rama, en el título y en la plantilla (<code>.github/pull_request_template.md</code>). Lo fusionó un integrante distinto del autor. Documento: <code>docs/agil/BRANCHING_STRATEGY.md</code>.</p>
+<p>Trazabilidad: al corte, todo cambio entró a <code>main</code> por Pull Request, hasta el #24. Cada PR referencia su historia en el nombre de la rama, en el título y en la plantilla (<code>.github/pull_request_template.md</code>). Lo fusionó un integrante distinto del autor. Documento: <code>docs/agil/BRANCHING_STRATEGY.md</code>.</p>
 
 <h2 class="pb">3. E1.2 Infraestructura en la nube con Bash</h2>
 <figure class="diagram"><img src="../arquitectura/diagramas/arquitectura-despliegue-p1.svg" alt="Arquitectura de despliegue"><figcaption>Figura 6. Despliegue en AWS us-east-2: plano de control CI/CD y tres ambientes aislados (docs/arquitectura/diagramas/arquitectura-despliegue-p1.svg).</figcaption></figure>
@@ -176,15 +176,15 @@
 </ul>
 <div class="grid2">
   <figure data-capture="e1-3-nexus-docker-images.png">Figura 11. Imágenes publicadas en el repositorio <code>circleguard-docker</code>.</figure>
-  <figure data-capture="e1-3-nexus-auth-service-tags.png">Figura 12. Tags SemVer de <code>auth-service</code> (0.1.0, 0.1.1 y 0.1.2).</figure>
+  <figure data-capture="e1-3-nexus-auth-service-tags.png">Figura 12. Tags SemVer de <code>auth-service</code> (0.1.0, 0.1.1, 0.1.2 y 0.2.0).</figure>
 </div>
 <figure class="diagram"><img src="../arquitectura/diagramas/arquitectura-microservicios.svg" alt="Arquitectura de microservicios"><figcaption>Figura 13. Contenedores de cada ambiente y sus dependencias (docs/arquitectura/diagramas/arquitectura-microservicios.svg).</figcaption></figure>
 
 <h2 class="pb">5. E1.4 Pipeline Jenkins (CI)</h2>
 <figure class="diagram"><img src="../arquitectura/diagramas/pipeline-cicd.svg" alt="Flujo del pipeline"><figcaption>Figura 14. Flujo del pipeline CI/CD por carriles y contexto (docs/arquitectura/diagramas/pipeline-cicd.svg).</figcaption></figure>
 <ul>
-  <li><b>Multibranch y webhook.</b> El job <code>circleguard-monorepo</code> se declara con JCasC y descubre 18 ramas y 17 PR. El webhook <code>/github-webhook/</code> lo registra <code>setup-github-webhook.sh</code>, y el estado se publica en GitHub.</li>
-  <li><b>Shared Library.</b> <code>jenkins/vars/</code> incluye <code>detectChangedServices</code>, <code>multibranchFlow</code>, <code>pipelineUtils</code>, <code>publishBuildStatus</code> y <code>rollbackDeployment</code>, con validadores de 6 y 22 casos.</li>
+  <li><b>Multibranch y webhook.</b> El job <code>circleguard-monorepo</code> se declara con JCasC y descubre 20 ramas y 16 PR. El webhook <code>/github-webhook/</code> lo registra <code>setup-github-webhook.sh</code>, y el estado se publica en GitHub.</li>
+  <li><b>Shared Library.</b> <code>jenkins/vars/</code> incluye <code>detectChangedServices</code>, <code>multibranchFlow</code>, <code>pipelineUtils</code>, <code>publishBuildStatus</code>, <code>rollbackDeployment</code> y <code>notifyPipeline</code>, con validadores de 6, 22 y 8 casos.</li>
   <li><b>Ejecución por servicio.</b> Solo se compilan y prueban los servicios modificados. Un cambio compartido o <code>FORCE_FULL_BUILD</code> construye los 8.</li>
   <li><b>Etapas:</b> checkout, Gradle, pruebas unitarias con JaCoCo y compuerta de cobertura ≥ 60 %, pruebas de integración (Testcontainers dentro de <code>test</code>), E2E, empaquetado y publicación.</li>
   <li><span class="badge gap">Brecha</span> El análisis <b>SonarQube con quality gate bloqueante</b> no está en <code>main</code>. El servidor y el plugin <code>sonar</code> existen, pero la rama de US-10 no se fusionó.</li>
@@ -193,7 +193,7 @@
   <figure data-capture="e1-4-jenkins-multibranch-branches.png">Figura 15. Ramas descubiertas por el job Multibranch.</figure>
   <figure data-capture="e1-4-jenkins-multibranch-prs.png">Figura 16. Pull Requests construidos por Jenkins.</figure>
   <figure data-capture="e1-4-jenkins-main-job.png">Figura 17. Job <code>main</code>: tendencia de pruebas y Stage View.</figure>
-  <figure data-capture="e1-4-jenkins-main-build.png">Figura 18. Build #11 de <code>main</code> (SUCCESS).</figure>
+  <figure data-capture="e1-4-jenkins-main-build.png">Figura 18. Build #18 de <code>main</code> (SUCCESS).</figure>
   <figure data-capture="e1-4-github-webhook.png" data-how="GitHub → Settings → Webhooks → /github-webhook/ → Recent Deliveries con respuesta 200">Figura 19. Webhook de GitHub con entregas recientes.</figure>
   <figure data-capture="e1-4-sonarqube-quality-gate.png" data-how="SonarQube → proyecto circleguard → Quality Gate (cuando US-10 esté fusionada)">Figura 20. Quality gate de SonarQube.</figure>
 </div>
@@ -201,31 +201,32 @@
 <h2 class="pb">6. E1.5 Entrega continua y promoción</h2>
 <table>
   <tr><th>Capacidad</th><th>Implementación</th><th>Estado</th></tr>
-  <tr><td>Versionado semántico automático y tag</td><td><code>calculate-semver.sh</code> (Conventional Commits) y <code>git-tag-release.sh</code></td><td><span class="badge ok">En ejecución</span> build #11 → <code>v0.1.2</code></td></tr>
-  <tr><td>Despliegue automático a dev</td><td><code>Deploy to dev</code> y <code>Verify dev health</code> (US-13)</td><td><span class="badge partial">Validado</span> casos 15 a 18; falta la corrida en <code>main</code></td></tr>
-  <tr><td>Promoción a stage tras E2E</td><td><code>E2E against dev</code>, <code>promotionDecision</code> y <code>Promote to stage</code></td><td><span class="badge partial">Validado</span> casos 16, 17 y 19</td></tr>
-  <tr><td>Aprobación manual a prod</td><td><code>input</code> restringido a <code>CG_PROD_APPROVERS</code>, con versión y comentario (US-31)</td><td><span class="badge partial">Validado</span> casos 20 a 22 y en un Jenkins 2.580.2 real</td></tr>
+  <tr><td>Versionado semántico automático y tag</td><td><code>calculate-semver.sh</code> (Conventional Commits) y <code>git-tag-release.sh</code></td><td><span class="badge partial">En ejecución</span> build #18 → <code>0.2.0</code>; el tag <code>v0.2.0</code> se crea en el workspace de Jenkins pero no se empuja a GitHub</td></tr>
+  <tr><td>Despliegue automático a dev</td><td><code>Deploy to dev</code> y <code>Verify dev health</code> (US-13)</td><td><span class="badge ok">En ejecución</span> build #18: 12 contenedores sanos en dev</td></tr>
+  <tr><td>Promoción a stage tras E2E</td><td><code>E2E against dev</code>, <code>promotionDecision</code> y <code>Promote to stage</code></td><td><span class="badge ok">En ejecución</span> build #18: E2E contra dev en verde y 0.2.0 <code>PROMOTED</code> a stage</td></tr>
+  <tr><td>Aprobación manual a prod</td><td><code>input</code> restringido a <code>CG_PROD_APPROVERS</code>, con versión y comentario (US-31)</td><td><span class="badge partial">Validado</span> casos 20 a 22 y en un Jenkins 2.580.2 real. En el build #18 se omitió (<code>NOT_CONFIGURED</code>) porque no hay aprobadores</td></tr>
   <tr><td>Rollback básico</td><td><code>infra/scripts/rollback.sh</code> y <code>rollbackDeployment</code> (US-14)</td><td><span class="badge partial">Probado</span> 10 casos; falta la etapa en el Jenkinsfile</td></tr>
-  <tr><td>Notificaciones de fallo</td><td>—</td><td><span class="badge gap">Pendiente</span></td></tr>
+  <tr><td>Notificaciones del pipeline</td><td><code>notifyPipeline</code> en <code>post { cleanup }</code>: canal <code>#pipeline</code> de Discord con rama, commit, autor, versión, etapa fallida y enlace al log (US-14)</td><td><span class="badge ok">En ejecución</span> build #18 → «RECUPERADO» (HTTP 204); 8 casos de validación</td></tr>
 </table>
 <div class="grid2">
-  <figure data-capture="e1-5-jenkins-main-console-semver.png">Figura 21. Cálculo SemVer en el build #11: 0.1.1 → 0.1.2 (patch).</figure>
-  <figure data-capture="e1-5-git-tags.png" data-how="GitHub → Tags (v0.1.0, v0.1.1, v0.1.2…)">Figura 22. Tags de release en Git.</figure>
-  <figure data-capture="e1-5-jenkins-main-cd-stages.png" data-how="Stage View de un build de main con Deploy to dev → Verify stage health en verde (tras liberar disco y reconstruir)">Figura 23. Etapas de entrega continua dev → stage en <code>main</code>.</figure>
+  <figure data-capture="e1-5-jenkins-main-console-semver.png">Figura 21. Cálculo SemVer en el build #18: 0.2.0.</figure>
+  <figure data-capture="e1-5-git-tags.png" data-how="GitHub → Tags (v0.1.0 … v0.2.0), cuando el pipeline empuje los tags">Figura 22. Tags de release en Git.</figure>
+  <figure data-capture="e1-5-jenkins-main-cd-stages.png" data-how="Stage View del build #18 de main con Deploy to dev → Verify stage health en verde">Figura 23. Etapas de entrega continua dev → stage en <code>main</code>.</figure>
+  <figure data-capture="e1-5-discord-notification.png" data-how="Discord → servidor CircleGuard CI → canal #pipeline: mensaje del build #18 (RECUPERADO) o de un build fallido con la etapa">Figura 23b. Notificación del pipeline en el canal <code>#pipeline</code> de Discord.</figure>
   <figure data-capture="e1-5-jenkins-prod-approval-input.png" data-how="Build de main detenido en Approve prod release → 'Input requested' con DECISION, VERSION y COMMENT">Figura 24. Aprobación manual del release a prod.</figure>
 </div>
-<p>Las decisiones quedan registradas en <code>reports/ci/promotion-stage.json</code> (PROMOTED o BLOCKED, con el motivo) y en <code>reports/ci/prod-approval.json</code> (quién aprobó o rechazó, la versión y el comentario). Documentos: <code>DEPLOY_PROMOTION_US13.md</code>, <code>PROD_APPROVAL_US31.md</code> y <code>ROLLBACK_US14.md</code>.</p>
+<p>Las decisiones quedan registradas en <code>reports/ci/promotion-stage.json</code> (PROMOTED o BLOCKED, con el motivo) y en <code>reports/ci/prod-approval.json</code> (quién aprobó o rechazó, la versión y el comentario). Documentos: <code>DEPLOY_PROMOTION_US13.md</code>, <code>PROD_APPROVAL_US31.md</code>, <code>ROLLBACK_US14.md</code> y <code>NOTIFICACIONES_US14.md</code>.</p>
 
 <h2 class="pb">7. E1.6 Pruebas automatizadas</h2>
 <table>
   <tr><th>Nivel</th><th>Qué hay</th><th>Evidencia</th></tr>
-  <tr><td>Unitarias y cobertura</td><td>Pruebas en los 8 servicios. Compuerta <code>jacocoTestCoverageVerification</code> ≥ 60 % de líneas en auth, identity, promotion, form y gateway</td><td>Build #11: 196 pruebas en verde; JaCoCo con 93 % de líneas en el agregado</td></tr>
+  <tr><td>Unitarias y cobertura</td><td>Pruebas en los 8 servicios. Compuerta <code>jacocoTestCoverageVerification</code> ≥ 60 % de líneas en auth, identity, promotion, form y gateway</td><td>Build #18: 236 pruebas, 0 fallos y 3 omitidas; JaCoCo con 94 % de líneas en el agregado</td></tr>
   <tr><td>Integración (Testcontainers)</td><td><code>LocalUserRepositoryPostgresIntegrationTest</code> (auth↔PostgreSQL), <code>IdentityMappingRepositoryPostgresIntegrationTest</code> (identity↔PostgreSQL) y <code>QrValidationRedisIntegrationTest</code> (gateway↔Redis)</td><td>Se ejecutan dentro de <code>test</code> cuando hay Docker. Falta una que cruce servicios, como form → Kafka → promotion</td></tr>
-  <tr><td>E2E (Playwright)</td><td>Flujos de login, cuestionario de salud y validación de acceso con QR, más smoke. Contra dev: contratos <code>@deployed</code></td><td>JUnit y HTML publicados. El build #14 falló en «credenciales inválidas»; la corrección <code>c94d846</code> está pendiente de construirse</td></tr>
+  <tr><td>E2E (Playwright)</td><td>Flujos de login, cuestionario de salud y validación de acceso con QR, más smoke. Contra dev: contratos <code>@deployed</code></td><td>Build #18: los flujos <code>flows_*</code>, <code>smoke</code> y los contratos <code>deployed_*</code> corrieron contra dev y pasaron (pestaña Tests)</td></tr>
 </table>
 <div class="grid2">
-  <figure data-capture="e1-6-jenkins-main-tests.png">Figura 25. Resultados JUnit del build #11 (196 pruebas).</figure>
-  <figure data-capture="e1-6-jenkins-main-jacoco.png">Figura 26. Reporte JaCoCo del build #11.</figure>
+  <figure data-capture="e1-6-jenkins-main-tests.png">Figura 25. Resultados JUnit del build #18 (236 pruebas).</figure>
+  <figure data-capture="e1-6-jenkins-main-jacoco.png">Figura 26. Reporte JaCoCo del build #18.</figure>
   <figure data-capture="e1-6-jenkins-main-last-build.png">Figura 27. Último build de <code>main</code> al corte.</figure>
   <figure data-capture="e1-6-playwright-report.png" data-how="Artefacto e2e/reports/html/index.html de un build verde, mostrando los 3 flujos">Figura 28. Reporte HTML de Playwright.</figure>
 </div>
@@ -249,21 +250,22 @@
 <h2 class="pb">10. Brechas y plan de acción</h2>
 <table>
   <tr><th style="width:28%">Brecha</th><th>Acción</th><th style="width:14%">Entregable</th></tr>
-  <tr><td>Disco lleno en el servidor de CI; nodo de Jenkins offline</td><td>Liberar espacio en 52.14.6.11 (<code>docker system prune</code>, limpiar <code>workspace/</code> y builds antiguos, tarea <i>cleanup</i> de Nexus) o ampliar el volumen EBS. Volver a conectar el nodo y ejecutar <code>main</code></td><td>E1.4 a E1.6</td></tr>
+  <tr><td>Espacio en disco del servidor de CI (ya se llenó una vez)</td><td>Limpieza periódica (<code>docker builder prune</code> por cron, <code>cleanWs()</code>, tarea <i>cleanup</i> de Nexus) o ampliar el volumen EBS</td><td>E1.2, E1.4</td></tr>
   <tr><td>Jenkins sin autenticación</td><td>Declarar <code>securityRealm</code> y <code>authorizationStrategy</code> (<code>matrix-auth</code>) en JCasC y definir <code>CG_PROD_APPROVERS</code></td><td>E1.2, E1.5</td></tr>
   <tr><td>SonarQube con quality gate bloqueante</td><td>Fusionar US-10: <code>withSonarQubeEnv</code> y <code>waitForQualityGate abortPipeline: true</code></td><td>E1.4</td></tr>
-  <tr><td>Notificaciones de fallo</td><td><code>post { failure { mail … } }</code> o un webhook de Discord o Slack desde la Shared Library</td><td>E1.5</td></tr>
+  <tr><td>Tag de release en GitHub</td><td><code>git push origin vX.Y.Z</code> desde <code>git-tag-release.sh</code> con la credencial <code>github-credentials</code></td><td>E1.5, E1.7</td></tr>
   <tr><td>Rollback desde el pipeline</td><td>Etapa <code>Rollback</code> con <code>ROLLBACK_TARGET_VERSION</code> (US-14 §3.2)</td><td>E1.5</td></tr>
   <tr><td>Integración entre servicios</td><td>Prueba form → Kafka → promotion con Testcontainers (Kafka y PostgreSQL)</td><td>E1.6</td></tr>
   <tr><td>Sprints 0 y 1 documentados</td><td>Agregar planeación, <i>review</i> y retrospectiva en <code>docs/agil/</code> y las capturas de Jira</td><td>E1.1</td></tr>
 </table>
 
-<h2 class="pb">Anexo A. Resultados de las validaciones (9 de noviembre de 2026)</h2>
+<h2 class="pb">Anexo A. Resultados de las validaciones (10 de noviembre de 2026)</h2>
 <p>Se ejecutaron en una estación del equipo (Windows 11 con Git Bash) sobre la rama de US-19. Cualquier integrante o el docente puede repetirlas con los comandos del README, sección 7.</p>
 <table>
   <tr><th>Comando</th><th>Resultado</th></tr>
   <tr><td><code>./gradlew validateJenkinsSharedLibrary</code></td><td>6/6 casos OK</td></tr>
   <tr><td><code>./gradlew validateJenkinsMultibranchPipeline</code></td><td>22/22 casos OK (plan, compuertas, promoción y aprobación de prod)</td></tr>
+  <tr><td><code>./gradlew validateJenkinsNotifications</code></td><td>8/8 casos OK (mensaje, política, recuperación, errores de Discord, dry-run y firmas CPS)</td></tr>
   <tr><td><code>bash deploy/compose/validate-compose.sh</code></td><td>53 verificaciones OK en dev, stage y prod</td></tr>
   <tr><td><code>bash deploy/scripts/test-deploy-scripts.sh</code></td><td>40 pruebas OK</td></tr>
   <tr><td><code>bash infra/bootstrap/test-bootstrap-ci-idempotency.sh</code></td><td>39 pruebas OK, 0 fallidas</td></tr>
@@ -271,7 +273,7 @@
   <tr><td><code>bash infra/scripts/test-calculate-semver.sh</code></td><td>5/5 casos OK</td></tr>
   <tr><td><code>bash infra/scripts/test-rollback.sh</code></td><td>10/10 casos OK</td></tr>
 </table>
-<p>Jenkins real, build #11 de <code>main</code> (<code>5bbe96c</code>): SUCCESS. SemVer 0.1.2, 196 pruebas, JaCoCo y publicación de las 9 imágenes en Nexus. Las imágenes 0.1.0, 0.1.1 y 0.1.2 de los 8 servicios y del cliente web están en <code>circleguard-docker</code> (consultado por la API de Nexus).</p>
+<p>Jenkins real, build #18 de <code>main</code> (<code>ab2aa2a</code>, 6 min 5 s): SUCCESS. SemVer 0.2.0, 236 pruebas, JaCoCo 94 %, publicación de las 9 imágenes en Nexus, despliegue y healthchecks en dev, E2E contra dev, promoción y healthchecks en stage (<code>PROMOTED</code>), prod omitido (<code>NOT_CONFIGURED</code>) y notificación en Discord (HTTP 204). Las imágenes 0.1.0, 0.1.1, 0.1.2 y 0.2.0 están en <code>circleguard-docker</code> (consultado por la API de Nexus).</p>
 
 <h2>Anexo B. Resumen del uso de IA generativa</h2>
 <p>El equipo declara <b>Nivel 3: Colaboración con IAG</b>. El anexo completo es <code>IAG_REGISTRO.md</code>, en la raíz del repositorio. Contiene:</p>
