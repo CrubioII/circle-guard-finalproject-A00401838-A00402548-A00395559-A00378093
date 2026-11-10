@@ -32,9 +32,16 @@
 //   CA3: Tras desplegar, los healthchecks de prod se publican como pruebas JUnit
 //        (reports/ci/junit/health-prod.xml) y en reports/ci/health-prod.json.
 //
+// US-14 — Notificaciones del pipeline (CA1, SCRUM-70):
+//   Al terminar, jenkins/vars/notifyPipeline.groovy publica en el canal #pipeline de Discord
+//   (credencial Secret text 'discord-webhook') el resultado con rama, commit, autor, versión
+//   SemVer, etapa fallida y enlace al log. Notifica fallos, abortos, inestables y
+//   recuperaciones siempre, y los éxitos solo en main. Desactivable con NOTIFY_DISCORD=false.
+//
 // Requisitos del agente: JDK 21, Node.js 20+, librerías de sistema de Chromium (imagen
 // infra/bootstrap/jenkins), plugin htmlpublisher, git, openssh-client y permisos de
-// ejecución sobre ./gradlew. Credenciales: 'nexus-credentials' y 'circleguard-env-ssh'.
+// ejecución sobre ./gradlew. Credenciales: 'nexus-credentials', 'circleguard-env-ssh' y
+// 'discord-webhook' (opcional: si falta, la notificación solo deja una advertencia).
 // =============================================================================
 import groovy.json.JsonOutput
 
@@ -51,6 +58,8 @@ def deployResults = [deployDev: 'NOT_RUN', verifyDev: 'NOT_RUN', e2eDev: 'NOT_RU
 // US-31: decisión de la compuerta manual a prod (multibranchFlow.prodApprovalDecision) y resultado del release.
 def prodApproval = [:]
 def prodResults = [deployProd: 'NOT_RUN', verifyProd: 'NOT_RUN']
+// US-14: última etapa iniciada; si el build falla, es la etapa que se reporta en Discord.
+def pipelineTrack = [stage: '']
 
 // US-31: distingue timeout de abort en la compuerta manual.
 // - TIMEOUT se detecta por el tiempo esperado (no requiere aprobaciones de sandbox).
@@ -101,6 +110,24 @@ void withEnvironmentCredentials(Closure body) {
     }
 }
 
+// US-14 / SCRUM-70: notifica el resultado en Discord sin alterar nunca el resultado del build.
+// El paso se carga desde el workspace (y no como paso global de la Shared Library) porque la
+// librería global usa la versión de main: así cada rama/PR valida su propia versión del paso.
+void notifyPipelineSafely(Map config) {
+    try {
+        if (!fileExists('jenkins/vars/notifyPipeline.groovy')) {
+            echo '[US-14] No hay workspace con jenkins/vars/notifyPipeline.groovy (¿falló el checkout?); se omite la notificación.'
+            return
+        }
+        def notifier = load 'jenkins/vars/notifyPipeline.groovy'
+        notifier.call(config)
+    } catch (Throwable err) {
+        // Throwable y no solo Exception: un error del intérprete (p. ej. NoSuchMethodError)
+        // tampoco debe cambiar el resultado del build.
+        echo "[US-14] Advertencia: no se pudo enviar la notificación del pipeline: ${err}"
+    }
+}
+
 // US-31 / US-32: servicios con umbral mínimo de 60% de cobertura de líneas.
 // notification, file y dashboard publican pruebas y cobertura (US-32 / CA3) sin umbral obligatorio.
 List<String> CORE_COVERAGE_SERVICES = [
@@ -142,6 +169,11 @@ pipeline {
             description: 'US-34: URL del cliente web contra la que corre Playwright (p. ej. el ambiente stage). Vacío = exporta mobile/ y lo sirve localmente en el agente.'
         )
         booleanParam(
+            name: 'NOTIFY_DISCORD',
+            defaultValue: true,
+            description: 'US-14: publica el resultado del build en el canal #pipeline de Discord (credencial discord-webhook).'
+        )
+        booleanParam(
             name: 'PUBLISH_GITHUB_STATUS',
             defaultValue: true,
             description: 'Publica los estados PENDING/SUCCESS/FAILURE como Commit Status en GitHub.'
@@ -169,6 +201,7 @@ pipeline {
         stage('Checkout & Context') {
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     checkout scm
                     flow = multibranchFlow.collectContext()
                     echo "Rama='${flow.branchName}' | PullRequest=${flow.isPullRequest} | main=${flow.isMainBranch} | ContextoGitHub='${flow.statusContext}'"
@@ -182,6 +215,7 @@ pipeline {
         stage('Detect Changed Components') {
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     detection = detectChangedServices(forceAll: params.FORCE_FULL_BUILD as boolean)
                     plan = multibranchFlow.planPipeline(flow, detection, [
                         targetEnv: params.TARGET_ENV,
@@ -210,6 +244,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     echo 'Calculando version semantica dinamica a partir de commits (US-12)...'
                     sh 'chmod +x infra/scripts/calculate-semver.sh'
                     sh './infra/scripts/calculate-semver.sh --export reports/ci/version.env --format env'
@@ -233,6 +268,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     // US-31: JaCoCo aplicado en build.gradle.kts; cada servicio genera su reporte XML/HTML.
                     String gradleCommand = pipelineUtils.buildGradleCommandForServices(
                         plan.backendServices,
@@ -250,6 +286,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     // US-31 / US-32 CA1: falla el build si auth, identity, promotion, form o gateway bajan del 60% de líneas.
                     List<String> coreServices = plan.backendServices.findAll { it in CORE_COVERAGE_SERVICES }
                     String tasks = coreServices.collect { ":services:${it}:jacocoTestCoverageVerification" }.join(' ')
@@ -264,6 +301,7 @@ pipeline {
                 expression { plan?.runMobileBuild == true }
             }
             steps {
+                script { pipelineTrack.stage = env.STAGE_NAME }   // US-14
                 dir('mobile') {
                     sh 'npm ci --no-audit --no-fund'
                     sh 'npm run test -- --ci --watchAll=false'
@@ -280,6 +318,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     // CA1: BASE_URL parametrizable; vacío => playwright.config.ts sirve mobile/dist en el agente.
                     String e2eBaseUrl = (params.E2E_BASE_URL ?: '').trim()
                     if (e2eBaseUrl) {
@@ -328,6 +367,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     echo 'Validando archivos docker-compose para dev, stage y prod (US-08)...'
                     sh 'chmod +x deploy/compose/validate-compose.sh'
                     sh 'IMAGE_TAG="' + (versionMap.APP_VERSION ?: '0.1.0') + '" ./deploy/compose/validate-compose.sh'
@@ -343,6 +383,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     String semver = versionMap.APP_VERSION ?: '0.1.0'
                     echo "Construyendo y publicando imagenes en Nexus con version semantica: ${semver} (US-11)..."
                     withCredentials([usernamePassword(
@@ -369,6 +410,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     String semver = versionMap.APP_VERSION ?: '0.1.0'
                     echo "Generando Release Notes automaticas y tag Git para ${semver} (US-18 y US-12)..."
                     sh 'chmod +x infra/scripts/generate-release-notes.sh infra/scripts/git-tag-release.sh'
@@ -389,6 +431,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     deployResults.deployDev = 'FAILURE'
                     String version = requireReleaseVersion(versionMap)
                     echo "Desplegando automáticamente ${version} en dev (${env.DEV_HOST}) (US-13 / CA1)..."
@@ -406,6 +449,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     deployResults.verifyDev = 'FAILURE'
                     String version = requireReleaseVersion(versionMap)
                     echo "Verificando healthchecks de los 12 contenedores de dev para ${version} (US-13 / CA1)..."
@@ -423,6 +467,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     deployResults.e2eDev = 'FAILURE'
                     echo 'Ejecutando contra los servicios REALES de dev los flujos E2E de US-17 (@us17, @smoke) y los contratos @deployed (US-13 / CA2)...'
                     withEnvironmentCredentials {
@@ -453,6 +498,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     String version = requireReleaseVersion(versionMap)
                     Map promotion = multibranchFlow.promotionDecision(deployResults, [version: version])
                     if (!promotion.promote) {
@@ -474,6 +520,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     deployResults.verifyStage = 'FAILURE'
                     String version = requireReleaseVersion(versionMap)
                     withEnvironmentCredentials {
@@ -494,6 +541,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     String version = requireReleaseVersion(versionMap)
                     List<String> approvers = multibranchFlow.parseProdApprovers(env.PROD_APPROVERS)
                     int timeoutMinutes = Integer.parseInt(env.PROD_APPROVAL_TIMEOUT_MIN ?: '60')
@@ -552,6 +600,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     prodResults.deployProd = 'FAILURE'
                     echo "Desplegando ${prodApproval.version} en PRODUCCIÓN (${env.PROD_HOST}), aprobado por ${prodApproval.approver} (US-31)..."
                     withEnvironmentCredentials {
@@ -568,6 +617,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     prodResults.verifyProd = 'FAILURE'
                     try {
                         withEnvironmentCredentials {
@@ -593,6 +643,7 @@ pipeline {
             }
             steps {
                 script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     Map decision = multibranchFlow.requireDeploymentAllowed(flow, plan.targetEnv)
                     echo "Despliegue autorizado a '${decision.targetEnv}' (aprobación manual requerida: ${decision.requiresApproval})."
                     echo 'dev y stage se despliegan automáticamente en main (US-13); prod se libera con la etapa "Approve prod release" de cada build de main (US-31).'
@@ -697,6 +748,21 @@ pipeline {
             }
             // reports/ci/** incluye promotion-stage.json y health-<env>.json (US-13).
             archiveArtifacts artifacts: 'reports/ci/**,docs/release-notes/**,services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
+        }
+        // US-14 / SCRUM-70 (CA1): `cleanup` corre al final, con el resultado definitivo del build
+        // (incluida la descripción de US-13 / US-31), y nunca cambia ese resultado.
+        cleanup {
+            script {
+                if (params.NOTIFY_DISCORD != false) {
+                    notifyPipelineSafely(
+                        status     : currentBuild.currentResult,
+                        flow       : flow,
+                        version    : versionMap?.APP_VERSION ?: '',
+                        failedStage: pipelineTrack.stage,
+                        details    : currentBuild.description ?: ''
+                    )
+                }
+            }
         }
     }
 }
