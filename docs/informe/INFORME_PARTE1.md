@@ -28,8 +28,7 @@ Universidad Icesi · Ingeniería de Software V (09776) · Período 2026-2
 7. E1.6 Pruebas automatizadas
 8. E1.7 Change management y release notes
 9. E1.8 Documentación
-10. Brechas y plan de acción
-11. Anexo A: resultados de las validaciones · Anexo B: resumen de IAG · Anexo C: lista de capturas
+11. Anexo A: resultados de las validaciones
 
 ## 1. Enlaces, ambientes y estado por entregable
 
@@ -77,17 +76,14 @@ El backlog está en Jira (proyecto **SuperPoderosos**, `circleguard777`), con é
 
 *Figura 2. Tablero y backlog en Jira.*
 
-> **Captura pendiente:** `capturas/e1-1-github-branch-protection.png`. GitHub → Settings → Branches → regla de `main` (PR obligatorio, 1 aprobación, status checks).
->
-> *Figura 3. Regla de protección de `main`.*
 
 ![Pull Requests fusionados, con aprobación y checks de Jenkins](capturas/e1-1-github-pull-requests.png)
 
-*Figura 4. Pull Requests fusionados, cada uno con aprobación y los checks de Jenkins en verde.*
+*Figura 3. Pull Requests fusionados, cada uno con aprobación y los checks de Jenkins en verde.*
 
 ![Detalle del PR #24: trazabilidad con Jira, resumen y revisor](capturas/e1-1-github-pull-request-detail.png)
 
-*Figura 5. Detalle de un PR (#24, US-14): trazabilidad con Jira, resumen de cambios y revisor distinto del autor.*
+*Figura 4. Detalle de un PR (#24, US-14): trazabilidad con Jira, resumen de cambios y revisor distinto del autor.*
 
 **Ceremonias.** `docs/agil/MARCO_AGIL.md` justifica Scrum, define roles, capacidad, escala de estimación (Fibonacci) y la definición de hecho (US-01). `docs/agil/SPRINT_0_Y_1_CEREMONIAS.md` contiene las actas de Sprint 0 y Sprint 1: planning con el objetivo y la distribución de las 19 historias (95 puntos), dailies con los impedimentos, review, retrospectiva y burndown (US-03).
 
@@ -117,10 +113,6 @@ Trazabilidad: al corte, todo cambio entró a `main` por Pull Request. Cada PR re
 ![Nexus Repository OSS](capturas/e1-2-nexus-home.png)
 
 *Figura 8. Nexus Repository OSS 3.70.1 en 52.14.6.11:8081.*
-
-> **Captura pendiente:** `capturas/e1-2-aws-ec2-instances.png`. Consola AWS → EC2 → Instances (us-east-2): las 4 instancias con su tag Name y su estado.
->
-> *Figura 9. Las cuatro instancias EC2 en us-east-2.*
 
 Extracto de `bash infra/bootstrap/test-bootstrap-env-idempotency.sh`, ejecutado el 9 de noviembre de 2026 (38 pruebas, 0 fallidas):
 
@@ -187,15 +179,9 @@ El registro de la segunda ejecución sobre AWS, con las líneas «ya existe; reu
 
 *Figura 17. Build #18 de `main` (SUCCESS).*
 
-> **Captura pendiente:** `capturas/e1-4-github-webhook.png`. GitHub → Settings → Webhooks → `/github-webhook/` → Recent Deliveries con respuesta 200.
->
-> *Figura 18. Webhook de GitHub con entregas recientes.*
-
-> **Captura pendiente:** `capturas/e1-4-sonarqube-quality-gate.png`. SonarQube → Projects → CircleGuard Monorepo: panel del Quality Gate y métricas de cobertura.
-
 ![sonarqube](capturas/e1-4-sonarqube-quality-gate.png)
 >
-> *Figura 19. Quality Gate de SonarQube.*
+*Figura 19. Quality Gate de SonarQube.*
 
 ## 6. E1.5 Entrega continua y promoción
 
@@ -213,10 +199,9 @@ El registro de la segunda ejecución sobre AWS, con las líneas «ya existe; reu
 *Figura 20. Cálculo SemVer en el build #18: 0.2.0.*
 
 
+![alt text](capturas/e1-5-jenkins-main-cd-stages.png)
 
-> **Captura pendiente:** `capturas/e1-5-jenkins-main-cd-stages.png`. Stage View del build #18 de `main` con `Deploy to dev` → `Verify stage health` en verde.
->
-> *Figura 22. Etapas de entrega continua dev → stage en `main`.*
+ *Figura 22. Etapas de entrega continua dev → stage en `main`.*
 
 ![Notificación del pipeline en Discord](capturas/e1-5-discord-notification.png)
 
@@ -260,11 +245,10 @@ Las decisiones quedan registradas en `reports/ci/promotion-stage.json` (PROMOTED
 
 ![Último build de main al corte](capturas/e1-6-jenkins-main-last-build.png)
 
-*Figura 30. Último build de `main` al corte.*
+*Figura 30. build de `main`.*
 
-> **Captura pendiente:** `capturas/e1-6-playwright-report.png`. Artefacto `e2e/reports/html/index.html` de un build verde, mostrando los 3 flujos.
->
-> *Figura 31. Reporte HTML de Playwright.*
+![alt text](capturas/e1-6-playwright-report.png)
+*Figura 31. Reporte HTML de Playwright.*
 
 ## 8. E1.7 Change management y release notes
 
@@ -280,15 +264,6 @@ Las decisiones quedan registradas en `reports/ci/promotion-stage.json` (PROMOTED
 - **Bitácora de IAG** (`docs/BITACORA_IAG_EQUIPO.md`): declaración de Nivel 3, usos de la IA con sus prompts, organización del equipo y responsabilidad sobre lo integrado.
 - **Este informe**: `docs/informe/INFORME_PARTE1.md`, en Markdown, que GitHub muestra directamente con sus figuras. Las capturas viven en `docs/informe/capturas/`; las de Jenkins y Nexus se regeneran con `capture-evidence.mjs`, usando un API token de Jenkins.
 
-## 10. Brechas y plan de acción
-
-Desde la versión anterior de este informe se cerraron seis brechas: SonarQube con Quality Gate bloqueante (US-10), la prueba de integración entre servicios (US-16), la autenticación de Jenkins y la configuración de los aprobadores de prod (US-31), la evidencia de un release a prod aprobado (build #20) y la documentación de los sprints 0 y 1 (US-01, US-03).
-
-| Brecha | Acción | Entregable |
-|---|---|---|
-| Tag de release en GitHub | Invocar `git-tag-release.sh --push` con la credencial `github-credentials` y leer los tags del remoto antes de calcular la versión | E1.5, E1.7 |
-| Rollback desde el pipeline | Registrar las versiones desplegadas (`markDeployed` / `markStable`) y agregar la etapa `Rollback` con `ROLLBACK_TARGET_VERSION` (US-14 §3.2) | E1.5 |
-| Espacio en disco del servidor de CI (ya se llenó) | Limpieza periódica (`docker builder prune` por cron, *cleanup policy* de Nexus) o ampliar el volumen EBS | E1.2, E1.4 |
 
 ## Anexo A. Resultados de las validaciones (11 de noviembre de 2026)
 
@@ -308,7 +283,7 @@ Se ejecutaron en una estación del equipo (Windows 11 con Git Bash) sobre la ram
 | `bash infra/scripts/test-calculate-semver.sh` | 5/5 casos OK |
 | `bash infra/scripts/test-rollback.sh` | 10/10 casos OK |
 
-Jenkins real, build #18 de `main` (`ab2aa2a`, 6 min 5 s): SUCCESS. SemVer 0.2.0, 236 pruebas, JaCoCo 94 %, publicación de las 9 imágenes en Nexus, despliegue y healthchecks en dev, E2E contra dev, promoción y healthchecks en stage (`PROMOTED`), prod omitido (`NOT_CONFIGURED`) y notificación en Discord (HTTP 204). Las imágenes 0.1.0 a 0.3.0 están en `circleguard-docker` (consultado en Nexus).
+Jenkins real, build #18 de `main` (`ab2aa2a`, 6 min 5 s): SUCCESS. SemVer 0.2.0, 236 pruebas, JaCoCo 94 %, publicación de las 9 imágenes en Nexus, despliegue y healthchecks en dev, E2E contra dev, promoción y healthchecks en stage (`PROMOTED`) y notificación en Discord. Las imágenes 0.1.0 a 0.3.0 están en `circleguard-docker` (consultado en Nexus).
 
 Jenkins real, build #20 de `main` (`63c29c2`, 14 min 6 s con la espera de la aprobación): SUCCESS. SemVer 0.3.0, promoción a stage (`PROMOTED`), aprobación de prod por `jpordonez`, despliegue y healthchecks en prod `SUCCESS` y notificación en Discord.
 
@@ -323,36 +298,4 @@ El equipo declara **Nivel 3: Colaboración con IAG**. La bitácora completa es [
 3. La organización del equipo: ramas por historia, Conventional Commits y PR revisados por otro integrante. Cada commit, *push* y PR lo hizo un integrante.
 4. La responsabilidad: la IA fue una herramienta de apoyo. El equipo revisó las sugerencias, decidió qué integrar, verificó los resultados y puede explicar cada decisión técnica.
 
-## Anexo C. Lista de capturas
 
-Las capturas de Jenkins y Nexus las genera `node docs/informe/scripts/capture-evidence.mjs`, con `JENKINS_USER` y `JENKINS_API_TOKEN` porque Jenkins exige sesión. Las de Jira, GitHub, AWS, SonarQube y Discord se guardan a mano en `docs/informe/capturas/` con el nombre indicado. Al agregar una captura pendiente, se reemplaza su recuadro en este informe por la imagen. Detalle: `docs/informe/capturas/README.md`.
-
-| Archivo | Figura | Estado |
-|---|---|---|
-| `e1-1-jira-board.png` | 2. Tablero y backlog en Jira | Incluida |
-| `e1-1-github-branch-protection.png` | 3. Regla de protección de `main` | **Pendiente** |
-| `e1-1-github-pull-requests.png` | 4. Pull Requests fusionados | Incluida |
-| `e1-1-github-pull-request-detail.png` | 5. Detalle de un PR | Incluida |
-| `e1-2-jenkins-dashboard.png` | 7. Jenkins con el job Multibranch | Incluida |
-| `e1-2-nexus-home.png` | 8. Nexus Repository OSS | Incluida |
-| `e1-2-aws-ec2-instances.png` | 9. Las cuatro instancias EC2 | **Pendiente** |
-| `e1-3-nexus-docker-images.png` | 10. Imágenes en `circleguard-docker` | Incluida |
-| `e1-3-nexus-auth-service-tags.png` | 11. Tags SemVer de `auth-service` | Incluida |
-| `e1-4-jenkins-multibranch-branches.png` | 14. Ramas del job Multibranch | Incluida |
-| `e1-4-jenkins-multibranch-prs.png` | 15. Pull Requests construidos por Jenkins | Incluida |
-| `e1-4-jenkins-main-job.png` | 16. Job `main` y Stage View | Incluida |
-| `e1-4-jenkins-main-build.png` | 17. Build #18 de `main` | Incluida |
-| `e1-4-github-webhook.png` | 18. Webhook de GitHub | **Pendiente** |
-| `e1-4-sonarqube-quality-gate.png` | 19. Quality Gate de SonarQube | **Pendiente** |
-| `e1-5-jenkins-main-console-semver.png` | 20. Cálculo SemVer del build #18 | Incluida |
-| `e1-5-git-tags.png` | 21. Tags de release en Git | **Pendiente** |
-| `e1-5-jenkins-main-cd-stages.png` | 22. Etapas dev → stage en `main` | **Pendiente** |
-| `e1-5-discord-notification.png` | 23. Notificación en Discord | Incluida |
-| `e1-5-jenkins-prod-approval-stage.png` | 24. Build #20 en `Approve prod release` | Incluida |
-| `e1-5-jenkins-prod-approval-input.png` | 25. Formulario de aprobación de prod | Incluida |
-| `e1-5-jenkins-prod-approval-console.png` | 26. Aprobación registrada en la consola | Incluida |
-| `e1-5-discord-prod-release.png` | 27. Notificación del release a prod | Incluida |
-| `e1-6-jenkins-main-tests.png` | 28. Resultados JUnit del build #18 | Incluida |
-| `e1-6-jenkins-main-jacoco.png` | 29. Reporte JaCoCo del build #18 | Incluida |
-| `e1-6-jenkins-main-last-build.png` | 30. Último build de `main` | Incluida |
-| `e1-6-playwright-report.png` | 31. Reporte HTML de Playwright | **Pendiente** |
