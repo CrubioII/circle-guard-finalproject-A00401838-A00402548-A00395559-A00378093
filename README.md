@@ -10,8 +10,8 @@ CircleGuard es un sistema universitario de rastreo de contactos y cercos sanitar
 | Repositorio | <https://github.com/CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093> |
 | Tablero ágil (Jira) | Proyecto **SuperPoderosos** (clave `SCRUM`) en <https://circleguard777.atlassian.net> |
 | Jenkins | <http://52.14.6.11:8080/job/circleguard-monorepo/> |
-| Informe de la Parte 1 (PDF) | [`docs/informe/Informe_Parte1_CircleGuard.pdf`](docs/informe/Informe_Parte1_CircleGuard.pdf) |
-| Declaración de uso de IA generativa | [`IAG_REGISTRO.md`](IAG_REGISTRO.md) (Nivel 3) |
+| Informe de la Parte 1 | [`docs/informe/INFORME_PARTE1.md`](docs/informe/INFORME_PARTE1.md) |
+| Declaración de uso de IA generativa | [`docs/BITACORA_IAG_EQUIPO.md`](docs/BITACORA_IAG_EQUIPO.md) (Nivel 3) |
 
 ## Contenido
 
@@ -45,8 +45,8 @@ infra/scripts/                  SemVer, publicación en Nexus, release notes, ta
 deploy/compose/                 docker-compose.{dev,stage,prod}.yml con healthchecks
 deploy/scripts/                 despliegue por SSH, verificación de salud y E2E contra ambientes
 docker-compose.ci.yml           Jenkins + SonarQube (+ PostgreSQL) + Nexus
-docs/                           arquitectura, ágil, operaciones, release-notes e informe
-CHANGELOG.md  IAG_REGISTRO.md
+docs/                           arquitectura, ágil, operaciones, release-notes, informe y bitácora de IAG
+CHANGELOG.md
 ```
 
 ## URLs de los ambientes y herramientas
@@ -350,8 +350,8 @@ Cada servicio expone su documentación OpenAPI en `http://localhost:<puerto>/swa
 | Aprobación manual de prod (US-31) | [`docs/arquitectura/PROD_APPROVAL_US31.md`](docs/arquitectura/PROD_APPROVAL_US31.md) |
 | Seguridad de Jenkins: cuentas, permisos y aprobadores (US-31) | [`docs/operaciones/JENKINS_SEGURIDAD_US31.md`](docs/operaciones/JENKINS_SEGURIDAD_US31.md) |
 | E2E con Playwright (US-34) | [`docs/agil/PLAYWRIGHT_E2E_US34.md`](docs/agil/PLAYWRIGHT_E2E_US34.md) |
-| Informe de la Parte 1 (PDF y [Markdown](docs/informe/INFORME_PARTE1.md)) y cómo regenerarlo | [`docs/informe/README.md`](docs/informe/README.md) |
-| Uso de IA generativa | [`IAG_REGISTRO.md`](IAG_REGISTRO.md) |
+| Informe de la Parte 1 y cómo actualizarlo | [`docs/informe/INFORME_PARTE1.md`](docs/informe/INFORME_PARTE1.md) y [`docs/informe/README.md`](docs/informe/README.md) |
+| Uso de IA generativa | [`docs/BITACORA_IAG_EQUIPO.md`](docs/BITACORA_IAG_EQUIPO.md) |
 
 ## 10. Seguridad, secretos y costos
 

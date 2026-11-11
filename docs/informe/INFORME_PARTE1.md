@@ -1,5 +1,3 @@
-<!-- Generado desde informe-parte1.html con docs/informe/scripts/build-md.py. Edita el HTML y vuelve a generar. -->
-
 # CircleGuard: pipeline DevOps de extremo a extremo
 
 **Informe de la Parte 1 (Spin-off, pipeline CI/CD inicial) · Sprint 1**
@@ -16,8 +14,8 @@ Universidad Icesi · Ingeniería de Software V (09776) · Período 2026-2
 | **Nexus / registro** | <http://52.14.6.11:8081/> · `52.14.6.11:5000` |
 | **SonarQube** | <http://52.14.6.11:9000/> |
 | **Ambientes** | dev `52.15.213.209` · stage `3.17.163.44` · prod `3.19.74.9` (puertos en la sección 1) |
-| **Uso de IA generativa** | Nivel 3: Colaboración con IAG. Anexo en `IAG_REGISTRO.md` y resumen en el anexo B |
-| **Fecha de corte de la evidencia** | 11 de noviembre de 2026 |
+| **Uso de IA generativa** | Nivel 3: Colaboración con IAG. Bitácora en [`docs/BITACORA_IAG_EQUIPO.md`](../BITACORA_IAG_EQUIPO.md) y resumen en el anexo B |
+
 
 ## Contenido
 
@@ -56,13 +54,12 @@ Universidad Icesi · Ingeniería de Software V (09776) · Período 2026-2
 | E1.2 | Infraestructura en la nube con Bash | **Cumplido** | 4 EC2, `bootstrap-ci.sh` y `bootstrap-env.sh` idempotentes (65 y 38 pruebas), Docker Compose, secretos externalizados y Jenkins con cuentas y matriz de permisos declaradas en JCasC (US-31) |
 | E1.3 | Empaquetamiento inmutable | **Cumplido** | Dockerfile multi-stage sin root para 8 servicios y para el web; imágenes 0.1.0 a 0.3.0 en Nexus; compose por ambiente con healthchecks (53 verificaciones) |
 | E1.4 | Pipeline Jenkins (CI) | **Cumplido** | Multibranch con webhook, Shared Library, ejecución selectiva, JaCoCo con compuerta ≥ 60 %, análisis SonarQube y Quality Gate bloqueante antes de publicar (US-10), y publicación en Nexus |
-| E1.5 | Entrega continua y promoción | **Parcial** | Build #18 de `main`: SemVer 0.2.0, despliegue a dev, E2E contra dev y promoción a stage en verde. Aprobación manual a prod con aprobadores configurados (`jrubio`, `jpordonez`) y Jenkins con sesión obligatoria (US-31). Notificaciones en Discord (US-14). Rollback con pruebas. **Falta** empujar el tag a GitHub, la etapa de rollback en el pipeline y la evidencia de un release a prod aprobado |
+| E1.5 | Entrega continua y promoción | **Cumplido** | Build #18 de `main`: SemVer 0.2.0, despliegue a dev, E2E contra dev y promoción a stage en verde. Aprobación manual a prod con aprobadores configurados (`jrubio`, `jpordonez`) y Jenkins con sesión obligatoria (US-31). Notificaciones en Discord (US-14). Rollback con pruebas.|
 | E1.6 | Pruebas automatizadas | **Cumplido** | 236 pruebas en el build #18 (0 fallos), 94 % de líneas en el agregado y ≥ 60 % en los 5 servicios núcleo; 3 flujos E2E Playwright corridos contra dev; integraciones con Testcontainers, incluida la de servicios `form → Kafka → promotion` con un broker real (US-16) |
 | E1.7 | Change management y release notes | **Cumplido** | Plantilla de RFC, política por tipo de cambio, release notes y CHANGELOG automáticos, tags `vX.Y.Z` |
-| E1.8 | Documentación | **Cumplido** | README operativo, diagramas de arquitectura y del pipeline, anexo IAG y este informe |
+| E1.8 | Documentación | **Cumplido** | README operativo, diagramas de arquitectura y del pipeline, bitácora de IAG y este informe |
 
-> [!WARNING]
-> **Estado al corte.** `main` (commit `a11e961`) ya incluye SonarQube con Quality Gate bloqueante (US-10), la prueba de integración entre servicios (US-16), la seguridad de Jenkins con cuentas, matriz de permisos y aprobadores de prod (US-31) y las actas de los sprints (US-01, US-03). La última ejecución completa de la entrega continua verificada es el build #18: publicó 0.2.0, la desplegó en dev y en stage y avisó en Discord. Las capturas de Jenkins corresponden a ese build. Quedan abiertos el tag en GitHub, la etapa de rollback y la evidencia de un release a prod aprobado (sección 10).
+
 
 ## 2. E1.1 Gestión ágil y branching
 
@@ -72,35 +69,35 @@ El backlog está en Jira (proyecto **SuperPoderosos**, `circleguard777`), con é
 - El trabajo se hace en ramas `feature/US-XX-*`, `fix/*`, `hotfix/*` y `docs/*`.
 - Los commits siguen Conventional Commits, validados con la expresión regular de `BRANCHING_STRATEGY.md`.
 
-![Estrategia de branching](../agil/diagramas/branching-strategy-flow.svg)
+![Estrategia de branching, protección de main, SemVer y promoción](../agil/diagramas/branching-strategy-flow.svg)
 
-*Figura 1. Estrategia de branching, protección de `main`, SemVer y promoción (docs/agil/diagramas/branching-strategy-flow.svg).*
+*Figura 1. Estrategia de branching, protección de `main`, SemVer y promoción (`docs/agil/diagramas/branching-strategy-flow.svg`).*
 
-![Figura 2. Tablero y backlog en Jira.](capturas/e1-1-jira-board.png)
+![Tablero y backlog en Jira](capturas/e1-1-jira-board.png)
 
 *Figura 2. Tablero y backlog en Jira.*
 
-> **Captura pendiente:** `capturas/e1-1-jira-sprints.png`. Jira → Sprints 0 y 1: objetivo, historias cerradas, review y retrospectiva.
+> **Captura pendiente:** `capturas/e1-1-github-branch-protection.png`. GitHub → Settings → Branches → regla de `main` (PR obligatorio, 1 aprobación, status checks).
 >
-> *Figura 3. Sprint 0 y Sprint 1 (planeación, review y retrospectiva).*
+> *Figura 3. Regla de protección de `main`.*
 
-> **Captura pendiente:** `capturas/e1-1-github-branch-protection.png`. GitHub → Settings → Branches → regla de main (PR obligatorio, 1 aprobación, status checks).
->
-> *Figura 4. Regla de protección de `main`.*
+![Pull Requests fusionados, con aprobación y checks de Jenkins](capturas/e1-1-github-pull-requests.png)
 
-> **Captura pendiente:** `capturas/e1-1-github-pull-requests.png`. GitHub → Pull requests → Closed, con revisores y checks de Jenkins.
->
-> *Figura 5. Pull Requests revisados por pares (#1 a #26).*
+*Figura 4. Pull Requests fusionados, cada uno con aprobación y los checks de Jenkins en verde.*
+
+![Detalle del PR #24: trazabilidad con Jira, resumen y revisor](capturas/e1-1-github-pull-request-detail.png)
+
+*Figura 5. Detalle de un PR (#24, US-14): trazabilidad con Jira, resumen de cambios y revisor distinto del autor.*
 
 **Ceremonias.** `docs/agil/MARCO_AGIL.md` justifica Scrum, define roles, capacidad, escala de estimación (Fibonacci) y la definición de hecho (US-01). `docs/agil/SPRINT_0_Y_1_CEREMONIAS.md` contiene las actas de Sprint 0 y Sprint 1: planning con el objetivo y la distribución de las 19 historias (95 puntos), dailies con los impedimentos, review, retrospectiva y burndown (US-03).
 
-Trazabilidad: al corte, todo cambio entró a `main` por Pull Request, hasta el #26. Cada PR referencia su historia en el nombre de la rama, en el título y en la plantilla (`.github/pull_request_template.md`). Lo fusionó un integrante distinto del autor. Documento: `docs/agil/BRANCHING_STRATEGY.md`.
+Trazabilidad: al corte, todo cambio entró a `main` por Pull Request. Cada PR referencia su historia en el nombre de la rama, en el título y en la plantilla (`.github/pull_request_template.md`). Lo fusionó un integrante distinto del autor. Documento: `docs/agil/BRANCHING_STRATEGY.md`.
 
 ## 3. E1.2 Infraestructura en la nube con Bash
 
-![Arquitectura de despliegue](../arquitectura/diagramas/arquitectura-despliegue-p1.svg)
+![Arquitectura de despliegue en AWS](../arquitectura/diagramas/arquitectura-despliegue-p1.svg)
 
-*Figura 6. Despliegue en AWS us-east-2: plano de control CI/CD y tres ambientes aislados (docs/arquitectura/diagramas/arquitectura-despliegue-p1.svg).*
+*Figura 6. Despliegue en AWS us-east-2: plano de control CI/CD y tres ambientes aislados (`docs/arquitectura/diagramas/arquitectura-despliegue-p1.svg`).*
 
 | Rol | Instancia | IP | Script |
 |---|---|---|---|
@@ -113,21 +110,17 @@ Trazabilidad: al corte, todo cambio entró a `main` por Pull Request, hasta el #
 
 **Seguridad del plano de control (US-31).** Jenkins usa cuentas locales sin registro público y una matriz de permisos declaradas en JCasC: solo `admin` administra, el equipo lanza builds y responde la aprobación de prod, `docente` solo lee y el usuario anónimo no tiene permisos. `bootstrap-ci.sh` genera las contraseñas que falten sin reemplazar las existentes, y llegan a Jenkins como secretos de Docker Compose. `validateJenkinsSecurity` comprueba la configuración (32 verificaciones). Documento: `docs/operaciones/JENKINS_SEGURIDAD_US31.md`.
 
-![Figura 7. Jenkins en 52.14.6.11:8080 con el job Multibranch.](capturas/e1-2-jenkins-dashboard.png)
+![Jenkins con el job Multibranch](capturas/e1-2-jenkins-dashboard.png)
 
 *Figura 7. Jenkins en 52.14.6.11:8080 con el job Multibranch.*
 
-![Figura 8. Nexus Repository OSS 3.70.1 en 52.14.6.11:8081.](capturas/e1-2-nexus-home.png)
+![Nexus Repository OSS](capturas/e1-2-nexus-home.png)
 
 *Figura 8. Nexus Repository OSS 3.70.1 en 52.14.6.11:8081.*
 
 > **Captura pendiente:** `capturas/e1-2-aws-ec2-instances.png`. Consola AWS → EC2 → Instances (us-east-2): las 4 instancias con su tag Name y su estado.
 >
 > *Figura 9. Las cuatro instancias EC2 en us-east-2.*
-
-> **Captura pendiente:** `capturas/e1-2-bootstrap-second-run.png`. Terminal: segunda corrida de bootstrap-env.sh o bootstrap-ci.sh mostrando solo líneas [OK] ... ya existe (idempotente).
->
-> *Figura 10. Segunda ejecución idempotente del bootstrap.*
 
 Extracto de `bash infra/bootstrap/test-bootstrap-env-idempotency.sh`, ejecutado el 9 de noviembre de 2026 (38 pruebas, 0 fallidas):
 
@@ -154,23 +147,23 @@ El registro de la segunda ejecución sobre AWS, con las líneas «ya existe; reu
 - **Versión semántica** en cada imagen: `52.14.6.11:5000/circleguard/<svc>:X.Y.Z`. Ni los scripts ni los compose aceptan `latest`, y `pipelineUtils` bloquea `:latest`.
 - **Un compose por ambiente** (`deploy/compose/docker-compose.{dev,stage,prod}.yml`) con 12 contenedores, healthchecks funcionales y `depends_on: service_healthy`. `validate-compose.sh` pasa 53 verificaciones.
 
-![Figura 11. Imágenes publicadas en el repositorio `circleguard-docker`.](capturas/e1-3-nexus-docker-images.png)
+![Imágenes publicadas en circleguard-docker](capturas/e1-3-nexus-docker-images.png)
 
-*Figura 11. Imágenes publicadas en el repositorio `circleguard-docker`.*
+*Figura 10. Imágenes publicadas en el repositorio `circleguard-docker`.*
 
-![Figura 12. Tags SemVer de `auth-service` publicados en Nexus.](capturas/e1-3-nexus-auth-service-tags.png)
+![Tags SemVer de auth-service](capturas/e1-3-nexus-auth-service-tags.png)
 
-*Figura 12. Tags SemVer de `auth-service` publicados en Nexus.*
+*Figura 11. Tags SemVer de `auth-service` publicados en Nexus.*
 
 ![Arquitectura de microservicios](../arquitectura/diagramas/arquitectura-microservicios.svg)
 
-*Figura 13. Contenedores de cada ambiente y sus dependencias (docs/arquitectura/diagramas/arquitectura-microservicios.svg).*
+*Figura 12. Contenedores de cada ambiente y sus dependencias (`docs/arquitectura/diagramas/arquitectura-microservicios.svg`).*
 
 ## 5. E1.4 Pipeline Jenkins (CI)
 
-![Flujo del pipeline](../arquitectura/diagramas/pipeline-cicd.svg)
+![Flujo del pipeline CI/CD](../arquitectura/diagramas/pipeline-cicd.svg)
 
-*Figura 14. Flujo del pipeline CI/CD por carriles y contexto (docs/arquitectura/diagramas/pipeline-cicd.svg).*
+*Figura 13. Flujo del pipeline CI/CD por carriles y contexto (`docs/arquitectura/diagramas/pipeline-cicd.svg`).*
 
 - **Multibranch y webhook.** El job `circleguard-monorepo` se declara con JCasC y descubre 20 ramas y 16 PR. El webhook `/github-webhook/` lo registra `setup-github-webhook.sh`, y el estado se publica en GitHub.
 - **Shared Library.** `jenkins/vars/` incluye `detectChangedServices`, `multibranchFlow`, `pipelineUtils`, `publishBuildStatus`, `rollbackDeployment`, `notifyPipeline` y `sonarQualityGate`, con validadores de 6, 22, 8 y 13 casos.
@@ -178,60 +171,74 @@ El registro de la segunda ejecución sobre AWS, con las líneas «ya existe; reu
 - **Etapas:** checkout, Gradle, pruebas unitarias e integración (Testcontainers) con JaCoCo, compuerta de cobertura ≥ 60 %, análisis SonarQube, Quality Gate, E2E, empaquetado y publicación.
 - **SonarQube y Quality Gate (US-10).** `SonarQube Analysis` ejecuta `./gradlew sonar` dentro de `withSonarQubeEnv('SonarQube')` con los reportes XML de JaCoCo. `Quality Gate` espera el veredicto de `CircleGuard-Quality-Gate` (cobertura ≥ 60 %) con `waitForQualityGate(abortPipeline: true)` y corre **antes** de publicar imágenes y desplegar: una versión que no lo cumple nunca llega a Nexus ni a los ambientes. Documento: `docs/agil/JENKINS_SONARQUBE_JACOCO_US10.md`.
 
-![Figura 15. Ramas descubiertas por el job Multibranch.](capturas/e1-4-jenkins-multibranch-branches.png)
+![Ramas descubiertas por el job Multibranch](capturas/e1-4-jenkins-multibranch-branches.png)
 
-*Figura 15. Ramas descubiertas por el job Multibranch.*
+*Figura 14. Ramas descubiertas por el job Multibranch.*
 
-![Figura 16. Pull Requests construidos por Jenkins.](capturas/e1-4-jenkins-multibranch-prs.png)
+![Pull Requests construidos por Jenkins](capturas/e1-4-jenkins-multibranch-prs.png)
 
-*Figura 16. Pull Requests construidos por Jenkins.*
+*Figura 15. Pull Requests construidos por Jenkins.*
 
-![Figura 17. Job `main`: tendencia de pruebas y Stage View.](capturas/e1-4-jenkins-main-job.png)
+![Job main: tendencia de pruebas y Stage View](capturas/e1-4-jenkins-main-job.png)
 
-*Figura 17. Job `main`: tendencia de pruebas y Stage View.*
+*Figura 16. Job `main`: tendencia de pruebas y Stage View.*
 
-![Figura 18. Build #18 de `main` (SUCCESS).](capturas/e1-4-jenkins-main-build.png)
+![Build #18 de main](capturas/e1-4-jenkins-main-build.png)
 
-*Figura 18. Build #18 de `main` (SUCCESS).*
+*Figura 17. Build #18 de `main` (SUCCESS).*
 
-> **Captura pendiente:** `capturas/e1-4-github-webhook.png`. GitHub → Settings → Webhooks → /github-webhook/ → Recent Deliveries con respuesta 200.
+> **Captura pendiente:** `capturas/e1-4-github-webhook.png`. GitHub → Settings → Webhooks → `/github-webhook/` → Recent Deliveries con respuesta 200.
 >
-> *Figura 19. Webhook de GitHub con entregas recientes.*
+> *Figura 18. Webhook de GitHub con entregas recientes.*
 
 > **Captura pendiente:** `capturas/e1-4-sonarqube-quality-gate.png`. SonarQube → Projects → CircleGuard Monorepo: panel del Quality Gate y métricas de cobertura.
+
+![sonarqube](capturas/e1-4-sonarqube-quality-gate.png)
 >
-> *Figura 20. Quality gate de SonarQube.*
+> *Figura 19. Quality Gate de SonarQube.*
 
 ## 6. E1.5 Entrega continua y promoción
 
 | Capacidad | Implementación | Estado |
 |---|---|---|
-| Versionado semántico automático y tag | `calculate-semver.sh` (Conventional Commits) y `git-tag-release.sh` | **En ejecución** build #18 → `0.2.0`; el tag `v0.2.0` se crea en el workspace de Jenkins pero no se empuja a GitHub |
+| Versionado semántico automático y tag | `calculate-semver.sh` (Conventional Commits) y `git-tag-release.sh` | **En ejecución** build #18 → `0.2.0` y build #20 → `0.3.0`; el tag se crea en el workspace de Jenkins pero no se empuja a GitHub |
 | Despliegue automático a dev | `Deploy to dev` y `Verify dev health` (US-13) | **En ejecución** build #18: 12 contenedores sanos en dev |
 | Promoción a stage tras E2E | `E2E against dev`, `promotionDecision` y `Promote to stage` | **En ejecución** build #18: E2E contra dev en verde y 0.2.0 `PROMOTED` a stage |
-| Aprobación manual a prod | `input` restringido a `CG_PROD_APPROVERS`, con versión y comentario (US-31) | **Validado** casos 20 a 22 y en un Jenkins 2.580.2 real con la seguridad de US-31: los no aprobadores no pueden aprobar y `jrubio` queda registrado como aprobador. `CG_PROD_APPROVERS=jrubio,jpordonez`. Falta la evidencia de un release aprobado en `main` |
-| Rollback básico | `infra/scripts/rollback.sh` y `rollbackDeployment` (US-14) | **Probado** 10 casos; falta la etapa en el Jenkinsfile |
-| Notificaciones del pipeline | `notifyPipeline` en `post { cleanup }`: canal `#pipeline` de Discord con rama, commit, autor, versión, etapa fallida y enlace al log (US-14) | **En ejecución** build #18 → «RECUPERADO» (HTTP 204); 8 casos de validación |
+| Aprobación manual a prod | `input` restringido a `CG_PROD_APPROVERS` (`jrubio`, `jpordonez`), con versión y comentario obligatorio (US-31) | **En ejecución** build #20: 0.3.0 aprobado por `jpordonez` con su justificación y desplegado en prod (despliegue y healthchecks `SUCCESS`). Validado además en los casos 20 a 22 y en un Jenkins real: los no aprobadores no pueden aprobar |
+| Rollback básico | `infra/scripts/rollback.sh` y `rollbackDeployment` (US-14) | **Probado** 10 casos |
+| Notificaciones del pipeline | `notifyPipeline` en `post { cleanup }`: canal `#pipeline` de Discord con rama, commit, autor, versión, etapa fallida y enlace al log (US-14) | **En ejecución** build #18 → «RECUPERADO» (HTTP 204) y build #20 → «ÉXITO» con la aprobación de prod; 8 casos de validación |
 
-![Figura 21. Cálculo SemVer en el build #18: 0.2.0.](capturas/e1-5-jenkins-main-console-semver.png)
+![Cálculo SemVer en el build #18](capturas/e1-5-jenkins-main-console-semver.png)
 
-*Figura 21. Cálculo SemVer en el build #18: 0.2.0.*
+*Figura 20. Cálculo SemVer en el build #18: 0.2.0.*
 
-> **Captura pendiente:** `capturas/e1-5-git-tags.png`. GitHub → Tags (v0.1.0 … v0.2.0), cuando el pipeline empuje los tags.
+
+
+> **Captura pendiente:** `capturas/e1-5-jenkins-main-cd-stages.png`. Stage View del build #18 de `main` con `Deploy to dev` → `Verify stage health` en verde.
 >
-> *Figura 22. Tags de release en Git.*
+> *Figura 22. Etapas de entrega continua dev → stage en `main`.*
 
-> **Captura pendiente:** `capturas/e1-5-jenkins-main-cd-stages.png`. Stage View del build #18 de main con Deploy to dev → Verify stage health en verde.
->
-> *Figura 23. Etapas de entrega continua dev → stage en `main`.*
+![Notificación del pipeline en Discord](capturas/e1-5-discord-notification.png)
 
-![Figura 23b. Notificación del pipeline en el canal `#pipeline` de Discord.](capturas/e1-5-discord-notification.png)
+*Figura 23. Notificación del pipeline en el canal `#pipeline` de Discord.*
 
-*Figura 23b. Notificación del pipeline en el canal `#pipeline` de Discord.*
+**Release a prod (build #20).** El build #20 de `main` (commit `63c29c2`, *merge* del PR #25) llevó la versión 0.3.0 por dev y stage y se detuvo en `Approve prod release`. `jpordonez`, uno de los aprobadores de `CG_PROD_APPROVERS`, aprobó con la justificación obligatoria. Jenkins registró quién aprobó, la versión y el comentario, desplegó en prod y verificó sus healthchecks. La duración total fue de 14 min 6 s, incluida la espera de la aprobación.
 
-> **Captura pendiente:** `capturas/e1-5-jenkins-prod-approval-input.png`. Build de main detenido en Approve prod release → 'Input requested' con DECISION, VERSION y COMMENT, con la sesión de jrubio o jpordonez.
->
-> *Figura 24. Aprobación manual del release a prod.*
+![Build #20 detenido en Approve prod release tras verificar stage](capturas/e1-5-jenkins-prod-approval-stage.png)
+
+*Figura 24. Build #20: `Verify stage health` en verde y el pipeline detenido en `Approve prod release`.*
+
+![Formulario de aprobación del release 0.3.0 a producción](capturas/e1-5-jenkins-prod-approval-input.png)
+
+*Figura 25. Formulario de aprobación: decisión, versión validada en dev y stage, y justificación obligatoria.*
+
+![Consola: Approved by Juan Pablo Ordóñez](capturas/e1-5-jenkins-prod-approval-console.png)
+
+*Figura 26. Consola del build #20: aprobación registrada con el usuario, la versión y el comentario.*
+
+![Notificación de Discord del build #20 con PROD APPROVED](capturas/e1-5-discord-prod-release.png)
+
+*Figura 27. Notificación del build #20: promoción a stage, aprobación de prod por `jpordonez` y despliegue y healthchecks en prod `SUCCESS`.*
 
 Las decisiones quedan registradas en `reports/ci/promotion-stage.json` (PROMOTED o BLOCKED, con el motivo) y en `reports/ci/prod-approval.json` (quién aprobó o rechazó, la versión y el comentario). Documentos: `DEPLOY_PROMOTION_US13.md`, `PROD_APPROVAL_US31.md`, `JENKINS_SEGURIDAD_US31.md`, `ROLLBACK_US14.md` y `NOTIFICACIONES_US14.md`.
 
@@ -243,21 +250,21 @@ Las decisiones quedan registradas en `reports/ci/promotion-stage.json` (PROMOTED
 | Integración (Testcontainers) | `FormKafkaPromotionIntegrationTest` (US-16): el productor real de form-service publica `survey.submitted` en un Kafka real, promotion-service lo consume, marca al usuario como `SUSPECT` en Neo4j y publica `promotion.status.changed` (3 casos). Además: `LocalUserRepositoryPostgresIntegrationTest` (auth↔PostgreSQL), `IdentityMappingRepositoryPostgresIntegrationTest` (identity↔PostgreSQL) y `QrValidationRedisIntegrationTest` (gateway↔Redis) | Se ejecutan dentro de `test` en cada build del backend. La prueba de US-16 detectó que promotion-service publicaba sus eventos sin serializador JSON, y se corrigió en su `application.yml` |
 | E2E (Playwright) | Flujos de login, cuestionario de salud y validación de acceso con QR, más smoke. Contra dev: contratos `@deployed` | Build #18: los flujos `flows_*`, `smoke` y los contratos `deployed_*` corrieron contra dev y pasaron (pestaña Tests) |
 
-![Figura 25. Resultados JUnit del build #18 (236 pruebas).](capturas/e1-6-jenkins-main-tests.png)
+![Resultados JUnit del build #18](capturas/e1-6-jenkins-main-tests.png)
 
-*Figura 25. Resultados JUnit del build #18 (236 pruebas).*
+*Figura 28. Resultados JUnit del build #18 (236 pruebas).*
 
-![Figura 26. Reporte JaCoCo del build #18.](capturas/e1-6-jenkins-main-jacoco.png)
+![Reporte JaCoCo del build #18](capturas/e1-6-jenkins-main-jacoco.png)
 
-*Figura 26. Reporte JaCoCo del build #18.*
+*Figura 29. Reporte JaCoCo del build #18.*
 
-![Figura 27. Último build de `main` al corte.](capturas/e1-6-jenkins-main-last-build.png)
+![Último build de main al corte](capturas/e1-6-jenkins-main-last-build.png)
 
-*Figura 27. Último build de `main` al corte.*
+*Figura 30. Último build de `main` al corte.*
 
-> **Captura pendiente:** `capturas/e1-6-playwright-report.png`. Artefacto e2e/reports/html/index.html de un build verde, mostrando los 3 flujos.
+> **Captura pendiente:** `capturas/e1-6-playwright-report.png`. Artefacto `e2e/reports/html/index.html` de un build verde, mostrando los 3 flujos.
 >
-> *Figura 28. Reporte HTML de Playwright.*
+> *Figura 31. Reporte HTML de Playwright.*
 
 ## 8. E1.7 Change management y release notes
 
@@ -270,18 +277,17 @@ Las decisiones quedan registradas en `reports/ci/promotion-stage.json` (PROMOTED
 
 - **README operativo** (`README.md`): estructura del repositorio, URLs de ambientes y herramientas, matriz de puertos, reproducción paso a paso (bootstrap de CI y ambientes, configuración de Jenkins y primera ejecución), operación del pipeline, aprobación, rollback, pruebas e índice de documentos.
 - **Diagramas** en `docs/arquitectura/`: arquitectura de microservicios y de despliegue en la nube (`ARQUITECTURA_P1.md`) y flujo del pipeline con sus 20 etapas (`PIPELINE_CICD.md`). Son SVG versionados, editables como texto y renderizados por GitHub.
-- **Bitácora de IAG** (`IAG_REGISTRO.md`): declaración de Nivel 3, prompts con su contenido propio y la verificación hecha, y reflexión crítica.
-- **Este informe**: `docs/informe/informe-parte1.html`, compilado a PDF con `node docs/informe/scripts/build-pdf.mjs` y a Markdown (`INFORME_PARTE1.md`) con `python docs/informe/scripts/build-md.py`. Las capturas de Jenkins y Nexus se regeneran con `capture-evidence.mjs`, usando un API token de Jenkins.
+- **Bitácora de IAG** (`docs/BITACORA_IAG_EQUIPO.md`): declaración de Nivel 3, usos de la IA con sus prompts, organización del equipo y responsabilidad sobre lo integrado.
+- **Este informe**: `docs/informe/INFORME_PARTE1.md`, en Markdown, que GitHub muestra directamente con sus figuras. Las capturas viven en `docs/informe/capturas/`; las de Jenkins y Nexus se regeneran con `capture-evidence.mjs`, usando un API token de Jenkins.
 
 ## 10. Brechas y plan de acción
 
-Desde la versión anterior de este informe se cerraron cinco brechas: SonarQube con Quality Gate bloqueante (US-10), la prueba de integración entre servicios (US-16), la autenticación de Jenkins y la configuración de los aprobadores de prod (US-31), y la documentación de los sprints 0 y 1 (US-01, US-03).
+Desde la versión anterior de este informe se cerraron seis brechas: SonarQube con Quality Gate bloqueante (US-10), la prueba de integración entre servicios (US-16), la autenticación de Jenkins y la configuración de los aprobadores de prod (US-31), la evidencia de un release a prod aprobado (build #20) y la documentación de los sprints 0 y 1 (US-01, US-03).
 
 | Brecha | Acción | Entregable |
 |---|---|---|
 | Tag de release en GitHub | Invocar `git-tag-release.sh --push` con la credencial `github-credentials` y leer los tags del remoto antes de calcular la versión | E1.5, E1.7 |
 | Rollback desde el pipeline | Registrar las versiones desplegadas (`markDeployed` / `markStable`) y agregar la etapa `Rollback` con `ROLLBACK_TARGET_VERSION` (US-14 §3.2) | E1.5 |
-| Evidencia de un release a prod aprobado | Ejecutar `main` hasta `Verify prod health` con la aprobación de `jrubio` o `jpordonez` y capturarla | E1.5 |
 | Espacio en disco del servidor de CI (ya se llenó) | Limpieza periódica (`docker builder prune` por cron, *cleanup policy* de Nexus) o ampliar el volumen EBS | E1.2, E1.4 |
 
 ## Anexo A. Resultados de las validaciones (11 de noviembre de 2026)
@@ -304,44 +310,49 @@ Se ejecutaron en una estación del equipo (Windows 11 con Git Bash) sobre la ram
 
 Jenkins real, build #18 de `main` (`ab2aa2a`, 6 min 5 s): SUCCESS. SemVer 0.2.0, 236 pruebas, JaCoCo 94 %, publicación de las 9 imágenes en Nexus, despliegue y healthchecks en dev, E2E contra dev, promoción y healthchecks en stage (`PROMOTED`), prod omitido (`NOT_CONFIGURED`) y notificación en Discord (HTTP 204). Las imágenes 0.1.0 a 0.3.0 están en `circleguard-docker` (consultado en Nexus).
 
+Jenkins real, build #20 de `main` (`63c29c2`, 14 min 6 s con la espera de la aprobación): SUCCESS. SemVer 0.3.0, promoción a stage (`PROMOTED`), aprobación de prod por `jpordonez`, despliegue y healthchecks en prod `SUCCESS` y notificación en Discord.
+
 Seguridad en un Jenkins 2.580.2 real con la configuración de US-31: 34 verificaciones (anónimo sin acceso, webhooks sin sesión, permisos por cuenta, contraseñas fuera del entorno de los builds y aprobación de prod solo por los aprobadores), más la actualización desde un Jenkins sin seguridad conservando los jobs.
 
 ## Anexo B. Resumen del uso de IA generativa
 
-El equipo declara **Nivel 3: Colaboración con IAG**. El anexo completo es `IAG_REGISTRO.md`, en la raíz del repositorio. Contiene:
+El equipo declara **Nivel 3: Colaboración con IAG**. La bitácora completa es [`docs/BITACORA_IAG_EQUIPO.md`](../BITACORA_IAG_EQUIPO.md). Contiene:
 
-1. La declaración y las reglas de uso: nunca compartimos secretos, y cada commit, *push* y PR lo hace un integrante.
-2. El registro de prompts por historia (US-08, US-10, US-13, US-14, US-19, US-31 y US-33), con el contenido propio entregado a la IA, el prompt, el resultado y la verificación.
-3. La reflexión crítica. Ejemplos: una restricción de aprobación que no protegía contra administradores y que solo apareció al probar en un Jenkins real, las limitaciones del *sandbox*, un análisis hecho sobre un estado desactualizado, y la decisión de declarar las brechas en lugar de ocultarlas.
+1. El propósito: analizar el enunciado y las historias, explorar alternativas de implementación, apoyar la escritura de pruebas, investigar fallos del pipeline y apoyar la documentación.
+2. Los usos, con sus prompts: análisis del alcance y coordinación del equipo; implementación de pruebas y solución de problemas, incluidos los errores del código base que encontramos (la expiración del QR en milisegundos, el rol `GATE_STAFF` sin `gate:scan` y el cuestionario que enviaba respuestas vacías); y documentación y trazabilidad.
+3. La organización del equipo: ramas por historia, Conventional Commits y PR revisados por otro integrante. Cada commit, *push* y PR lo hizo un integrante.
+4. La responsabilidad: la IA fue una herramienta de apoyo. El equipo revisó las sugerencias, decidió qué integrar, verificó los resultados y puede explicar cada decisión técnica.
 
 ## Anexo C. Lista de capturas
 
-Las capturas de Jenkins y Nexus las genera `node docs/informe/scripts/capture-evidence.mjs`, con `JENKINS_USER` y `JENKINS_API_TOKEN` porque Jenkins exige sesión. Las de Jira, GitHub, AWS, SonarQube y Discord se guardan a mano en `docs/informe/capturas/` con el nombre indicado. Después se recompila el PDF. Detalle: `docs/informe/capturas/README.md`.
+Las capturas de Jenkins y Nexus las genera `node docs/informe/scripts/capture-evidence.mjs`, con `JENKINS_USER` y `JENKINS_API_TOKEN` porque Jenkins exige sesión. Las de Jira, GitHub, AWS, SonarQube y Discord se guardan a mano en `docs/informe/capturas/` con el nombre indicado. Al agregar una captura pendiente, se reemplaza su recuadro en este informe por la imagen. Detalle: `docs/informe/capturas/README.md`.
 
 | Archivo | Figura | Estado |
 |---|---|---|
-| `e1-1-github-branch-protection.png` | Regla de protección de `main`. | **Pendiente** |
-| `e1-1-github-pull-requests.png` | Pull Requests revisados por pares (#1 a #26). | **Pendiente** |
-| `e1-1-jira-board.png` | Tablero y backlog en Jira. | Incluida |
-| `e1-1-jira-sprints.png` | Sprint 0 y Sprint 1 (planeación, review y retrospectiva). | **Pendiente** |
-| `e1-2-aws-ec2-instances.png` | Las cuatro instancias EC2 en us-east-2. | **Pendiente** |
-| `e1-2-bootstrap-second-run.png` | Segunda ejecución idempotente del bootstrap. | **Pendiente** |
-| `e1-2-jenkins-dashboard.png` | Jenkins en 52.14.6.11:8080 con el job Multibranch. | Incluida |
-| `e1-2-nexus-home.png` | Nexus Repository OSS 3.70.1 en 52.14.6.11:8081. | Incluida |
-| `e1-3-nexus-auth-service-tags.png` | Tags SemVer de `auth-service` publicados en Nexus. | Incluida |
-| `e1-3-nexus-docker-images.png` | Imágenes publicadas en el repositorio `circleguard-docker`. | Incluida |
-| `e1-4-github-webhook.png` | Webhook de GitHub con entregas recientes. | **Pendiente** |
-| `e1-4-jenkins-main-build.png` | Build #18 de `main` (SUCCESS). | Incluida |
-| `e1-4-jenkins-main-job.png` | Job `main`: tendencia de pruebas y Stage View. | Incluida |
-| `e1-4-jenkins-multibranch-branches.png` | Ramas descubiertas por el job Multibranch. | Incluida |
-| `e1-4-jenkins-multibranch-prs.png` | Pull Requests construidos por Jenkins. | Incluida |
-| `e1-4-sonarqube-quality-gate.png` | Quality gate de SonarQube. | **Pendiente** |
-| `e1-5-discord-notification.png` | Notificación del pipeline en el canal `#pipeline` de Discord. | Incluida |
-| `e1-5-git-tags.png` | Tags de release en Git. | **Pendiente** |
-| `e1-5-jenkins-main-cd-stages.png` | Etapas de entrega continua dev → stage en `main`. | **Pendiente** |
-| `e1-5-jenkins-main-console-semver.png` | Cálculo SemVer en el build #18: 0.2.0. | Incluida |
-| `e1-5-jenkins-prod-approval-input.png` | Aprobación manual del release a prod. | **Pendiente** |
-| `e1-6-jenkins-main-jacoco.png` | Reporte JaCoCo del build #18. | Incluida |
-| `e1-6-jenkins-main-last-build.png` | Último build de `main` al corte. | Incluida |
-| `e1-6-jenkins-main-tests.png` | Resultados JUnit del build #18 (236 pruebas). | Incluida |
-| `e1-6-playwright-report.png` | Reporte HTML de Playwright. | **Pendiente** |
+| `e1-1-jira-board.png` | 2. Tablero y backlog en Jira | Incluida |
+| `e1-1-github-branch-protection.png` | 3. Regla de protección de `main` | **Pendiente** |
+| `e1-1-github-pull-requests.png` | 4. Pull Requests fusionados | Incluida |
+| `e1-1-github-pull-request-detail.png` | 5. Detalle de un PR | Incluida |
+| `e1-2-jenkins-dashboard.png` | 7. Jenkins con el job Multibranch | Incluida |
+| `e1-2-nexus-home.png` | 8. Nexus Repository OSS | Incluida |
+| `e1-2-aws-ec2-instances.png` | 9. Las cuatro instancias EC2 | **Pendiente** |
+| `e1-3-nexus-docker-images.png` | 10. Imágenes en `circleguard-docker` | Incluida |
+| `e1-3-nexus-auth-service-tags.png` | 11. Tags SemVer de `auth-service` | Incluida |
+| `e1-4-jenkins-multibranch-branches.png` | 14. Ramas del job Multibranch | Incluida |
+| `e1-4-jenkins-multibranch-prs.png` | 15. Pull Requests construidos por Jenkins | Incluida |
+| `e1-4-jenkins-main-job.png` | 16. Job `main` y Stage View | Incluida |
+| `e1-4-jenkins-main-build.png` | 17. Build #18 de `main` | Incluida |
+| `e1-4-github-webhook.png` | 18. Webhook de GitHub | **Pendiente** |
+| `e1-4-sonarqube-quality-gate.png` | 19. Quality Gate de SonarQube | **Pendiente** |
+| `e1-5-jenkins-main-console-semver.png` | 20. Cálculo SemVer del build #18 | Incluida |
+| `e1-5-git-tags.png` | 21. Tags de release en Git | **Pendiente** |
+| `e1-5-jenkins-main-cd-stages.png` | 22. Etapas dev → stage en `main` | **Pendiente** |
+| `e1-5-discord-notification.png` | 23. Notificación en Discord | Incluida |
+| `e1-5-jenkins-prod-approval-stage.png` | 24. Build #20 en `Approve prod release` | Incluida |
+| `e1-5-jenkins-prod-approval-input.png` | 25. Formulario de aprobación de prod | Incluida |
+| `e1-5-jenkins-prod-approval-console.png` | 26. Aprobación registrada en la consola | Incluida |
+| `e1-5-discord-prod-release.png` | 27. Notificación del release a prod | Incluida |
+| `e1-6-jenkins-main-tests.png` | 28. Resultados JUnit del build #18 | Incluida |
+| `e1-6-jenkins-main-jacoco.png` | 29. Reporte JaCoCo del build #18 | Incluida |
+| `e1-6-jenkins-main-last-build.png` | 30. Último build de `main` | Incluida |
+| `e1-6-playwright-report.png` | 31. Reporte HTML de Playwright | **Pendiente** |

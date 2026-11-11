@@ -1,12 +1,12 @@
 # Capturas del informe de la Parte 1
 
-El informe ([`../informe-parte1.html`](../informe-parte1.html)) busca cada figura en esta carpeta por su nombre. Si un archivo falta, el PDF muestra un recuadro rojo **«Captura pendiente»** con la instrucción para tomarla, así que nunca se entrega una figura vacía sin aviso.
+El informe ([`../INFORME_PARTE1.md`](../INFORME_PARTE1.md)) enlaza cada figura de esta carpeta por su nombre. Mientras una captura falta, el informe muestra en su lugar un recuadro **«Captura pendiente»** con la instrucción para tomarla, así que nunca se entrega una figura vacía sin aviso.
 
 Reglas:
 
 - Formato PNG, de unos 1440 × 900 px, con la URL o el *breadcrumb* visible cuando sea posible.
 - **Sin secretos.** No captures páginas de credenciales, `.env`, tokens ni la llave `.pem`. Revisa que la consola de Jenkins no muestre valores sensibles.
-- Después de agregar o reemplazar capturas, recompila con `node docs/informe/scripts/build-pdf.mjs`.
+- Al agregar una captura pendiente, reemplaza su recuadro en `INFORME_PARTE1.md` por la imagen y márcala como «Incluida» en el anexo C.
 
 ## Automáticas (Jenkins y Nexus)
 
@@ -40,15 +40,17 @@ unset JENKINS_API_TOKEN
 | Archivo | Qué capturar | Responsable sugerido |
 |---|---|---|
 | `e1-1-jira-board.png` | Jira → SuperPoderosos → Backlog o tablero: historias, puntos y épicas | Quien administra Jira |
-| `e1-1-jira-sprints.png` | Sprints 0 y 1 en Jira: objetivo e historias cerradas (las actas están en `docs/agil/SPRINT_0_Y_1_CEREMONIAS.md`) | Scrum master |
 | `e1-1-github-branch-protection.png` | GitHub → Settings → Branches → regla de `main` | Dueño del repositorio |
 | `e1-1-github-pull-requests.png` | GitHub → Pull requests → Closed, con revisores y checks | Cualquiera |
+| `e1-1-github-pull-request-detail.png` | Detalle de un PR: trazabilidad con Jira, resumen y revisor | Cualquiera |
 | `e1-2-aws-ec2-instances.png` | Consola de AWS → EC2 → Instances (us-east-2): las 4 instancias | Dueño de la cuenta de AWS |
-| `e1-2-bootstrap-second-run.png` | Terminal: segunda corrida de `bootstrap-env.sh` o `bootstrap-ci.sh` en la nube | Quien aprovisionó |
 | `e1-4-github-webhook.png` | GitHub → Settings → Webhooks → `/github-webhook/` → Recent Deliveries (200) | Dueño del repositorio |
 | `e1-4-sonarqube-quality-gate.png` | SonarQube → *Projects → CircleGuard Monorepo*: panel del Quality Gate y cobertura | Responsable de US-10 |
 | `e1-5-git-tags.png` | GitHub → Tags (`v0.1.x`) | Cualquiera |
 | `e1-5-jenkins-main-cd-stages.png` | Stage View del build #18 de `main` con `Deploy to dev` → `Verify stage health` en verde | Cualquiera |
 | `e1-5-discord-notification.png` | Discord → servidor **CircleGuard CI** → canal `#pipeline`: mensaje de un build (rama, commit, versión, etapa, log) | Quien administra el servidor de Discord |
-| `e1-5-jenkins-prod-approval-input.png` | Build detenido en `Approve prod release` → *Input requested* | `jrubio` o `jpordonez` (aprobadores de `CG_PROD_APPROVERS`) |
+| `e1-5-jenkins-prod-approval-stage.png` | *Pipeline Steps* del build con `Verify stage health` en verde y `Approve prod release` en espera | `jrubio` o `jpordonez` (aprobadores de `CG_PROD_APPROVERS`) |
+| `e1-5-jenkins-prod-approval-input.png` | Build detenido en `Approve prod release` → *Paused for Input*, con decisión, versión y comentario | `jrubio` o `jpordonez` |
+| `e1-5-jenkins-prod-approval-console.png` | Consola del build: `Approved by …` y la línea `[US-31] APPROVED` | `jrubio` o `jpordonez` |
+| `e1-5-discord-prod-release.png` | Discord → `#pipeline`: mensaje del build con `PROD APPROVED` | Quien administra el servidor de Discord |
 | `e1-6-playwright-report.png` | Artefacto `e2e/reports/html/index.html` de un build verde | Responsable de US-34 o US-17 |
