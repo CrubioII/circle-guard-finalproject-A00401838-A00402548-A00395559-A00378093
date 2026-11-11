@@ -42,7 +42,7 @@ try {
     rollbackDeployment.markStable(env: 'stage', version: semver)
 } catch (err) {
     rollbackDeployment(env: 'stage', host: env.STAGE_HOST)   // vuelve a la última versión estable
-    throw err                           // el build queda en FAILURE y se notifica
+    throw err                           // el build queda en FAILURE y se notifica en Discord (NOTIFICACIONES_US14.md)
 }
 ```
 
