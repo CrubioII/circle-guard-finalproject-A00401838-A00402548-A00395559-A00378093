@@ -1,0 +1,10 @@
+Orquesta la generación y publicación de reportes de cobertura JaCoCo, el análisis estático con SonarQube y la compuerta bloqueante `waitForQualityGate(abortPipeline: true)` para el monorepo de CircleGuard (`US-10` / `SCRUM-22`).
+
+Funciones principales:
+
+- `sonarQualityGate(config)`: devuelve la configuración de SonarQube, los 5 servicios núcleo (`CORE_BACKEND_SERVICES`), el umbral mínimo de cobertura (`60.0%`) y las rutas de los reportes XML de JaCoCo.
+- `sonarQualityGate.resolveJacocoXmlReportPaths(services)`: construye las rutas `services/<svc>/build/reports/jacoco/test/jacocoTestReport.xml`.
+- `sonarQualityGate.buildSonarGradleCommand(services, options)`: genera el comando `./gradlew sonar` con `-Dsonar.coverage.jacoco.xmlReportPaths=...` y `-Dsonar.projectKey=...`.
+- `sonarQualityGate.parseJacocoXmlCounters(xmlContent)` y `sonarQualityGate.collectServiceCoverage(services, workspaceRoot)`: leen los contadores `LINE` e `INSTRUCTION` de los reportes XML de JaCoCo.
+- `sonarQualityGate.evaluateQualityGate(config)` y `sonarQualityGate.enforceQualityGate(config)`: ejecutan `waitForQualityGate(abortPipeline: true)` y detienen el pipeline si el Quality Gate falla o si la cobertura de los servicios núcleo es menor al 60%.
+- `sonarQualityGate.publishJacocoReports(config)`: publica los reportes de cobertura JaCoCo en la interfaz de Jenkins.
