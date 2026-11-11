@@ -134,3 +134,15 @@ val validateComposeEnvironments by tasks.registering(Exec::class) {
         ?: "bash"
     commandLine(bashExe, "deploy/compose/validate-compose.sh")
 }
+
+val validateJenkinsSecurity by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Valida la seguridad de Jenkins: cuentas, matriz de permisos, aprobadores de prod y secretos (US-31)"
+    workingDir = projectDir
+    val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+    val bashExe = System.getenv("BASH_EXE")
+        ?: listOf("C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe")
+            .firstOrNull { isWindows && file(it).exists() }
+        ?: "bash"
+    commandLine(bashExe, "jenkins/test/validateJenkinsSecurity.sh")
+}

@@ -49,20 +49,29 @@ Así aparece en la pestaña **Tests** del build como `circleguard.prod.health`, 
 
 ## Configuración (variables globales de Jenkins)
 
-| Variable | Valor por defecto | Descripción |
+Las variables se definen en `infra/bootstrap/.env.ci` del servidor de CI. `docker-compose.ci.yml` las pasa al contenedor y `jenkins/ci/jenkins.yaml` las publica como variables globales. **No se configuran en la UI**: JCasC reemplaza `globalNodeProperties` en cada arranque, así que un valor escrito a mano se perdería.
+
+| Variable | Valor en la plantilla | Descripción |
 |---|---|---|
-| `CG_PROD_APPROVERS` | *(vacío)* | **IDs de usuario** de Jenkins separados por comas, por ejemplo `ana,luis`. No se aceptan grupos. Mientras esté vacío, el release a prod se omite |
+| `CG_PROD_APPROVERS` | `jrubio,jpordonez` | **IDs de usuario** de Jenkins separados por comas. Deben ser cuentas de `jenkins.yaml`. No se aceptan grupos. Si está vacía, el release a prod se omite (`NOT_CONFIGURED`) |
 | `CG_PROD_APPROVAL_TIMEOUT_MIN` | `60` | Minutos que el build espera la decisión |
 | `CG_PROD_HOST` | `3.19.74.9` | Nodo prod de US-05 |
 
+Para cambiar los aprobadores, edita `CG_PROD_APPROVERS` y ejecuta `docker compose -f docker-compose.ci.yml --env-file infra/bootstrap/.env.ci up -d jenkins`. Las cuentas y sus permisos están en [`docs/operaciones/JENKINS_SEGURIDAD_US31.md`](../operaciones/JENKINS_SEGURIDAD_US31.md).
+
 Credenciales: las mismas de US-13 (`circleguard-env-ssh` y `nexus-credentials`).
 
-### Importante: Jenkins permite a los administradores aprobar cualquier `input`
+### Dos capas de protección
 
-El parámetro `submitter` de `input` **no aplica a los usuarios con *Overall/Administer***. Con la estrategia `loggedInUsersCanDoAnything`, que es la habitual cuando no se instala un plugin de permisos, **todo usuario autenticado es administrador**. Por eso hay dos capas de protección:
+El parámetro `submitter` de `input` **no aplica a los usuarios con *Overall/Administer***. Por eso hay dos capas:
 
-1. **Pipeline (siempre activa).** `prodApprovalDecision` solo acepta respuestas de usuarios incluidos en `CG_PROD_APPROVERS`. Si responde otro, la respuesta queda `INVALID`, el intento se registra en el log y se vuelve a pedir.
-2. **Jenkins (recomendada).** Con `matrix-auth` (o `role-strategy`), los aprobadores tienen `Overall/Read`, `Job/Read` y `Job/Build`, sin `Administer`. En ese caso Jenkins mismo rechaza el envío de un usuario no listado.
+1. **Jenkins (`matrix-auth`, `jenkins/ci/jenkins.yaml`).**
+   - Solo la cuenta `admin` administra.
+   - Los integrantes tienen `Overall/Read`, `Job/Read`, `Job/Build`, `Job/Cancel` y `Run/Update`, así que Jenkins mismo rechaza que apruebe alguien fuera de `submitter`.
+   - `docente` solo lee y el usuario anónimo no tiene ningún permiso.
+2. **Pipeline (siempre activa).** `prodApprovalDecision` solo acepta respuestas de usuarios incluidos en `CG_PROD_APPROVERS`, también si quien responde es `admin`. Si responde otro, la respuesta queda `INVALID`, el intento se registra en el log y se vuelve a pedir.
+
+Con `Job/Cancel`, cualquier integrante puede **abortar** la espera, igual que detener el build. Prod no se despliega y el build queda `ABORTED`.
 
 ### Abort sin autor
 
@@ -82,3 +91,5 @@ Los timeouts se detectan por el tiempo esperado, sin necesitar aprobaciones de *
 | `./gradlew validateJenkinsMultibranchPipeline` | Casos 20 a 22: plan (solo `main`, después de stage), reglas de decisión y cableado del Jenkinsfile. El caso 17 solo admite `--env prod` después de la compuerta |
 | `bash deploy/scripts/test-deploy-scripts.sh` | Sección 6: el conversor de salud a JUnit (sano, con fallo, escape XML y nodo sin respuesta) |
 | **Jenkins 2.580.2 real** (contenedor desechable, job en *sandbox*, pipeline extraído textualmente de este Jenkinsfile) | `eve` no listada aprueba → `INVALID`, se vuelve a pedir y `ana` aprueba → `APPROVED por ana`. `luis` rechaza → `REJECTED por luis`. Sin comentario → se vuelve a pedir. *Abort* → `ABORTED`. Sin respuesta durante 1 min → `TIMEOUT`. Sin aprobadores → `NOT_CONFIGURED`. Con `matrix-auth`, Jenkins rechaza a `eve` (HTTP 400) y el `input` sigue pendiente |
+| `./gradlew validateJenkinsSecurity` | 32 verificaciones de cuentas, permisos, aprobadores y secretos (ver `JENKINS_SEGURIDAD_US31.md`) |
+| **Jenkins 2.580.2 real con la configuración de seguridad de este repositorio** | Con `CG_PROD_APPROVERS=jrubio,jpordonez`: `ecuellar` y `docente` no pueden aprobar y el `input` sigue pendiente; `jrubio` aprueba y queda `APPROVER=jrubio`. 34 verificaciones en total |
