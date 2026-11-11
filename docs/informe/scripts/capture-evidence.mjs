@@ -1,17 +1,19 @@
 // =============================================================================
 // CircleGuard — Captura automática de evidencias para el informe de la Parte 1 (US-19)
 //
-// Toma capturas PNG de las páginas de Jenkins y Nexus que no requieren credenciales
-// y las guarda en docs/informe/capturas/ con el nombre que espera el informe.
-// Las capturas que requieren sesión (Jira, GitHub privado, SonarQube) se toman a mano:
+// Toma capturas PNG de las páginas de Jenkins y Nexus y las guarda en docs/informe/capturas/
+// con el nombre que espera el informe. Jenkins exige sesión (US-31): el script usa el API token
+// de una cuenta (por ejemplo, docente) y lo envía solo a Jenkins, nunca a Nexus.
+// Las capturas de Jira, GitHub, AWS, SonarQube y Discord se toman a mano:
 // ver docs/informe/capturas/README.md.
 //
 // Uso (desde la raíz del repo; reutiliza el Playwright instalado en e2e/):
 //   cd e2e && npm ci && cd ..
-//   node docs/informe/scripts/capture-evidence.mjs
-//   JENKINS_URL=http://52.14.6.11:8080 NEXUS_URL=http://52.14.6.11:8081 MAIN_BUILD=11 \
-//     node docs/informe/scripts/capture-evidence.mjs
+//   read -rsp "API token de Jenkins: " JENKINS_API_TOKEN; export JENKINS_API_TOKEN
+//   JENKINS_USER=docente MAIN_BUILD=18 node docs/informe/scripts/capture-evidence.mjs
+//   (opcionales: JENKINS_URL=http://52.14.6.11:8080 NEXUS_URL=http://52.14.6.11:8081)
 //
+// El token se crea en Jenkins: <usuario> -> Security -> API Token. Nunca se escribe en el repo.
 // Nunca captura páginas de credenciales ni de configuración.
 // =============================================================================
 import { createRequire } from 'node:module';
@@ -47,12 +49,31 @@ const shots = [
   ['e1-6-jenkins-main-last-build.png', `${JOB}/job/main/lastBuild/`, 2500],
 ];
 
+const JENKINS_USER = process.env.JENKINS_USER || '';
+const JENKINS_API_TOKEN = process.env.JENKINS_API_TOKEN || '';
+if (!JENKINS_USER || !JENKINS_API_TOKEN) {
+  console.log('[WARN] Sin JENKINS_USER/JENKINS_API_TOKEN: Jenkins exige sesión y sus capturas fallarán.');
+}
+
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+const viewport = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 };
+// Contextos separados: la cabecera Authorization solo viaja a Jenkins.
+const basicAuth = Buffer.from(`${JENKINS_USER}:${JENKINS_API_TOKEN}`).toString('base64');
+const jenkinsContext = await browser.newContext({
+  ...viewport,
+  ...(JENKINS_USER && JENKINS_API_TOKEN ? { extraHTTPHeaders: { Authorization: `Basic ${basicAuth}` } } : {}),
+});
+const otherContext = await browser.newContext(viewport);
+const jenkinsPage = await jenkinsContext.newPage();
+const otherPage = await otherContext.newPage();
 let ok = 0;
 for (const [file, url, wait, scrollToText, clip] of shots) {
+  const page = url.startsWith(JENKINS) ? jenkinsPage : otherPage;
   try {
     const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    if (page === jenkinsPage && (res?.status() === 403 || page.url().includes('/login'))) {
+      throw new Error('Jenkins pidió iniciar sesión: revisa JENKINS_USER y JENKINS_API_TOKEN');
+    }
     await page.waitForTimeout(wait);
     if (scrollToText) {
       const target = page.getByText(scrollToText).first();

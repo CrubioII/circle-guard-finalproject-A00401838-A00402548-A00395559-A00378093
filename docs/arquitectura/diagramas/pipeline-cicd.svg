@@ -32,77 +32,90 @@
     <text x="766" y="148" font-size="11" fill="#6B7280">Las etapas Backend/Web solo corren si cambió services/ o mobile/ (o FORCE_FULL_BUILD).</text>
   </g>
 
-  <line x1="117" y1="146" x2="117" y2="198" stroke="#374151" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="104" y1="146" x2="104" y2="198" stroke="#374151" stroke-width="1.6" marker-end="url(#a)"/>
 
   <!-- ===== Carril 1 ===== -->
   <rect x="30" y="170" width="1440" height="148" rx="10" fill="#F5F6FE" stroke="#5454E9" stroke-width="1.2"/>
   <text x="44" y="190" font-size="13" font-weight="bold" fill="#5454E9">1 · Integración continua (todas las ramas y PR)</text>
-  <g font-size="11.5" fill="#374151" text-anchor="middle">
-    <rect x="40" y="200" width="155" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
-    <text x="117" y="222" font-size="13" font-weight="bold" fill="#1A1A1A">Checkout &amp;</text>
-    <text x="117" y="238" font-size="13" font-weight="bold" fill="#1A1A1A">Context</text>
-    <text x="117" y="260">checkout scm</text>
-    <text x="117" y="276">estado PENDING</text>
-    <text x="117" y="292">en GitHub</text>
+  <g font-size="11" fill="#374151" text-anchor="middle">
+    <rect x="40" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="104" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Checkout &amp;</text>
+    <text x="104" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Context</text>
+    <text x="104" y="260">checkout scm</text>
+    <text x="104" y="276">estado PENDING</text>
+    <text x="104" y="292">en GitHub</text>
 
-    <rect x="215" y="200" width="155" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
-    <text x="292" y="222" font-size="13" font-weight="bold" fill="#1A1A1A">Detect Changed</text>
-    <text x="292" y="238" font-size="13" font-weight="bold" fill="#1A1A1A">Components</text>
-    <text x="292" y="260">detectChanged-</text>
-    <text x="292" y="276">Services + plan</text>
-    <text x="292" y="292">(US-09, US-30)</text>
+    <rect x="180" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="244" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Detect Changed</text>
+    <text x="244" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Components</text>
+    <text x="244" y="260">detectChanged-</text>
+    <text x="244" y="276">Services + plan</text>
+    <text x="244" y="292">(US-09, US-30)</text>
 
-    <rect x="390" y="200" width="155" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
-    <text x="467" y="222" font-size="13" font-weight="bold" fill="#1A1A1A">Calculate</text>
-    <text x="467" y="238" font-size="13" font-weight="bold" fill="#1A1A1A">SemVer</text>
-    <text x="467" y="260">calculate-semver.sh</text>
-    <text x="467" y="276">desde Conventional</text>
-    <text x="467" y="292">Commits (US-12)</text>
+    <rect x="320" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="384" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Calculate</text>
+    <text x="384" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">SemVer</text>
+    <text x="384" y="260">calculate-semver.sh</text>
+    <text x="384" y="276">desde Conventional</text>
+    <text x="384" y="292">Commits (US-12)</text>
 
-    <rect x="565" y="200" width="155" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
-    <text x="642" y="222" font-size="13" font-weight="bold" fill="#1A1A1A">Compile &amp; Test</text>
-    <text x="642" y="238" font-size="13" font-weight="bold" fill="#1A1A1A">Backend</text>
-    <text x="642" y="260">Gradle solo en los</text>
-    <text x="642" y="276">servicios afectados</text>
-    <text x="642" y="292">+ JaCoCo + JUnit</text>
+    <rect x="460" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="524" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Compile &amp; Test</text>
+    <text x="524" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Backend</text>
+    <text x="524" y="260">servicios afectados</text>
+    <text x="524" y="276">JaCoCo + JUnit</text>
+    <text x="524" y="292">integración US-16</text>
 
-    <rect x="740" y="200" width="155" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
-    <text x="817" y="222" font-size="13" font-weight="bold" fill="#1A1A1A">Coverage Gate</text>
-    <text x="817" y="238" font-size="13" font-weight="bold" fill="#1A1A1A">≥ 60 % líneas</text>
-    <text x="817" y="260">auth, identity,</text>
-    <text x="817" y="276">promotion, form,</text>
-    <text x="817" y="292">gateway (US-31/32)</text>
+    <rect x="600" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="664" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Coverage Gate</text>
+    <text x="664" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">≥ 60 % líneas</text>
+    <text x="664" y="260">auth, identity,</text>
+    <text x="664" y="276">promotion, form,</text>
+    <text x="664" y="292">gateway (US-31/32)</text>
 
-    <rect x="915" y="200" width="155" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
-    <text x="992" y="222" font-size="13" font-weight="bold" fill="#1A1A1A">Compile &amp; Test</text>
-    <text x="992" y="238" font-size="13" font-weight="bold" fill="#1A1A1A">Web</text>
-    <text x="992" y="260">npm ci</text>
-    <text x="992" y="276">npm run test</text>
-    <text x="992" y="292">(mobile/)</text>
+    <rect x="740" y="200" width="128" height="100" rx="8" fill="#FFF8E6" stroke="#B7791F" stroke-width="1.6"/>
+    <text x="804" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">SonarQube</text>
+    <text x="804" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Analysis</text>
+    <text x="804" y="260">withSonarQubeEnv</text>
+    <text x="804" y="276">./gradlew sonar</text>
+    <text x="804" y="292">sonar-token (US-10)</text>
 
-    <rect x="1090" y="200" width="155" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
-    <text x="1167" y="222" font-size="13" font-weight="bold" fill="#1A1A1A">E2E Playwright</text>
-    <text x="1167" y="238" font-size="13" font-weight="bold" fill="#1A1A1A">(APIs simuladas)</text>
-    <text x="1167" y="260">login, cuestionario</text>
-    <text x="1167" y="276">y validación QR</text>
-    <text x="1167" y="292">JUnit + HTML (US-34)</text>
+    <rect x="880" y="200" width="128" height="100" rx="8" fill="#FFF8E6" stroke="#B7791F" stroke-width="1.6"/>
+    <text x="944" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Quality Gate</text>
+    <text x="944" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">(bloqueante)</text>
+    <text x="944" y="260">waitForQualityGate</text>
+    <text x="944" y="276">abortPipeline: true</text>
+    <text x="944" y="292">cobertura ≥ 60 %</text>
 
-    <rect x="1265" y="200" width="155" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
-    <text x="1342" y="222" font-size="13" font-weight="bold" fill="#1A1A1A">Validate</text>
-    <text x="1342" y="238" font-size="13" font-weight="bold" fill="#1A1A1A">Compose</text>
-    <text x="1342" y="260">dev/stage/prod:</text>
-    <text x="1342" y="276">SemVer, sin latest,</text>
-    <text x="1342" y="292">healthchecks (US-08)</text>
+    <rect x="1020" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="1084" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Compile &amp; Test</text>
+    <text x="1084" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Web</text>
+    <text x="1084" y="260">npm ci</text>
+    <text x="1084" y="276">npm run test</text>
+    <text x="1084" y="292">(mobile/)</text>
+
+    <rect x="1160" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="1224" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">E2E Playwright</text>
+    <text x="1224" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">(APIs simuladas)</text>
+    <text x="1224" y="260">login, cuestionario</text>
+    <text x="1224" y="276">y validación QR</text>
+    <text x="1224" y="292">JUnit + HTML (US-34)</text>
+
+    <rect x="1300" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="1364" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Validate</text>
+    <text x="1364" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Compose</text>
+    <text x="1364" y="260">dev/stage/prod:</text>
+    <text x="1364" y="276">SemVer, sin latest,</text>
+    <text x="1364" y="292">healthchecks (US-08)</text>
   </g>
   <g stroke="#374151" stroke-width="1.5" marker-end="url(#a)">
-    <line x1="195" y1="250" x2="213" y2="250"/><line x1="370" y1="250" x2="388" y2="250"/>
-    <line x1="545" y1="250" x2="563" y2="250"/><line x1="720" y1="250" x2="738" y2="250"/>
-    <line x1="895" y1="250" x2="913" y2="250"/><line x1="1070" y1="250" x2="1088" y2="250"/>
-    <line x1="1245" y1="250" x2="1263" y2="250"/>
+    <line x1="168" y1="250" x2="178" y2="250"/><line x1="308" y1="250" x2="318" y2="250"/><line x1="448" y1="250" x2="458" y2="250"/>
+    <line x1="588" y1="250" x2="598" y2="250"/><line x1="728" y1="250" x2="738" y2="250"/><line x1="868" y1="250" x2="878" y2="250"/>
+    <line x1="1008" y1="250" x2="1018" y2="250"/><line x1="1148" y1="250" x2="1158" y2="250"/><line x1="1288" y1="250" x2="1298" y2="250"/>
   </g>
 
   <!-- conector 1 -> 2 -->
-  <path d="M1342,300 L1342,330 L117,330 L117,364" stroke="#374151" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+  <path d="M1364,300 L1364,330 L117,330 L117,364" stroke="#374151" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
 
   <!-- ===== Carril 2 ===== -->
   <rect x="30" y="342" width="1440" height="126" rx="10" fill="#EFF9F3" stroke="#4CB978" stroke-width="1.2"/>
@@ -235,11 +248,11 @@
 
   <!-- Brechas -->
   <rect x="30" y="938" width="1440" height="118" rx="10" fill="#FFFFFF" stroke="#B42318" stroke-width="1.4" stroke-dasharray="8 5"/>
-  <text x="44" y="960" font-size="13" font-weight="bold" fill="#B42318">Brechas frente a E1.4 y E1.5 al 10 de noviembre de 2026 (pendientes en main)</text>
+  <text x="44" y="960" font-size="13" font-weight="bold" fill="#B42318">Brechas frente a E1.5 al 11 de noviembre de 2026 (pendientes en main)</text>
   <g font-size="12" fill="#374151">
-    <text x="44" y="982">• <tspan font-weight="bold">Análisis SonarQube con quality gate bloqueante</tspan>: el servidor existe (52.14.6.11:9000), pero la etapa (US-10) no está fusionada. Iría entre Coverage Gate y Compile &amp; Test Web.</text>
-    <text x="44" y="1002">• <tspan font-weight="bold">Tag de release</tspan>: git-tag-release.sh crea vX.Y.Z en el workspace de Jenkins, pero no lo empuja a GitHub. Prod: CG_PROD_APPROVERS vacía → NOT_CONFIGURED.</text>
-    <text x="44" y="1022">• <tspan font-weight="bold">Pruebas de integración</tspan>: hay 3 con Testcontainers (auth↔PostgreSQL, identity↔PostgreSQL, gateway↔Redis); falta una entre servicios (form → Kafka → promotion).</text>
-    <text x="44" y="1042">• <tspan font-weight="bold">Rollback</tspan>: el script existe y tiene pruebas, pero aún no hay etapa Rollback ni parámetro ROLLBACK_TARGET_VERSION en el Jenkinsfile.</text>
+    <text x="44" y="982">• <tspan font-weight="bold">Rollback desde el pipeline</tspan>: rollback.sh y rollbackDeployment existen y tienen pruebas, pero el Jenkinsfile no registra las versiones (markDeployed/markStable) ni tiene etapa Rollback.</text>
+    <text x="44" y="1002">• <tspan font-weight="bold">Tag de release</tspan>: git-tag-release.sh crea vX.Y.Z en el workspace de Jenkins, pero el pipeline no lo empuja a GitHub (--push).</text>
+    <text x="44" y="1022">• <tspan font-weight="bold">Release a prod</tspan>: la etapa está probada y CG_PROD_APPROVERS = jrubio, jpordonez; falta la evidencia de un release aprobado hasta Verify prod health.</text>
+    <text x="44" y="1042" fill="#2F7A50">✓ Cerradas: SonarQube con Quality Gate (US-10), integración form → Kafka → promotion (US-16), autenticación de Jenkins y aprobadores (US-31).</text>
   </g>
 </svg>

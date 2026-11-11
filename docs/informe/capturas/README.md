@@ -8,9 +8,17 @@ Reglas:
 - **Sin secretos.** No captures páginas de credenciales, `.env`, tokens ni la llave `.pem`. Revisa que la consola de Jenkins no muestre valores sensibles.
 - Después de agregar o reemplazar capturas, recompila con `node docs/informe/scripts/build-pdf.mjs`.
 
-## Automáticas (sin sesión)
+## Automáticas (Jenkins y Nexus)
 
-Las genera `node docs/informe/scripts/capture-evidence.mjs`. Usa `MAIN_BUILD=<n>` para elegir el build de `main`; por defecto toma el último exitoso.
+Las genera `node docs/informe/scripts/capture-evidence.mjs`. Jenkins exige sesión (US-31), así que el script necesita el API token de una cuenta; sirve la de solo lectura, `docente`. El token se crea en Jenkins, en *usuario → Security → API Token*:
+
+```bash
+read -rsp "API token de Jenkins: " JENKINS_API_TOKEN; export JENKINS_API_TOKEN
+JENKINS_USER=docente MAIN_BUILD=18 node docs/informe/scripts/capture-evidence.mjs
+unset JENKINS_API_TOKEN
+```
+
+`MAIN_BUILD=<n>` elige el build de `main`; por defecto toma el último exitoso. El token solo se envía a Jenkins.
 
 | Archivo | Página |
 |---|---|
@@ -32,15 +40,15 @@ Las genera `node docs/informe/scripts/capture-evidence.mjs`. Usa `MAIN_BUILD=<n>
 | Archivo | Qué capturar | Responsable sugerido |
 |---|---|---|
 | `e1-1-jira-board.png` | Jira → SuperPoderosos → Backlog o tablero: historias, puntos y épicas | Quien administra Jira |
-| `e1-1-jira-sprints.png` | Sprints 0 y 1: objetivo, historias cerradas, review y retrospectiva | Scrum master |
+| `e1-1-jira-sprints.png` | Sprints 0 y 1 en Jira: objetivo e historias cerradas (las actas están en `docs/agil/SPRINT_0_Y_1_CEREMONIAS.md`) | Scrum master |
 | `e1-1-github-branch-protection.png` | GitHub → Settings → Branches → regla de `main` | Dueño del repositorio |
 | `e1-1-github-pull-requests.png` | GitHub → Pull requests → Closed, con revisores y checks | Cualquiera |
 | `e1-2-aws-ec2-instances.png` | Consola de AWS → EC2 → Instances (us-east-2): las 4 instancias | Dueño de la cuenta de AWS |
 | `e1-2-bootstrap-second-run.png` | Terminal: segunda corrida de `bootstrap-env.sh` o `bootstrap-ci.sh` en la nube | Quien aprovisionó |
 | `e1-4-github-webhook.png` | GitHub → Settings → Webhooks → `/github-webhook/` → Recent Deliveries (200) | Dueño del repositorio |
-| `e1-4-sonarqube-quality-gate.png` | SonarQube → proyecto → Quality Gate (cuando se fusione US-10) | Responsable de US-10 |
+| `e1-4-sonarqube-quality-gate.png` | SonarQube → *Projects → CircleGuard Monorepo*: panel del Quality Gate y cobertura | Responsable de US-10 |
 | `e1-5-git-tags.png` | GitHub → Tags (`v0.1.x`) | Cualquiera |
 | `e1-5-jenkins-main-cd-stages.png` | Stage View del build #18 de `main` con `Deploy to dev` → `Verify stage health` en verde | Cualquiera |
 | `e1-5-discord-notification.png` | Discord → servidor **CircleGuard CI** → canal `#pipeline`: mensaje de un build (rama, commit, versión, etapa, log) | Quien administra el servidor de Discord |
-| `e1-5-jenkins-prod-approval-input.png` | Build detenido en `Approve prod release` → *Input requested* (requiere definir `CG_PROD_APPROVERS`) | Un aprobador de `CG_PROD_APPROVERS` |
+| `e1-5-jenkins-prod-approval-input.png` | Build detenido en `Approve prod release` → *Input requested* | `jrubio` o `jpordonez` (aprobadores de `CG_PROD_APPROVERS`) |
 | `e1-6-playwright-report.png` | Artefacto `e2e/reports/html/index.html` de un build verde | Responsable de US-34 o US-17 |

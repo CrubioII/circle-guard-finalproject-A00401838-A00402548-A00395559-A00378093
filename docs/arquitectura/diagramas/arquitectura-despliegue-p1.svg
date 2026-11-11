@@ -57,17 +57,17 @@
     <text x="342" y="261">Shared Library circleguard-shared-lib (jenkins/vars/)</text>
     <text x="342" y="278">Imagen propia: Gradle 8.5, Node 20, Docker CLI + Compose,</text>
     <text x="342" y="295">dependencias de Playwright y openssh-client</text>
-    <text x="342" y="315">Credenciales: github-*, nexus-credentials, circleguard-env-ssh</text>
+    <text x="342" y="315">Sesión obligatoria (US-31) · credenciales github, nexus, ssh y sonar</text>
   </g>
 
-  <rect x="326" y="350" width="236" height="158" rx="8" fill="#FFFFFF" stroke="#6B7280" stroke-dasharray="7 5"/>
+  <rect x="326" y="350" width="236" height="158" rx="8" fill="#FFF8E6" stroke="#B7791F" stroke-width="2"/>
   <text x="342" y="374" font-size="15" font-weight="bold" fill="#1A1A1A">SonarQube 10.6  :9000</text>
   <g font-size="12" fill="#374151">
     <text x="342" y="394">+ PostgreSQL 16.4 dedicado</text>
     <text x="342" y="411">(red ci-network)</text>
-    <text x="342" y="436" fill="#B42318" font-weight="bold">Quality gate aún no</text>
-    <text x="342" y="453" fill="#B42318" font-weight="bold">integrado al pipeline</text>
-    <text x="342" y="470" fill="#B42318">(US-10 sin fusionar)</text>
+    <text x="342" y="436">proyecto circleguard-monorepo</text>
+    <text x="342" y="453">CircleGuard-Quality-Gate (≥ 60 %)</text>
+    <text x="342" y="470">webhook → Jenkins (US-10)</text>
   </g>
 
   <rect x="578" y="350" width="236" height="158" rx="8" fill="#ECF8F1" stroke="#4CB978" stroke-width="2"/>

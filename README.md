@@ -34,10 +34,13 @@ mobile/                         cliente Expo (web export servido por nginx) + Do
 e2e/                            pruebas E2E con Playwright (flujos, smoke y contratos @deployed)
 Jenkinsfile                     pipeline Multibranch (raíz)
 jenkins/vars/                   Shared Library: detectChangedServices, multibranchFlow, pipelineUtils,
-                                publishBuildStatus, rollbackDeployment, notifyPipeline (Discord)
-jenkins/ci/                     JCasC (jenkins.yaml) y registro idempotente del webhook de GitHub
-jenkins/test/                   validadores del pipeline y de la Shared Library
+                                publishBuildStatus, rollbackDeployment, notifyPipeline (Discord),
+                                sonarQualityGate (SonarQube)
+jenkins/ci/                     JCasC (jenkins.yaml: cuentas, permisos, job y SonarQube) y scripts
+                                idempotentes del webhook de GitHub y del Quality Gate de SonarQube
+jenkins/test/                   validadores del pipeline, la Shared Library, SonarQube y la seguridad
 infra/bootstrap/                scripts Bash idempotentes: plano de control CI/CD y ambientes
+                                (jenkins/: imagen de Jenkins, plugins y entrypoint que valida secretos)
 infra/scripts/                  SemVer, publicación en Nexus, release notes, tag y rollback
 deploy/compose/                 docker-compose.{dev,stage,prod}.yml con healthchecks
 deploy/scripts/                 despliegue por SSH, verificación de salud y E2E contra ambientes
@@ -52,8 +55,8 @@ Las instancias EC2 están en AWS `us-east-2`. Los datos de la tabla salen de `do
 
 | Componente | URL | Healthcheck | Acceso |
 |---|---|---|---|
-| Jenkins 2.580.2 | <http://52.14.6.11:8080/> | `GET /login` → 200 | Público (puerto 8080 abierto) |
-| SonarQube 10.6 | <http://52.14.6.11:9000/> | `GET /api/system/status` → `{"status":"UP"}` | Público (puerto 9000 abierto) |
+| Jenkins 2.580.2 | <http://52.14.6.11:8080/> | `GET /login` → 200 | Requiere sesión (cuentas de US-31; ver §4.3) |
+| SonarQube 10.6 | <http://52.14.6.11:9000/> | `GET /api/system/status` → `{"status":"UP"}` | Requiere sesión. Proyecto `circleguard-monorepo` |
 | Nexus 3.70.1 (interfaz web) | <http://52.14.6.11:8081/> | `GET /service/rest/v1/status` → 200 | Público |
 | Registro Docker (Nexus) | `52.14.6.11:5000` (`/v2/`) | `GET /v2/` → 401 sin credenciales | `docker login` con `nexus-credentials` |
 | **dev**, cliente web | <http://52.15.213.209:8080/> | `GET /healthz` | Público |
@@ -120,7 +123,8 @@ sudo bash infra/bootstrap/bootstrap-ci.sh --public-host 52.14.6.11
 El script:
 
 - ajusta el kernel (`vm.max_map_count`), la swap, Docker y Compose;
-- genera `infra/bootstrap/.env.ci` desde [`.env.ci.example`](infra/bootstrap/.env.ci.example), solo si no existe;
+- genera `infra/bootstrap/.env.ci` (`0600`) desde [`.env.ci.example`](infra/bootstrap/.env.ci.example). Si ya existe, solo le agrega las variables nuevas de la plantilla;
+- genera una contraseña aleatoria para cada cuenta de Jenkins que no tenga una (US-31). Nunca las reemplaza ni las imprime;
 - levanta [`docker-compose.ci.yml`](docker-compose.ci.yml) y espera a que los 4 contenedores estén `healthy`;
 - crea el repositorio Docker `circleguard-docker` en Nexus, en el puerto 5000.
 
@@ -146,7 +150,14 @@ El script no levanta la aplicación: la primera versión la despliega el pipelin
 
 ### 4.3 Configurar Jenkins (una sola vez)
 
-1. **JCasC.** [`jenkins/ci/jenkins.yaml`](jenkins/ci/jenkins.yaml) declara la Shared Library `circleguard-shared-lib`, el servidor GitHub y el job Multibranch `circleguard-monorepo`. Recárgalo en *Manage Jenkins → Configuration as Code → Reload*.
+1. **JCasC.** [`jenkins/ci/jenkins.yaml`](jenkins/ci/jenkins.yaml) declara:
+   - las cuentas y la matriz de permisos;
+   - las variables globales `CG_*`;
+   - la Shared Library `circleguard-shared-lib`;
+   - el servidor GitHub y el servidor `SonarQube`;
+   - el job Multibranch `circleguard-monorepo`.
+
+   Recárgalo, como `admin`, en *Manage Jenkins → Configuration as Code → Reload*.
 2. **Credenciales** (*Manage Jenkins → Credentials*). Nunca van en el repositorio:
 
    | ID | Tipo | Para qué |
@@ -156,14 +167,15 @@ El script no levanta la aplicación: la primera versión la despliega el pipelin
    | `nexus-credentials` | Username with password | `docker push` desde Jenkins y `docker login` en los nodos |
    | `circleguard-env-ssh` | SSH Username with private key (`ec2-user` + llave de los nodos) | Despliegue, verificación y túneles E2E |
    | `discord-webhook` | Secret text (URL del webhook del canal `#pipeline`) | Notificaciones del pipeline (US-14). Si falta, el build solo deja una advertencia |
+   | `sonar-token` | Secret text (token de análisis de SonarQube) | Etapa `SonarQube Analysis` (US-10) |
 
-3. **Variables globales** (*Manage Jenkins → System → Global properties*):
+3. **Variables globales.** Se definen en `infra/bootstrap/.env.ci` del servidor y `jenkins.yaml` las publica en Jenkins. No se escriben en la UI: JCasC reemplaza las variables globales en cada arranque.
 
-   | Variable | Valor por defecto | Uso |
+   | Variable | Valor en la plantilla | Uso |
    |---|---|---|
    | `CG_DEV_HOST` / `CG_STAGE_HOST` / `CG_PROD_HOST` | `52.15.213.209` / `3.17.163.44` / `3.19.74.9` | Nodos de cada ambiente |
    | `CG_REGISTRY_URL` | `52.14.6.11:5000` | Registro Docker |
-   | `CG_PROD_APPROVERS` | *(vacío = no hay release a prod)* | IDs de usuario de Jenkins que pueden aprobar prod, por ejemplo `ana,luis` |
+   | `CG_PROD_APPROVERS` | `jrubio,jpordonez` | IDs de las cuentas de Jenkins que pueden aprobar prod. Vacío = no hay release a prod |
    | `CG_PROD_APPROVAL_TIMEOUT_MIN` | `60` | Minutos que el build espera la aprobación |
 
 4. **Webhook de GitHub** (idempotente):
@@ -172,18 +184,37 @@ El script no levanta la aplicación: la primera versión la despliega el pipelin
    GITHUB_TOKEN=<pat> JENKINS_URL=http://52.14.6.11:8080 ./jenkins/ci/setup-github-webhook.sh
    ```
 
-5. **Seguridad.** Configura un `securityRealm` (usuarios locales o GitHub OAuth) y una estrategia de autorización, por ejemplo `matrix-auth` con los aprobadores sin `Administer`. Sin esto, cualquiera que alcance el puerto 8080 administra Jenkins, y la restricción del `input` de prod no protege nada. Ver [`PROD_APPROVAL_US31.md`](docs/arquitectura/PROD_APPROVAL_US31.md).
+5. **SonarQube** (idempotente; crea el proyecto, el Quality Gate `CircleGuard-Quality-Gate` con cobertura ≥ 60 % y el webhook de retorno a Jenkins). Ejecútalo con un token de administración de SonarQube y luego guarda un token de análisis del proyecto como `sonar-token`:
+
+   ```bash
+   SONAR_TOKEN=<token> SONAR_HOST_URL=http://localhost:9000 JENKINS_URL=http://jenkins:8080 \
+     ./jenkins/ci/setup-sonarqube-quality-gate.sh
+   ```
+
+   Detalle en [`JENKINS_SONARQUBE_JACOCO_US10.md`](docs/agil/JENKINS_SONARQUBE_JACOCO_US10.md).
+
+6. **Cuentas y permisos (US-31).** Jenkins usa cuentas locales sin registro público y autorización por matriz (`matrix-auth`):
+
+   | Cuenta | Permisos |
+   |---|---|
+   | `admin` | Administración (emergencia, credenciales, plugins) |
+   | `jrubio`, `ecuellar`, `scastillo`, `jpordonez` | Lectura, lanzar y cancelar builds, responder la aprobación de prod |
+   | `docente` | Solo lectura |
+   | Anónimo | Ninguno; solo `/login` y los webhooks de GitHub y SonarQube |
+
+   Las contraseñas viven solo en `.env.ci` del servidor y llegan a Jenkins como secretos de Docker Compose (`/run/secrets`), nunca como variables de entorno. El contenedor no arranca si falta alguna. Despliegue, operación y recuperación de acceso: [`JENKINS_SEGURIDAD_US31.md`](docs/operaciones/JENKINS_SEGURIDAD_US31.md).
 
 ### 4.4 Primera ejecución
 
 Haz *merge* de un PR a `main`, o pulsa *Build with Parameters* en el job `main` con `FORCE_FULL_BUILD=true`. El build:
 
 1. calcula la versión;
-2. compila y prueba;
-3. publica las 9 imágenes `X.Y.Z` en Nexus y etiqueta `vX.Y.Z` (por ahora el tag queda solo en el workspace de Jenkins; ver las brechas en [`PIPELINE_CICD.md`](docs/arquitectura/PIPELINE_CICD.md));
-4. despliega en dev, verifica la salud y corre los E2E contra dev;
-5. promueve a stage y espera la aprobación de prod. Si `CG_PROD_APPROVERS` está vacía, omite prod y lo registra como `NOT_CONFIGURED`;
-6. publica el resultado en el canal `#pipeline` de Discord.
+2. compila y prueba, y verifica la cobertura de los servicios núcleo;
+3. analiza el código en SonarQube y espera el Quality Gate: si falla, se detiene antes de publicar o desplegar;
+4. publica las 9 imágenes `X.Y.Z` en Nexus y etiqueta `vX.Y.Z` (por ahora el tag queda solo en el workspace de Jenkins; ver las brechas en [`PIPELINE_CICD.md`](docs/arquitectura/PIPELINE_CICD.md));
+5. despliega en dev, verifica la salud y corre los E2E contra dev;
+6. promueve a stage y espera la aprobación de prod. Si `CG_PROD_APPROVERS` está vacía, omite prod y lo registra como `NOT_CONFIGURED`;
+7. publica el resultado en el canal `#pipeline` de Discord.
 
 Ejemplo verificado: el build #18 de `main` (commit `ab2aa2a`) publicó `0.2.0`, la desplegó en dev y en stage con todos los healthchecks en verde y avisó en Discord.
 
@@ -204,7 +235,7 @@ El detalle de cada etapa está en [`docs/arquitectura/PIPELINE_CICD.md`](docs/ar
 1. Crea la rama desde `main` con el formato `<tipo>/US-<n>-<slug>`, por ejemplo `feature/US-13-deploy-dev`. Las reglas están en [`BRANCHING_STRATEGY.md`](docs/agil/BRANCHING_STRATEGY.md).
 2. Escribe los commits con Conventional Commits (`feat(ci): …`, `fix(auth): …`). Su tipo determina el incremento SemVer.
 3. Abre un PR con la [plantilla](.github/pull_request_template.md). Jenkins ejecuta solo el carril de CI y publica `continuous-integration/jenkins/pr-head`. Hace falta 1 aprobación para fusionar.
-4. El *merge* a `main` dispara la entrega: versión, imágenes, tag, dev, E2E, stage y la espera de aprobación para prod.
+4. El *merge* a `main` dispara la entrega: versión, pruebas, SonarQube, imágenes, tag, dev, E2E, stage y la espera de aprobación para prod.
 
 ### 5.2 Parámetros del job
 
@@ -214,17 +245,18 @@ El detalle de cada etapa está en [`docs/arquitectura/PIPELINE_CICD.md`](docs/ar
 | `TARGET_ENV` | `none` | Pide la compuerta `Release Gate` hacia un ambiente. Solo `main` puede usarla |
 | `E2E_BASE_URL` | vacío | Corre Playwright contra una URL en vez del *export* local |
 | `NOTIFY_DISCORD` | `true` | Publica el resultado en el canal `#pipeline` de Discord (US-14) |
+| `ENABLE_SONARQUBE_GATE` | `true` | Ejecuta `SonarQube Analysis` y el Quality Gate bloqueante (US-10) |
 | `PUBLISH_GITHUB_STATUS` | `true` | Publica los estados de commit |
 
 ### 5.3 Aprobar o rechazar un release a prod (US-31)
 
-Cuando stage queda verificado, el build se detiene en `Approve prod release`. Un usuario incluido en `CG_PROD_APPROVERS` abre el build, pulsa **Input requested** y completa el formulario:
+Cuando stage queda verificado, el build se detiene en `Approve prod release`. Un aprobador de `CG_PROD_APPROVERS` (`jrubio` o `jpordonez`) entra con su cuenta, abre el build, pulsa **Input requested** y completa el formulario:
 
 - `DECISION`: `APROBAR` o `RECHAZAR`;
 - `VERSION`: solo ofrece la versión validada;
 - `COMMENT`: obligatorio para aprobar, por ejemplo el ID de la RFC.
 
-Solo `APROBAR` despliega en prod. La salud de prod aparece en la pestaña **Tests** del build. Las reglas de cada decisión están en [`PROD_APPROVAL_US31.md`](docs/arquitectura/PROD_APPROVAL_US31.md).
+Solo `APROBAR` despliega en prod. Jenkins impide que apruebe alguien fuera de la lista, y el pipeline lo vuelve a validar. Cualquier integrante puede abortar la espera, lo que nunca despliega. La salud de prod aparece en la pestaña **Tests** del build. Las reglas de cada decisión están en [`PROD_APPROVAL_US31.md`](docs/arquitectura/PROD_APPROVAL_US31.md).
 
 ### 5.4 Rollback (US-14)
 
@@ -242,6 +274,7 @@ El script vuelve a desplegar imágenes que ya están en Nexus con el mismo compo
 |---|---|
 | Pruebas unitarias e integración | Pestaña **Tests** del build (JUnit) |
 | Cobertura | **Coverage Report** (JaCoCo) del build y `services/<svc>/build/reports/jacoco/` |
+| Análisis estático y Quality Gate | <http://52.14.6.11:9000/dashboard?id=circleguard-monorepo>, y en el build `reports/ci/sonarqube-analysis.json` y `reports/ci/quality-gate.json` |
 | E2E | Artefactos `e2e/reports/` (JUnit y HTML) y `e2e/reports/dev/` para la corrida contra dev |
 | Decisiones de entrega | `reports/ci/promotion-stage.json`, `reports/ci/prod-approval.json` y la descripción del build |
 | Salud por ambiente | `reports/ci/health-<env>.json`; prod también como JUnit |
@@ -272,20 +305,22 @@ Cada servicio expone su documentación OpenAPI en `http://localhost:<puerto>/swa
 
 | Comando | Qué valida | Resultado esperado |
 |---|---|---|
-| `./gradlew test` | Pruebas unitarias e integración (Testcontainers) de los 8 servicios | Verde |
+| `./gradlew test` | Pruebas unitarias e integración (Testcontainers) de los 8 servicios, incluido el flujo `form → Kafka → promotion` con un broker real (US-16) | Verde |
 | `./gradlew test jacocoTestCoverageVerification` | ≥ 60 % de líneas en auth, identity, promotion, form y gateway | Verde |
 | `cd e2e && npm ci && npx playwright install chromium && npm test` | Flujos E2E de login, cuestionario y validación QR | Verde |
 | `./gradlew validateJenkinsSharedLibrary` | Shared Library | 6 casos |
 | `./gradlew validateJenkinsMultibranchPipeline` | Plan multibranch, compuertas de despliegue, promoción y aprobación de prod | 22 casos |
 | `./gradlew validateJenkinsNotifications` (o `bash jenkins/test/run-notify-validation.sh`) | Paso `notifyPipeline`: mensaje, política de envío y errores de Discord, sin red | 8 casos |
+| `./gradlew validateJenkinsSonarQualityGate` (o `bash jenkins/test/run-sonarqube-validation.sh`) | JaCoCo, comando de SonarQube, Quality Gate bloqueante, orden de etapas y script del webhook | 13 casos |
+| `./gradlew validateJenkinsSecurity` | Cuentas, matriz de permisos, aprobadores de prod y secretos de Jenkins | 32 verificaciones |
 | `./gradlew validateComposeEnvironments` | `docker-compose.{dev,stage,prod}.yml` | 53 verificaciones |
 | `bash deploy/scripts/test-deploy-scripts.sh` | Scripts de despliegue, SSH, salud y JUnit | 40 pruebas |
-| `bash infra/bootstrap/test-bootstrap-ci-idempotency.sh` | Idempotencia del plano de control | 39 pruebas |
+| `bash infra/bootstrap/test-bootstrap-ci-idempotency.sh` | Idempotencia del plano de control y generación de las contraseñas de Jenkins | 65 pruebas |
 | `bash infra/bootstrap/test-bootstrap-env-idempotency.sh` | Idempotencia de los ambientes y externalización de secretos | 38 pruebas |
 | `bash infra/scripts/test-calculate-semver.sh` | Cálculo SemVer | 5 casos |
 | `bash infra/scripts/test-rollback.sh` | Rollback | 10 casos |
 
-> En Windows, `validateJenkinsMultibranchPipeline` necesita un `python3` real en el `PATH`. El alias de Microsoft Store no sirve.
+> En Windows, `validateJenkinsMultibranchPipeline` necesita un `python3` real en el `PATH`; el alias de Microsoft Store no sirve. El caso 12 de `validateJenkinsSonarQualityGate` invoca `bash` y Java resuelve el de WSL, así que en Windows ejecuta ese script directamente: `bash jenkins/test/validateSonarWebhookScript.sh`.
 
 ## 8. Gestión de cambios y releases
 
@@ -300,16 +335,20 @@ Cada servicio expone su documentación OpenAPI en `http://localhost:<puerto>/swa
 |---|---|
 | Arquitectura de microservicios y despliegue (diagramas) | [`docs/arquitectura/ARQUITECTURA_P1.md`](docs/arquitectura/ARQUITECTURA_P1.md) |
 | Flujo del pipeline (diagrama) | [`docs/arquitectura/PIPELINE_CICD.md`](docs/arquitectura/PIPELINE_CICD.md) |
+| Marco ágil, roles, estimación y backlog (US-01) | [`docs/agil/MARCO_AGIL.md`](docs/agil/MARCO_AGIL.md) |
+| Actas de Sprint 0 y Sprint 1: planning, review, retrospectiva y burndown (US-03) | [`docs/agil/SPRINT_0_Y_1_CEREMONIAS.md`](docs/agil/SPRINT_0_Y_1_CEREMONIAS.md) |
 | Branching, protección de `main` y Conventional Commits (US-02) | [`docs/agil/BRANCHING_STRATEGY.md`](docs/agil/BRANCHING_STRATEGY.md) |
 | Plano de control CI/CD (US-04) | [`docs/arquitectura/BOOTSTRAP_CI_US04.md`](docs/arquitectura/BOOTSTRAP_CI_US04.md) |
 | Ambientes y secretos (US-05) | [`docs/arquitectura/BOOTSTRAP_ENV_US05.md`](docs/arquitectura/BOOTSTRAP_ENV_US05.md) |
 | Dockerfile del cliente web (US-07) | [`docs/arquitectura/DOCKERFILE_WEB_US07.md`](docs/arquitectura/DOCKERFILE_WEB_US07.md) |
 | Compose por ambiente (US-08) | [`docs/arquitectura/COMPOSE_ENVIRONMENTS_US08.md`](docs/arquitectura/COMPOSE_ENVIRONMENTS_US08.md) |
 | Shared Library (US-09) y Multibranch (US-30) | [`docs/agil/JENKINS_SHARED_LIBRARY_US09.md`](docs/agil/JENKINS_SHARED_LIBRARY_US09.md) y [`docs/agil/JENKINS_MULTIBRANCH_US30.md`](docs/agil/JENKINS_MULTIBRANCH_US30.md) |
+| JaCoCo, SonarQube y Quality Gate (US-10) | [`docs/agil/JENKINS_SONARQUBE_JACOCO_US10.md`](docs/agil/JENKINS_SONARQUBE_JACOCO_US10.md) |
 | Despliegue a dev y promoción a stage (US-13) | [`docs/arquitectura/DEPLOY_PROMOTION_US13.md`](docs/arquitectura/DEPLOY_PROMOTION_US13.md) |
 | Rollback (US-14) | [`docs/operaciones/ROLLBACK_US14.md`](docs/operaciones/ROLLBACK_US14.md) |
 | Notificaciones del pipeline en Discord (US-14) | [`docs/operaciones/NOTIFICACIONES_US14.md`](docs/operaciones/NOTIFICACIONES_US14.md) |
 | Aprobación manual de prod (US-31) | [`docs/arquitectura/PROD_APPROVAL_US31.md`](docs/arquitectura/PROD_APPROVAL_US31.md) |
+| Seguridad de Jenkins: cuentas, permisos y aprobadores (US-31) | [`docs/operaciones/JENKINS_SEGURIDAD_US31.md`](docs/operaciones/JENKINS_SEGURIDAD_US31.md) |
 | E2E con Playwright (US-34) | [`docs/agil/PLAYWRIGHT_E2E_US34.md`](docs/agil/PLAYWRIGHT_E2E_US34.md) |
 | Informe de la Parte 1 (PDF y [Markdown](docs/informe/INFORME_PARTE1.md)) y cómo regenerarlo | [`docs/informe/README.md`](docs/informe/README.md) |
 | Uso de IA generativa | [`IAG_REGISTRO.md`](IAG_REGISTRO.md) |
@@ -319,6 +358,8 @@ Cada servicio expone su documentación OpenAPI en `http://localhost:<puerto>/swa
 - **El repositorio y los PDF no contienen secretos.**
   - `*.pem`, `.env*`, `infra/bootstrap/.env.ci` y `deploy/compose/.env*` están en `.gitignore`.
   - Los secretos de los ambientes viven en `/opt/circleguard/<env>/.env` (`0600`) y en el almacén de credenciales de Jenkins.
+  - Las contraseñas de las cuentas de Jenkins viven solo en `infra/bootstrap/.env.ci` del servidor (`0600`).
+- **Jenkins exige sesión.** Solo `admin` administra; el usuario anónimo no tiene permisos. Ver [`JENKINS_SEGURIDAD_US31.md`](docs/operaciones/JENKINS_SEGURIDAD_US31.md).
 - **Los secretos se mantienen fuera de argumentos y logs.** La contraseña del registro viaja por stdin, y `test-deploy-scripts.sh` lo verifica.
 - **Costos.**
   - Al terminar cada sesión de trabajo o evaluación, detén las 4 instancias EC2 (`aws ec2 stop-instances --instance-ids …`).
