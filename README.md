@@ -147,6 +147,11 @@ We maintain high system integrity via multi-level testing:
 |:---|:---|
 | `./gradlew test` | Full system suite (Unit + Integration) |
 | `./gradlew :services:<name>:test` | Single service testing |
+| `./gradlew test jacocoTestCoverageVerification` | Tests + JaCoCo line-coverage gate (≥60%) for auth, identity, promotion, form and gateway (US-31, US-32) |
+
+**Coverage (US-31, US-32):** every `test` run produces a JaCoCo report at `services/<name>/build/reports/jacoco/test/html/index.html` (XML next to it) for all eight services. The ≥60% line-coverage rule is enforced on auth, identity, promotion, form and gateway; notification, file and dashboard publish their test and coverage reports without a mandatory threshold. In Jenkins, the `Coverage Gate (núcleo + gateway)` stage runs the verification and the build publishes the JUnit results and the JaCoCo reports through the JaCoCo plugin and as archived artifacts.
+
+**E2E (US-34):** the Playwright suite lives in [`e2e/`](e2e/). It runs headless against `BASE_URL` (or, when empty, against the Expo web export in `mobile/dist` served locally) and writes HTML (`e2e/reports/html`) and JUnit (`e2e/reports/junit/results.xml`) reports. In Jenkins, the `E2E Playwright` stage publishes both and fails the build if any flow fails. Run it with `cd e2e && npm ci && npx playwright install chromium && npm test`. Docs: [`docs/agil/PLAYWRIGHT_E2E_US34.md`](docs/agil/PLAYWRIGHT_E2E_US34.md).
 
 **Note**: Integration tests use **Testcontainers** to spawn ephemeral Neo4j and PostgreSQL instances for zero-side-effect validation.
 
@@ -162,6 +167,9 @@ The repository root contains the [`Jenkinsfile`](Jenkinsfile) consumed by the **
 - **SonarQube & JaCoCo Quality Gate (US-10):** [`docs/agil/JENKINS_SONARQUBE_JACOCO_US10.md`](docs/agil/JENKINS_SONARQUBE_JACOCO_US10.md) (`./jenkins/test/run-sonarqube-validation.sh` or `./gradlew validateJenkinsSonarQualityGate`)
 - **Setup (JCasC, job, webhook, US-30):** [`docs/agil/JENKINS_MULTIBRANCH_US30.md`](docs/agil/JENKINS_MULTIBRANCH_US30.md) (`./jenkins/test/run-multibranch-validation.sh` or `./gradlew validateJenkinsMultibranchPipeline`)
 - **Shared library (US-09):** [`docs/agil/JENKINS_SHARED_LIBRARY_US09.md`](docs/agil/JENKINS_SHARED_LIBRARY_US09.md) (`./jenkins/test/run-validation.sh` or `./gradlew validateJenkinsSharedLibrary`)
+- **Per-environment full stack (US-08):** [`deploy/compose/docker-compose.{dev,stage,prod}.yml`](deploy/compose/) — middleware + 5 core services + web client, SemVer image tags (never `latest`) and `service_healthy` startup ordering. Docs: [`docs/arquitectura/COMPOSE_ENVIRONMENTS_US08.md`](docs/arquitectura/COMPOSE_ENVIRONMENTS_US08.md). Validate with `./gradlew validateComposeEnvironments`; full bring-up test with `bash deploy/compose/smoke-up.sh`.
+- **Continuous delivery dev → stage (US-13):** every `main` build that publishes images auto-deploys that SemVer to **dev**, verifies health, runs the [`e2e/`](e2e/) Playwright flows and promotes the same version to **stage** only if they pass; the decision is recorded in `reports/ci/promotion-stage.json`. Docs: [`docs/arquitectura/DEPLOY_PROMOTION_US13.md`](docs/arquitectura/DEPLOY_PROMOTION_US13.md). Requires Jenkins credentials `circleguard-env-ssh` + `nexus-credentials`.
+- **Manual approval and verified prod release (US-31):** after stage is verified, each `main` build waits for an explicit approval (`input` restricted to `CG_PROD_APPROVERS`), deploys the approved SemVer to **prod** and publishes its healthchecks as JUnit; who approved/rejected and the version are recorded in `reports/ci/prod-approval.json`. Docs: [`docs/arquitectura/PROD_APPROVAL_US31.md`](docs/arquitectura/PROD_APPROVAL_US31.md).
 
 ---
 

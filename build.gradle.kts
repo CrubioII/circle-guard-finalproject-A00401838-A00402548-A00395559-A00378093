@@ -1,7 +1,6 @@
 import org.gradle.testing.jacoco.plugins.JacocoPluginExtension
 import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
-import java.math.BigDecimal
 
 plugins {
     id("org.springframework.boot") version "3.2.4" apply false
@@ -13,15 +12,16 @@ plugins {
     id("org.sonarqube") version "5.1.0.4882"
 }
 
-val coreBackendServices = setOf(
+// US-31 / US-32: servicios con umbral mínimo de cobertura de líneas (JaCoCo).
+// Notification, file y dashboard (US-32) publican reportes pero no tienen umbral obligatorio.
+val coreCoverageServices = setOf(
     "circleguard-auth-service",
     "circleguard-identity-service",
     "circleguard-promotion-service",
     "circleguard-form-service",
     "circleguard-gateway-service"
 )
-
-val minimumCoreCoverage = BigDecimal("0.60")
+val minimumCoreLineCoverage = java.math.BigDecimal("0.60")
 
 allprojects {
     group = "com.circleguard"
@@ -71,31 +71,30 @@ subprojects {
         finalizedBy(tasks.named("jacocoTestReport"))
     }
 
-    tasks.withType<JacocoReport> {
-        dependsOn(tasks.withType<Test>())
+    tasks.named<JacocoReport>("jacocoTestReport") {
+        dependsOn(tasks.named("test"))
         reports {
             xml.required.set(true)
-            xml.outputLocation.set(layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml"))
             html.required.set(true)
-            html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/test/html"))
             csv.required.set(false)
         }
     }
 
-    tasks.withType<JacocoCoverageVerification> {
-        dependsOn(tasks.withType<JacocoReport>())
+    tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+        dependsOn(tasks.named("jacocoTestReport"))
         violationRules {
             rule {
-                enabled = project.name in coreBackendServices
+                isEnabled = project.name in coreCoverageServices
                 limit {
                     counter = "LINE"
                     value = "COVEREDRATIO"
-                    minimum = minimumCoreCoverage
+                    minimum = minimumCoreLineCoverage
                 }
             }
         }
     }
 
+    // US-10: cada servicio entrega a SonarQube su XML de JaCoCo y sus resultados JUnit.
     sonar {
         properties {
             property(
@@ -110,6 +109,7 @@ subprojects {
     }
 }
 
+// US-10: análisis del monorepo en SonarQube (servidor y clave del proyecto desde el entorno de Jenkins).
 sonar {
     properties {
         property("sonar.projectKey", System.getenv("SONAR_PROJECT_KEY") ?: "circleguard-monorepo")
@@ -160,4 +160,40 @@ val validateJenkinsSonarQualityGate by tasks.registering {
         System.setProperty("circleguard.repoRoot", projectDir.absolutePath)
         groovy.lang.GroovyShell().evaluate(scriptFile)
     }
+}
+
+val validateJenkinsNotifications by tasks.registering {
+    group = "verification"
+    description = "Valida el paso notifyPipeline (notificaciones del pipeline en Discord) sin Jenkins ni red (US-14 / SCRUM-70)"
+    doLast {
+        val scriptFile = file("jenkins/test/validateNotifyPipeline.groovy")
+        check(scriptFile.exists()) { "No se encontro el script de validacion: ${scriptFile.path}" }
+        System.setProperty("circleguard.repoRoot", projectDir.absolutePath)
+        groovy.lang.GroovyShell().evaluate(scriptFile)
+    }
+}
+
+val validateComposeEnvironments by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Valida deploy/compose/docker-compose.{dev,stage,prod}.yml: pila completa, SemVer sin latest y healthchecks con service_healthy (US-08)"
+    workingDir = projectDir
+    // En Windows 'bash' suele resolver al lanzador de WSL; se prefiere Git Bash si existe (o $BASH_EXE).
+    val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+    val bashExe = System.getenv("BASH_EXE")
+        ?: listOf("C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe")
+            .firstOrNull { isWindows && file(it).exists() }
+        ?: "bash"
+    commandLine(bashExe, "deploy/compose/validate-compose.sh")
+}
+
+val validateJenkinsSecurity by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Valida la seguridad de Jenkins: cuentas, matriz de permisos, aprobadores de prod y secretos (US-31)"
+    workingDir = projectDir
+    val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+    val bashExe = System.getenv("BASH_EXE")
+        ?: listOf("C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe")
+            .firstOrNull { isWindows && file(it).exists() }
+        ?: "bash"
+    commandLine(bashExe, "jenkins/test/validateJenkinsSecurity.sh")
 }

@@ -128,8 +128,8 @@ Map analyzeChangedFiles(List<String> rawFiles, boolean forceAll = false) {
             continue
         }
 
-        // 4. Verificar si afecta al cliente web/móvil Expo en mobile/
-        if (file.startsWith('mobile/')) {
+        // 4. Verificar si afecta al cliente web/móvil Expo en mobile/ o a sus pruebas E2E en e2e/ (US-34)
+        if (file.startsWith('mobile/') || file.startsWith('e2e/')) {
             mobileChanged = true
             continue
         }

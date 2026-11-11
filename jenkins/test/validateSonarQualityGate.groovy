@@ -231,8 +231,8 @@ println('[OK] Caso 9: bloqueo verificado cuando un servicio nucleo incumple el u
 String jenkinsfileText = jenkinsfile.getText('UTF-8')
 [
     'includeJacoco: true',
+    "sonarQualityGate = load 'jenkins/vars/sonarQualityGate.groovy'",
     'sonarQualityGate.collectServiceCoverage(',
-    'sonarQualityGate.publishJacocoReports(',
     "stage('SonarQube Analysis')",
     "withSonarQubeEnv('SonarQube')",
     'sonarQualityGate.buildSonarGradleCommand(',
@@ -242,7 +242,17 @@ String jenkinsfileText = jenkinsfile.getText('UTF-8')
 ].each { String fragment ->
     assert jenkinsfileText.contains(fragment) : "El Jenkinsfile no contiene el bloque requerido por US-10: ${fragment}"
 }
-println('[OK] Caso 10: Jenkinsfile integra JaCoCo, withSonarQubeEnv y la etapa Quality Gate.')
+// La librería global no se fija a una rama: main nunca debe depender de una rama de feature.
+assert jenkinsfileText.contains("@Library('circleguard-shared-lib') _") :
+    "El Jenkinsfile debe cargar circleguard-shared-lib sin fijar una rama (@Library('circleguard-shared-lib') _)."
+// El Quality Gate bloquea ANTES de publicar imágenes y desplegar (si no, no protegería nada).
+List<Integer> gateOrder = ["stage('Coverage Gate", "stage('SonarQube Analysis')", "stage('Quality Gate')",
+                           "stage('Publish Images to Nexus')", "stage('Deploy to dev')"].collect { jenkinsfileText.indexOf(it) }
+assert gateOrder.every { it >= 0 } && gateOrder == gateOrder.sort(false) :
+    "El Quality Gate debe ir tras el Coverage Gate y antes de publicar y desplegar: ${gateOrder}"
+// JaCoCo se publica una sola vez, en post { always } (US-31 / US-32).
+assert jenkinsfileText.count('jacoco(') == 1 : 'El reporte JaCoCo debe publicarse una sola vez (post { always }).'
+println('[OK] Caso 10: Jenkinsfile integra JaCoCo, withSonarQubeEnv y la etapa Quality Gate antes de publicar y desplegar.')
 
 // -----------------------------------------------------------------------------
 // Caso 11: JCasC declara sonarGlobalConfiguration con credencial sonar-token (CA2 + CA3)

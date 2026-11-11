@@ -1,0 +1,30 @@
+# =============================================================================
+# CircleGuard - Docker build context filter (US-06)
+# All backend Dockerfiles use the monorepo root as build context:
+#   docker build -f services/<service>/Dockerfile -t circleguard/<service>:<version> .
+#
+# Allowlist strategy: ignore EVERYTHING, then re-include only what the image
+# builds need. Keeps the context small (no mobile/, docs/, PDFs, .git, IDE
+# output in services/*/bin, local build/ dirs) and avoids leaking local files.
+# =============================================================================
+
+# 1. Ignore everything by default
+*
+
+# 2. Root Gradle build definition
+!settings.gradle.kts
+!build.gradle.kts
+
+# 3. Per-service build script and production sources (tests run in CI, not in the image)
+!services/*/build.gradle.kts
+!services/*/src/main/
+
+# 4. Never send these, even if they appear inside the re-included paths
+**/build/
+**/bin/
+**/.gradle/
+**/*.log
+**/.DS_Store
+**/.env
+**/*.pem
+**/*.key

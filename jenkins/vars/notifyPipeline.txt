@@ -1,0 +1,14 @@
+# `notifyPipeline` — Notificaciones del pipeline en Discord (`US-14` / CA1, `SCRUM-70`)
+
+Publica el resultado del build en el canal `#pipeline` de Discord con: rama (y Pull Request), commit, autor, versión SemVer, etapa fallida, duración y enlace directo al log.
+
+```groovy
+notifyPipeline(status: currentBuild.currentResult, flow: flow,
+               version: versionMap.APP_VERSION, failedStage: pipelineTrack.stage)
+```
+
+- La URL del webhook está en la credencial **Secret text** `discord-webhook` (parámetro `credentialsId` para cambiarla). Nunca se escribe en el repositorio ni en el log.
+- Notifica siempre `FAILURE`, `ABORTED` y `UNSTABLE`, y también cuando un build se recupera tras un fallo. Los `SUCCESS` se notifican solo en `main`. Con `force: true` siempre notifica.
+- Si falta la credencial o Discord responde con error, solo deja una advertencia: el resultado del build no cambia.
+- `dryRun: true` (o `NOTIFY_PIPELINE_DRY_RUN=true`) calcula el mensaje sin enviarlo.
+- `details` agrega un texto libre, por ejemplo el rollback ejecutado (US-14 / CA2).

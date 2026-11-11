@@ -49,6 +49,7 @@ El alcance de esta historia es la **orquestación CI**:
 | 2 | `Detect Changed Components` | Siempre | Ejecuta `detectChangedServices`, calcula el plan con `multibranchFlow.planPipeline`, publica el resumen, archiva JSON y **aborta** si se solicitó un despliegue no permitido. |
 | 3 | `Compile & Test Backend` | `plan.runBackendBuild` | `./gradlew :services:<svc>:assemble :services:<svc>:test` solo para los servicios afectados (o los 8 con `FORCE_FULL_BUILD`). |
 | 4 | `Compile & Test Web` | `plan.runMobileBuild` | `npm ci` + `npm run test` dentro de `mobile/`. |
+| 4b | `E2E Playwright` (US-34) | `plan.runMobileBuild` o `E2E_BASE_URL` definido | Ejecuta Playwright headless en `e2e/`, publica JUnit + reporte HTML y falla el build si falla cualquier flujo. Ver [PLAYWRIGHT_E2E_US34.md](PLAYWRIGHT_E2E_US34.md). |
 | 5 | `Release Gate` | `plan.deploymentAllowed` | Revalida el contexto con `requireDeploymentAllowed`, registra la decisión y deja la ejecución material a `US-13`. **Nunca se ejecuta en un PR.** |
 | 6 | `post` | Siempre | Publica `SUCCESS`/`FAILURE`/`ERROR` en GitHub, publica reportes JUnit y archiva `reports/ci/**`. |
 

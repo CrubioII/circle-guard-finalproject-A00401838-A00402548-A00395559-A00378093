@@ -53,3 +53,10 @@ neo4jdata/
 
 # Local agent context & handoff documentation
 agentes/
+
+# Archivos de entorno reales de la pila por ambiente (US-08); solo se versionan plantillas *.example
+deploy/compose/.env*
+!deploy/compose/*.example
+
+# Reportes generados por el pipeline y las pruebas locales (Jenkins los archiva; no se versionan)
+reports/

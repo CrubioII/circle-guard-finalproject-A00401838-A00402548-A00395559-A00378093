@@ -11,15 +11,21 @@
 Esta historia conecta el monorepo Gradle con JaCoCo y SonarQube dentro del pipeline Multibranch de Jenkins:
 
 1. **Instrumentación en Gradle (`CA1`, `SCRUM-59`):** [build.gradle.kts](../../build.gradle.kts) aplica el plugin `jacoco` en los 8 subproyectos y el plugin `org.sonarqube` en la raíz, generando reportes XML (`build/reports/jacoco/test/jacocoTestReport.xml`) y HTML después de cada ejecución de pruebas.
-2. **Publicación de cobertura y envío a SonarQube (`CA2`, `SCRUM-60`):** el [Jenkinsfile](../../Jenkinsfile) ejecuta `:services:<svc>:jacocoTestReport`, publica los reportes en Jenkins mediante [sonarQualityGate.groovy](../../jenkins/vars/sonarQualityGate.groovy) y corre `./gradlew sonar` dentro de `withSonarQubeEnv('SonarQube')`.
+2. **Publicación de cobertura y envío a SonarQube (`CA2`, `SCRUM-60`):** el [Jenkinsfile](../../Jenkinsfile) ejecuta `:services:<svc>:jacocoTestReport`, calcula la cobertura por servicio con [sonarQualityGate.groovy](../../jenkins/vars/sonarQualityGate.groovy) y corre `./gradlew sonar` dentro de `withSonarQubeEnv('SonarQube')`. El reporte JaCoCo se publica en Jenkins una sola vez, en `post { always }` (US-31 / US-32), así también queda disponible cuando el build falla.
 3. **Quality Gate bloqueante (`CA3`, `SCRUM-58`, `SCRUM-60`):** el script [setup-sonarqube-quality-gate.sh](../../jenkins/ci/setup-sonarqube-quality-gate.sh) registra en SonarQube el Quality Gate `CircleGuard-Quality-Gate` (con cobertura mínima del 60%) y el webhook de retorno hacia `<JENKINS_URL>/sonarqube-webhook/`. En el pipeline, la etapa `Quality Gate` ejecuta `waitForQualityGate(abortPipeline: true)` y detiene la ejecución si SonarQube devuelve un estado distinto de `OK` o si algún servicio núcleo queda por debajo del 60%.
+
+### Integración con `main` (resolución de conflictos)
+
+- **Orden de las etapas:** `SonarQube Analysis` y `Quality Gate` corren justo después de `Coverage Gate` y **antes** de `Publish Images to Nexus` y del despliegue a dev, stage y prod (US-13 / US-31). Un Quality Gate en rojo detiene el build antes de publicar o desplegar nada.
+- **Carga del paso:** el Jenkinsfile usa `@Library('circleguard-shared-lib') _` sin fijar una rama, y carga `sonarQualityGate` desde el workspace (`load 'jenkins/vars/sonarQualityGate.groovy'`), igual que `notifyPipeline` en US-14. Así cada rama o PR prueba su propia versión del paso, y `main` nunca depende de una rama de feature.
+- **Desactivar el análisis:** el parámetro `ENABLE_SONARQUBE_GATE=false` omite las dos etapas, por ejemplo si SonarQube no está disponible.
 
 ## 2. Criterios de aceptación y evidencia
 
 | CA | Criterio | Implementación y validación |
 | :---: | :--- | :--- |
 | **CA1** | `build.gradle.kts` integra `jacoco` y `org.sonarqube` para generar reportes XML (`jacocoTestReport`) en los 8 microservicios. | [build.gradle.kts](../../build.gradle.kts) aplica `jacoco` en `subprojects`, vincula `test.finalizedBy(jacocoTestReport)`, activa `xml.required = true` y configura `sonar.coverage.jacoco.xmlReportPaths`. Validado en los Casos 1 al 4 de [validateSonarQualityGate.groovy](../../jenkins/test/validateSonarQualityGate.groovy). |
-| **CA2** | El pipeline ejecuta compilación y pruebas, publica los reportes JaCoCo en Jenkins y envía las métricas a SonarQube. | [Jenkinsfile](../../Jenkinsfile) invoca `buildGradleCommandForServices(..., [includeJacoco: true])`, llama a `sonarQualityGate.publishJacocoReports`, archiva `services/*/build/reports/jacoco/test/**` y ejecuta `SonarQube Analysis` con `withSonarQubeEnv('SonarQube')`. Validado en los Casos 3, 5, 6 y 10. |
+| **CA2** | El pipeline ejecuta compilación y pruebas, publica los reportes JaCoCo en Jenkins y envía las métricas a SonarQube. | [Jenkinsfile](../../Jenkinsfile) invoca `buildGradleCommandForServices(..., [includeJacoco: true])`, calcula `sonarQualityGate.collectServiceCoverage` (publica JaCoCo en `post { always }`), archiva `services/*/build/reports/jacoco/test/**` y ejecuta `SonarQube Analysis` con `withSonarQubeEnv('SonarQube')`. Validado en los Casos 3, 5, 6 y 10. |
 | **CA3** | SonarQube evalúa un Quality Gate con cobertura >= 60% en los servicios núcleo y `waitForQualityGate(abortPipeline: true)` bloquea el pipeline ante fallo. | [setup-sonarqube-quality-gate.sh](../../jenkins/ci/setup-sonarqube-quality-gate.sh) crea el Quality Gate (>= 60%) y el webhook `/sonarqube-webhook/`. [sonarQualityGate.groovy](../../jenkins/vars/sonarQualityGate.groovy) ejecuta `waitForQualityGate(abortPipeline: true)` y verifica los 5 servicios núcleo (`auth`, `identity`, `promotion`, `form`, `gateway`). Validado en los Casos 7, 8, 9, 11 y 12. |
 
 ## 3. Servicios núcleo y umbral de cobertura

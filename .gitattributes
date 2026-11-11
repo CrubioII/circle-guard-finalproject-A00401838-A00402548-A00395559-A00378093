@@ -1,0 +1,7 @@
+# Files executed inside Linux containers / CI agents must keep LF line endings,
+# regardless of the developer's core.autocrlf setting (US-06).
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+*.dockerignore  text eol=lf
+.dockerignore   text eol=lf
+gradlew         text eol=lf
