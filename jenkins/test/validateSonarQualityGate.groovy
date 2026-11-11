@@ -36,6 +36,9 @@ binding.setVariable('env', mockEnv)
 binding.setVariable('echo', { String msg -> println("[JENKINS-ECHO] ${msg}") })
 binding.setVariable('error', { String msg -> throw new IllegalStateException(msg) })
 binding.setVariable('jacoco', { Map args -> jacocoInvocations.add(args) })
+// Pasos de Jenkins que sonarQualityGate usa para leer los reportes del workspace.
+binding.setVariable('fileExists', { String path -> new File(path).exists() })
+binding.setVariable('readFile', { Map args -> new File(args.file as String).getText((args.encoding ?: 'UTF-8') as String) })
 binding.setVariable('waitForQualityGate', { Map args ->
     waitForQualityGateInvocations.add(args)
     if (args.abortPipeline == true && simulatedQualityGateStatus != 'OK') {
@@ -52,6 +55,20 @@ def multibranchFlow = shell.parse(flowScriptFile)
 def sonarQualityGate = shell.parse(sonarScriptFile)
 
 println('=== Iniciando validacion reproducible de Gradle + JaCoCo + SonarQube (US-10) ===')
+
+// -----------------------------------------------------------------------------
+// Caso 0: el paso se puede cargar con `load` (sandbox + CPS), como lo hace el Jenkinsfile
+// -----------------------------------------------------------------------------
+String sonarScriptText = sonarScriptFile.getText('UTF-8')
+sonarScriptText.readLines().findAll { it ==~ /^(private\s+)?(Map|String|List<String>|long|boolean|int|void|Object)\s+\w+\(.*\)\s*\{\s*$/ }.each { String signature ->
+    String params = signature.substring(signature.indexOf('(') + 1, signature.lastIndexOf(')'))
+    assert !params.contains('=') : "Parámetro con valor por defecto (no soportado por CPS en load): ${signature}"
+    assert !(params ==~ /.*\b(boolean|int|long|double)\s+\w+.*/) : "Parámetro primitivo (no soportado por CPS en load): ${signature}"
+}
+['new File(', 'getMetaClass', '.getText('].each { String forbidden ->
+    assert !sonarScriptText.readLines().findAll { !it.trim().startsWith('//') }.any { it.contains(forbidden) } : "sonarQualityGate.groovy usa '${forbidden}', bloqueado por el sandbox de Jenkins."
+}
+println('[OK] Caso 0: sonarQualityGate es compatible con load, el sandbox y CPS (sin valores por defecto, sin new File ni getMetaClass).')
 
 // -----------------------------------------------------------------------------
 // Caso 1: build.gradle.kts integra jacoco y org.sonarqube para los 8 servicios (CA1)
@@ -76,7 +93,7 @@ println('[OK] Caso 1: build.gradle.kts integra jacoco y org.sonarqube con report
 // -----------------------------------------------------------------------------
 // Caso 2: rutas XML de JaCoCo para los 8 microservicios y servicios núcleo (CA1)
 // -----------------------------------------------------------------------------
-Map defaultConfig = sonarQualityGate.call()
+Map defaultConfig = sonarQualityGate.call([:])
 assert defaultConfig.allBackendServices.size() == 8
 assert defaultConfig.coreBackendServices.size() == 5
 assert defaultConfig.minCoreCoverage == 60.0d

@@ -3,6 +3,13 @@
 // Propósito: Orquestar la generación y publicación de reportes JaCoCo, la ejecución
 // del análisis SonarQube con Gradle y la compuerta bloqueante waitForQualityGate(abortPipeline: true)
 // con umbral de cobertura >= 60% para los servicios núcleo.
+//
+// El Jenkinsfile carga este archivo con `load` desde el workspace (como notifyPipeline, US-14),
+// así que corre en el sandbox y en el intérprete CPS de Jenkins:
+//   - sin parámetros con valor por defecto en las firmas (fallan al cargar con `load`);
+//   - los helpers de cálculo puro no llaman pasos de Jenkins (el Matcher nunca cruza un checkpoint);
+//   - los reportes se leen con los pasos fileExists/readFile, relativos al workspace del build
+//     (new File(...) está bloqueado por el sandbox y apuntaría al directorio del controlador).
 
 import groovy.transform.Field
 
@@ -34,7 +41,8 @@ import groovy.transform.Field
 /**
  * Devuelve la configuración base de SonarQube y JaCoCo para el pipeline.
  */
-Map call(Map config = [:]) {
+Map call(Map config) {
+    config = config ?: [:]
     double threshold = config.containsKey('minCoreCoverage')
         ? (config.minCoreCoverage as double)
         : DEFAULT_CORE_COVERAGE_THRESHOLD
@@ -54,7 +62,7 @@ Map call(Map config = [:]) {
 /**
  * Devuelve las rutas relativas de los reportes XML de JaCoCo para los servicios indicados.
  */
-List<String> resolveJacocoXmlReportPaths(List<String> services = ALL_BACKEND_SERVICES) {
+List<String> resolveJacocoXmlReportPaths(List<String> services) {
     List<String> targetServices = (services == null || services.isEmpty()) ? ALL_BACKEND_SERVICES : services
     return targetServices.collect { String svc ->
         String cleanName = svc.replaceFirst('^:services:', '')
@@ -66,7 +74,8 @@ List<String> resolveJacocoXmlReportPaths(List<String> services = ALL_BACKEND_SER
  * Construye el comando Gradle para ejecutar el análisis de SonarQube enviando
  * las rutas de cobertura XML de JaCoCo generadas en la etapa de pruebas.
  */
-String buildSonarGradleCommand(List<String> services = ALL_BACKEND_SERVICES, Map options = [:]) {
+String buildSonarGradleCommand(List<String> services, Map options) {
+    options = options ?: [:]
     List<String> targetServices = (services == null || services.isEmpty()) ? ALL_BACKEND_SERVICES : services
     String projectKey = (options.projectKey ?: (env?.SONAR_PROJECT_KEY ?: DEFAULT_SONAR_PROJECT_KEY)).toString().trim()
     String projectName = (options.projectName ?: DEFAULT_SONAR_PROJECT_NAME).toString().trim()
@@ -170,23 +179,24 @@ Map extractCounterFromXml(String xmlFragment, String counterType) {
  * Recolecta la cobertura JaCoCo de los servicios indicados leyendo sus archivos XML
  * en el workspace si existen.
  */
-Map collectServiceCoverage(List<String> services = ALL_BACKEND_SERVICES, String workspaceRoot = '.') {
+Map collectServiceCoverage(List<String> services, String workspaceRoot) {
     List<String> targetServices = (services == null || services.isEmpty()) ? ALL_BACKEND_SERVICES : services
-    File rootDir = new File(workspaceRoot)
+    String root = (workspaceRoot ?: '.').toString()
     Map<String, Map> byService = [:]
 
     for (String svc : targetServices) {
         String cleanName = svc.replaceFirst('^:services:', '')
-        File xmlFile = new File(rootDir, "services/${cleanName}/build/reports/jacoco/test/jacocoTestReport.xml")
-        Map metrics = xmlFile.exists()
-            ? parseJacocoXmlCounters(xmlFile.getText('UTF-8'))
-            : parseJacocoXmlCounters('')
+        String relativePath = "services/${cleanName}/build/reports/jacoco/test/jacocoTestReport.xml".toString()
+        // '.' = workspace del build: los pasos fileExists/readFile resuelven la ruta relativa a él.
+        String reportPath = (root == '.') ? relativePath : "${root}/${relativePath}".toString()
+        boolean reportExists = fileExists(reportPath)
+        Map metrics = parseJacocoXmlCounters(reportExists ? readFile(file: reportPath, encoding: 'UTF-8') : '')
 
         byService[cleanName] = metrics + [
             service      : cleanName,
             isCoreService: CORE_BACKEND_SERVICES.contains(cleanName),
-            xmlPath      : "services/${cleanName}/build/reports/jacoco/test/jacocoTestReport.xml".toString(),
-            reportExists : xmlFile.exists()
+            xmlPath      : relativePath,
+            reportExists : reportExists
         ]
     }
 
@@ -197,7 +207,8 @@ Map collectServiceCoverage(List<String> services = ALL_BACKEND_SERVICES, String 
  * Evalúa el resultado del Quality Gate de SonarQube junto con el umbral de cobertura
  * (>= 60%) sobre los servicios núcleo evaluados.
  */
-Map evaluateQualityGate(Map config = [:]) {
+Map evaluateQualityGate(Map config) {
+    config = config ?: [:]
     String sonarStatus = (config.sonarStatus ?: 'OK').toString().trim().toUpperCase()
     double minCoreCoverage = config.containsKey('minCoreCoverage')
         ? (config.minCoreCoverage as double)
@@ -263,7 +274,8 @@ Map evaluateQualityGate(Map config = [:]) {
  * Ejecuta waitForQualityGate(abortPipeline: true) en Jenkins y verifica el resultado.
  * Si el Quality Gate falla o la cobertura núcleo está por debajo del umbral, aborta el pipeline.
  */
-Map enforceQualityGate(Map config = [:]) {
+Map enforceQualityGate(Map config) {
+    config = config ?: [:]
     double minCoreCoverage = config.containsKey('minCoreCoverage')
         ? (config.minCoreCoverage as double)
         : DEFAULT_CORE_COVERAGE_THRESHOLD
@@ -277,11 +289,11 @@ Map enforceQualityGate(Map config = [:]) {
             error("Pipeline abortado por waitForQualityGate(abortPipeline: true): Quality Gate en estado '${sonarStatus}'.")
         }
     } else {
+        // Con abortPipeline: true el propio paso detiene el build si el estado no es OK.
+        // `status` es una propiedad permitida en el sandbox (sin getMetaClass, que está bloqueado).
         qgResult = waitForQualityGate(abortPipeline: true)
-        if (qgResult instanceof Map && qgResult.containsKey('status')) {
-            sonarStatus = (qgResult.status ?: 'OK').toString().trim().toUpperCase()
-        } else if (qgResult != null && qgResult.getMetaClass().respondsTo(qgResult, 'getStatus')) {
-            sonarStatus = (qgResult.status ?: 'OK').toString().trim().toUpperCase()
+        if (qgResult != null && qgResult.status) {
+            sonarStatus = qgResult.status.toString().trim().toUpperCase()
         }
     }
 
@@ -305,7 +317,8 @@ Map enforceQualityGate(Map config = [:]) {
  * Si el plugin jacoco está instalado invoca el step jacoco(...); en todos los casos
  * deja los reportes XML y HTML listos para archivarse como artefactos del build.
  */
-Map publishJacocoReports(Map config = [:]) {
+Map publishJacocoReports(Map config) {
+    config = config ?: [:]
     List<String> services = (config.services ?: ALL_BACKEND_SERVICES) as List<String>
     List<String> xmlPaths = resolveJacocoXmlReportPaths(services)
     boolean pluginPublished = false
