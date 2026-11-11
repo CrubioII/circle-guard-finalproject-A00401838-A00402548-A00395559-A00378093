@@ -85,6 +85,10 @@ RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
 # 4. Preparar directorio para configuración JCasC
 RUN mkdir -p /var/jenkins_home/casc_configs && chown -R jenkins:jenkins /var/jenkins_home/casc_configs
 
+# 5. US-31: entrypoint que no arranca Jenkins si faltan los secretos de las cuentas
+COPY --chmod=0755 cg-entrypoint.sh /usr/local/bin/cg-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/cg-entrypoint.sh"]
+
 ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false" \
     CASC_JENKINS_CONFIG="/var/jenkins_home/casc_configs/jenkins.yaml" \
     PLAYWRIGHT_BROWSERS_PATH="/var/jenkins_home/.cache/ms-playwright"

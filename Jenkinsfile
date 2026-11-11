@@ -38,10 +38,20 @@
 //   SemVer, etapa fallida y enlace al log. Notifica fallos, abortos, inestables y
 //   recuperaciones siempre, y los éxitos solo en main. Desactivable con NOTIFY_DISCORD=false.
 //
+// US-10 — Análisis estático y Quality Gate bloqueante en SonarQube (SCRUM-22):
+//   CA1: Compile & Test Backend genera jacocoTestReport (XML) por servicio y calcula la
+//        cobertura de líneas por servicio (reports/ci/jacoco-coverage.json).
+//   CA2: 'SonarQube Analysis' envía código, pruebas y cobertura al servidor 'SonarQube'
+//        (withSonarQubeEnv + credencial 'sonar-token').
+//   CA3: 'Quality Gate' bloquea el pipeline con waitForQualityGate(abortPipeline: true) y exige
+//        >= 60% de líneas en los servicios núcleo. Corre ANTES de publicar imágenes y desplegar.
+//   Desactivable con ENABLE_SONARQUBE_GATE=false (p. ej. si SonarQube no está disponible).
+//
 // Requisitos del agente: JDK 21, Node.js 20+, librerías de sistema de Chromium (imagen
-// infra/bootstrap/jenkins), plugin htmlpublisher, git, openssh-client y permisos de
-// ejecución sobre ./gradlew. Credenciales: 'nexus-credentials', 'circleguard-env-ssh' y
-// 'discord-webhook' (opcional: si falta, la notificación solo deja una advertencia).
+// infra/bootstrap/jenkins), plugins htmlpublisher y sonar, git, openssh-client y permisos de
+// ejecución sobre ./gradlew. Credenciales: 'nexus-credentials', 'circleguard-env-ssh',
+// 'sonar-token' (US-10) y 'discord-webhook' (opcional: si falta, la notificación solo deja una
+// advertencia).
 // =============================================================================
 import groovy.json.JsonOutput
 
@@ -52,6 +62,11 @@ import groovy.json.JsonOutput
 def flow = [:]
 def detection = [:]
 def plan = [:]
+// US-10: cobertura de líneas por servicio (JaCoCo XML), usada por la etapa 'Quality Gate'.
+def coverageByService = [:]
+// US-10: paso sonarQualityGate cargado desde el workspace (como notifyPipeline de US-14): la
+// librería global usa la versión de main, así cada rama o PR valida su propia versión del paso.
+def sonarQualityGate = null
 def versionMap = [:]
 // US-13: resultado de cada compuerta de entrega continua (SUCCESS | FAILURE | NOT_RUN).
 def deployResults = [deployDev: 'NOT_RUN', verifyDev: 'NOT_RUN', e2eDev: 'NOT_RUN', promoteStage: 'NOT_RUN', verifyStage: 'NOT_RUN']
@@ -174,6 +189,11 @@ pipeline {
             description: 'US-14: publica el resultado del build en el canal #pipeline de Discord (credencial discord-webhook).'
         )
         booleanParam(
+            name: 'ENABLE_SONARQUBE_GATE',
+            defaultValue: true,
+            description: 'US-10: ejecuta el análisis estático con SonarQube y el bloqueo waitForQualityGate(abortPipeline: true).'
+        )
+        booleanParam(
             name: 'PUBLISH_GITHUB_STATUS',
             defaultValue: true,
             description: 'Publica los estados PENDING/SUCCESS/FAILURE como Commit Status en GitHub.'
@@ -183,6 +203,7 @@ pipeline {
     environment {
         GRADLE_OPTS = '-Dorg.gradle.daemon=false'
         CI = 'true'
+        SONAR_PROJECT_KEY = 'circleguard-monorepo'   // US-10
         // US-13: nodos de ambiente (US-05) y registro (US-11). Sobrescribibles con variables
         // globales de Jenkins (CG_DEV_HOST, CG_STAGE_HOST, CG_REGISTRY_URL) sin tocar el repo.
         DEV_HOST = "${env.CG_DEV_HOST ?: '52.15.213.209'}"
@@ -219,7 +240,8 @@ pipeline {
                     detection = detectChangedServices(forceAll: params.FORCE_FULL_BUILD as boolean)
                     plan = multibranchFlow.planPipeline(flow, detection, [
                         targetEnv: params.TARGET_ENV,
-                        forceFullBuild: params.FORCE_FULL_BUILD as boolean
+                        forceFullBuild: params.FORCE_FULL_BUILD as boolean,
+                        enableSonar: params.ENABLE_SONARQUBE_GATE as boolean   // US-10
                     ])
 
                     echo pipelineUtils.formatDetectionSummary(detection)
@@ -276,6 +298,18 @@ pipeline {
                     )
                     echo "Servicios backend afectados (${plan.backendServices.size()}): ${plan.backendServices.join(', ')}"
                     sh "${gradleCommand}"
+
+                    // US-10 CA1: cobertura de líneas por servicio para el Quality Gate. La publicación
+                    // del reporte JaCoCo en Jenkins la hace post { always } (US-31 / US-32).
+                    sonarQualityGate = load 'jenkins/vars/sonarQualityGate.groovy'
+                    coverageByService = sonarQualityGate.collectServiceCoverage(plan.backendServices, '.')
+                    writeFile(
+                        file: 'reports/ci/jacoco-coverage.json',
+                        text: JsonOutput.prettyPrint(JsonOutput.toJson([
+                            xmlReportPaths   : sonarQualityGate.resolveJacocoXmlReportPaths(plan.backendServices),
+                            coverageByService: coverageByService
+                        ]))
+                    )
                 }
             }
         }
@@ -292,6 +326,57 @@ pipeline {
                     String tasks = coreServices.collect { ":services:${it}:jacocoTestCoverageVerification" }.join(' ')
                     echo "Verificando cobertura de líneas >= 60% en: ${coreServices.join(', ')}"
                     sh "./gradlew ${tasks} --no-daemon --stacktrace"
+                }
+            }
+        }
+
+        // US-10 CA2: análisis estático en SonarQube (servidor 'SonarQube' de jenkins/ci/jenkins.yaml).
+        stage('SonarQube Analysis') {
+            when {
+                expression { plan?.runSonarAnalysis == true }
+            }
+            steps {
+                script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+                    String sonarCommand = sonarQualityGate.buildSonarGradleCommand(
+                        plan.backendServices,
+                        [projectKey: env.SONAR_PROJECT_KEY, skipTests: true, daemon: false]
+                    )
+                    withSonarQubeEnv('SonarQube') {
+                        sh "${sonarCommand}"
+                    }
+                    writeFile(
+                        file: 'reports/ci/sonarqube-analysis.json',
+                        text: JsonOutput.prettyPrint(JsonOutput.toJson([
+                            projectKey     : env.SONAR_PROJECT_KEY,
+                            sonarServerName: 'SonarQube',
+                            backendServices: plan.backendServices,
+                            xmlReportPaths : sonarQualityGate.resolveJacocoXmlReportPaths(plan.backendServices),
+                            command        : sonarCommand
+                        ]))
+                    )
+                }
+            }
+        }
+
+        // US-10 CA3: bloquea el pipeline (antes de publicar y desplegar) si falla el Quality Gate.
+        stage('Quality Gate') {
+            when {
+                expression { plan?.runQualityGate == true }
+            }
+            steps {
+                script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+                    timeout(time: 10, unit: 'MINUTES') {
+                        Map gateResult = sonarQualityGate.enforceQualityGate([
+                            minCoreCoverage  : 60.0d,
+                            coverageByService: coverageByService
+                        ])
+                        writeFile(
+                            file: 'reports/ci/quality-gate.json',
+                            text: JsonOutput.prettyPrint(JsonOutput.toJson(gateResult))
+                        )
+                    }
                 }
             }
         }

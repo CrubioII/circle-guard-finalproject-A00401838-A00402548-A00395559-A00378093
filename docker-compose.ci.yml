@@ -34,6 +34,26 @@ services:
       SONAR_HOST_URL: "${SONAR_HOST_URL:-http://sonarqube:9000}"
       NEXUS_URL: "${NEXUS_URL:-http://nexus:8081}"
       DOCKER_REGISTRY_URL: "${DOCKER_REGISTRY_URL:-localhost:5000}"
+      # US-13 / US-31: hosts de los ambientes y aprobadores de prod (no son secretos).
+      # jenkins/ci/jenkins.yaml los publica como variables globales de Jenkins.
+      CG_DEV_HOST: "${CG_DEV_HOST:-52.15.213.209}"
+      CG_STAGE_HOST: "${CG_STAGE_HOST:-3.17.163.44}"
+      CG_PROD_HOST: "${CG_PROD_HOST:-3.19.74.9}"
+      CG_REGISTRY_URL: "${CG_REGISTRY_URL:-52.14.6.11:5000}"
+      CG_PROD_APPROVERS: "${CG_PROD_APPROVERS:-}"
+      CG_PROD_APPROVAL_TIMEOUT_MIN: "${CG_PROD_APPROVAL_TIMEOUT_MIN:-60}"
+      # US-31: el entrypoint no arranca Jenkins si falta alguno de estos secretos.
+      CG_REQUIRED_SECRETS: "JENKINS_ADMIN_PASSWORD JENKINS_PWD_JRUBIO JENKINS_PWD_ECUELLAR JENKINS_PWD_SCASTILLO JENKINS_PWD_JPORDONEZ JENKINS_PWD_DOCENTE"
+    # US-31: las contraseñas de las cuentas llegan como archivos en /run/secrets (JCasC los
+    # resuelve como ${NOMBRE}) y no como variables de entorno: así un `sh 'env'` de cualquier
+    # build no las imprime y no aparecen en `docker inspect`.
+    secrets:
+      - JENKINS_ADMIN_PASSWORD
+      - JENKINS_PWD_JRUBIO
+      - JENKINS_PWD_ECUELLAR
+      - JENKINS_PWD_SCASTILLO
+      - JENKINS_PWD_JPORDONEZ
+      - JENKINS_PWD_DOCENTE
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
@@ -140,3 +160,19 @@ networks:
   ci-network:
     name: circleguard_ci_network
     driver: bridge
+
+# US-31: contraseñas de las cuentas de Jenkins. Se toman de infra/bootstrap/.env.ci
+# (--env-file), que bootstrap-ci.sh genera con permisos 0600 y nunca se versiona.
+secrets:
+  JENKINS_ADMIN_PASSWORD:
+    environment: JENKINS_ADMIN_PASSWORD
+  JENKINS_PWD_JRUBIO:
+    environment: JENKINS_PWD_JRUBIO
+  JENKINS_PWD_ECUELLAR:
+    environment: JENKINS_PWD_ECUELLAR
+  JENKINS_PWD_SCASTILLO:
+    environment: JENKINS_PWD_SCASTILLO
+  JENKINS_PWD_JPORDONEZ:
+    environment: JENKINS_PWD_JPORDONEZ
+  JENKINS_PWD_DOCENTE:
+    environment: JENKINS_PWD_DOCENTE

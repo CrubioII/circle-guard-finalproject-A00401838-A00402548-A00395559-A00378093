@@ -80,6 +80,9 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
     boolean runHeavyBuild = !skipCiBuild
     boolean runBackendBuild = runHeavyBuild && !backendServices.isEmpty()
     boolean runMobileBuild = runHeavyBuild && mobileChanged
+    boolean enableSonar = (config.containsKey('enableSonar') ? config.enableSonar : true) as boolean
+    boolean runSonarAnalysis = runBackendBuild && enableSonar
+    boolean runQualityGate = runSonarAnalysis
 
     Map deployment = deploymentDecision(context, targetEnv)
     // US-13: toda ejecución de main que publica imágenes despliega a dev y, si dev queda sano
@@ -95,6 +98,13 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
     }
     if (runBackendBuild) {
         stages.add('Compile & Test Backend')
+    }
+    // US-10: el análisis y el Quality Gate van tras las pruebas del backend y antes de publicar o desplegar.
+    if (runSonarAnalysis) {
+        stages.add('SonarQube Analysis')
+    }
+    if (runQualityGate) {
+        stages.add('Quality Gate')
     }
     if (runMobileBuild) {
         stages.add('Compile & Test Web')
@@ -129,6 +139,8 @@ Map planPipeline(Map context, Map detection, Map config = [:]) {
         runHeavyBuild            : runHeavyBuild,
         runBackendBuild          : runBackendBuild,
         runMobileBuild           : runMobileBuild,
+        runSonarAnalysis         : runSonarAnalysis,
+        runQualityGate           : runQualityGate,
         backendServices          : backendServices,
         mobileChanged            : mobileChanged,
         deploymentRequested      : targetEnv != 'none',

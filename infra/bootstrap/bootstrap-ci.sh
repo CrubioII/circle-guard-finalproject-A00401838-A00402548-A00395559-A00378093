@@ -18,7 +18,8 @@
 #   - No duplica Security Groups ni instancias EC2 si ya existen con el tag Name=circleguard-ci-server
 #   - No duplica entradas en /etc/sysctl.d/, /etc/security/limits.d/ ni /etc/fstab
 #   - No reinstala Docker/Docker Compose si ya están presentes y activos
-#   - No sobrescribe infra/bootstrap/.env.ci si ya fue creado previamente
+#   - No sobrescribe infra/bootstrap/.env.ci si ya fue creado previamente: solo agrega las
+#     variables nuevas de la plantilla y genera las contraseñas de Jenkins que falten (US-31)
 #   - Reconcilia contenedores y volúmenes persistentes con docker compose up -d
 # =============================================================================
 set -euo pipefail
@@ -58,6 +59,17 @@ log_info()  { printf '[bootstrap-ci][INFO]  %s\n' "$*"; }
 log_ok()    { printf '[bootstrap-ci][OK]    %s\n' "$*"; }
 log_warn()  { printf '[bootstrap-ci][WARN]  %s\n' "$*" >&2; }
 log_error() { printf '[bootstrap-ci][ERROR] %s\n' "$*" >&2; }
+
+# US-31: contraseñas de las cuentas de jenkins/ci/jenkins.yaml. Deben coincidir con los
+# secretos de docker-compose.ci.yml (lo comprueba jenkins/test/validateJenkinsSecurity.sh).
+JENKINS_SECRET_KEYS=(
+    JENKINS_ADMIN_PASSWORD
+    JENKINS_PWD_JRUBIO
+    JENKINS_PWD_ECUELLAR
+    JENKINS_PWD_SCASTILLO
+    JENKINS_PWD_JPORDONEZ
+    JENKINS_PWD_DOCENTE
+)
 
 usage() {
     cat <<'EOF'
@@ -323,7 +335,8 @@ provision_aws_ec2_and_bootstrap() {
     ssh -i "$EC2_SSH_KEY_PATH" -o StrictHostKeyChecking=no "${EC2_SSH_USER}@${public_ip}" \
         "sudo mkdir -p '${REMOTE_APP_DIR}' && sudo chown -R ${EC2_SSH_USER}:${EC2_SSH_USER} '${REMOTE_APP_DIR}'"
 
-    COPYFILE_DISABLE=1 tar --no-xattrs -C "$REPO_ROOT" -czf - \
+    # US-31: nunca se copia el .env.ci local, para no pisar las contraseñas del servidor.
+    COPYFILE_DISABLE=1 tar --no-xattrs --exclude='infra/bootstrap/.env.ci' -C "$REPO_ROOT" -czf - \
         docker-compose.ci.yml \
         infra/bootstrap \
         jenkins/ci \
@@ -646,6 +659,67 @@ prepare_env_file() {
     fi
 
     ENV_FILE="$target_env"
+    merge_missing_env_keys
+    ensure_jenkins_passwords
+}
+
+# -----------------------------------------------------------------------------
+# Agrega a .env.ci las variables nuevas de la plantilla sin tocar las existentes (US-31)
+# -----------------------------------------------------------------------------
+merge_missing_env_keys() {
+    local added=0 line key
+    [[ -s "$ENV_FILE" && -n "$(tail -c1 "$ENV_FILE")" ]] && printf '\n' >> "$ENV_FILE"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%$'\r'}"
+        [[ "$line" =~ ^([A-Z][A-Z0-9_]*)= ]] || continue
+        key="${BASH_REMATCH[1]}"
+        if ! grep -q "^${key}=" "$ENV_FILE"; then
+            printf '%s\n' "$line" >> "$ENV_FILE"
+            added=$((added + 1))
+        fi
+    done < "$ENV_TEMPLATE"
+    if (( added > 0 )); then
+        log_ok "Se agregaron ${added} variables nuevas de la plantilla a ${ENV_FILE}; las existentes se conservan."
+    fi
+}
+
+random_password() {
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -hex 20
+    else
+        od -An -N20 -tx1 /dev/urandom | tr -d ' \n'
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# US-31: genera una contraseña aleatoria para cada cuenta de Jenkins que no tenga una.
+# Nunca reemplaza una contraseña existente y nunca la imprime.
+# -----------------------------------------------------------------------------
+ensure_jenkins_passwords() {
+    local generated=() key current old_umask
+    old_umask="$(umask)"
+    umask 077   # el archivo temporal también contiene contraseñas
+    for key in "${JENKINS_SECRET_KEYS[@]}"; do
+        current="$({ grep "^${key}=" "$ENV_FILE" || true; } | tail -n1 | cut -d= -f2- | tr -d '\r"'"'"' ')"
+        if [[ -z "$current" ]]; then
+            local tmp_file="${ENV_FILE}.tmp"
+            awk -v k="$key" -v v="$(random_password)" '
+                BEGIN { done = 0 }
+                $0 ~ "^" k "=" { if (!done) { print k "=" v; done = 1 } ; next }
+                { print }
+                END { if (!done) print k "=" v }
+            ' "$ENV_FILE" > "$tmp_file"
+            mv "$tmp_file" "$ENV_FILE"
+            generated+=("$key")
+        fi
+    done
+    umask "$old_umask"
+    chmod 600 "$ENV_FILE"
+    if (( ${#generated[@]} > 0 )); then
+        log_ok "Contraseñas de Jenkins generadas para ${generated[*]} en ${ENV_FILE} (0600; no se imprimen)."
+    else
+        log_ok "Las ${#JENKINS_SECRET_KEYS[@]} contraseñas de Jenkins ya existen en ${ENV_FILE}; se conservan (idempotente)."
+    fi
 }
 
 resolve_target_services() {
@@ -825,6 +899,9 @@ print_summary() {
    - SonarQube UI     : http://${host}:${s_port}/          (Health: /api/system/status)
    - Nexus UI / Maven : http://${host}:${n_port}/          (Health: /service/rest/v1/status)
    - Docker Registry  : http://${host}:${r_port}/v2/       (Conector Docker en Nexus)
+
+ Cuentas de Jenkins (US-31): admin, jrubio, ecuellar, scastillo, jpordonez y docente.
+   Contraseñas en ${ENV_FILE} (0600). Aprobadores de prod: ${CG_PROD_APPROVERS:-<ninguno>}
 
  Volúmenes persistentes configurados:
    - circleguard_jenkins_home

@@ -30,4 +30,7 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter:1.19.3")
     testImplementation("org.testcontainers:postgresql:1.19.3")
     testImplementation("org.testcontainers:neo4j:1.19.3")
+    // US-16: flujo form -> Kafka -> promotion con broker real y el productor de form-service
+    testImplementation("org.testcontainers:kafka:1.19.3")
+    testImplementation(project(":services:circleguard-form-service"))
 }

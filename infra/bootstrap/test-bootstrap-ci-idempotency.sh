@@ -103,6 +103,19 @@ bash "$BOOTSTRAP_SCRIPT" --dry-run --state-dir "$TMP_STATE" --public-host "10.0.
 assert_true "Ejecución #1 finaliza con código 0" test -f "${TMP_STATE}/.env.ci"
 assert_file_contains "Ejecución #1 inicializa .env.ci con CI_PUBLIC_HOST=10.0.10.25" "${TMP_STATE}/.env.ci" '^CI_PUBLIC_HOST=10\.0\.10\.25$'
 
+# US-31: contraseñas de las cuentas de Jenkins
+JENKINS_SECRET_KEYS=(JENKINS_ADMIN_PASSWORD JENKINS_PWD_JRUBIO JENKINS_PWD_ECUELLAR JENKINS_PWD_SCASTILLO JENKINS_PWD_JPORDONEZ JENKINS_PWD_DOCENTE)
+for key in "${JENKINS_SECRET_KEYS[@]}"; do
+    assert_file_contains "[US-31] Ejecución #1 genera una contraseña aleatoria (≥ 32 caracteres) para ${key}" "${TMP_STATE}/.env.ci" "^${key}=[0-9a-f]{32,}$"
+done
+PASSWORDS_RUN1="$(grep -E '^JENKINS_(ADMIN_PASSWORD|PWD_[A-Z]+)=' "${TMP_STATE}/.env.ci")"
+LEAKED=0
+while IFS='=' read -r _ value; do
+    if grep -qF "$value" "$RUN1_LOG"; then LEAKED=1; fi
+done <<< "$PASSWORDS_RUN1"
+assert_true "[US-31] Ninguna contraseña generada aparece en el log de la ejecución #1" test "$LEAKED" -eq 0
+assert_file_contains "[US-31] La plantilla define los aprobadores de prod" "${TMP_STATE}/.env.ci" '^CG_PROD_APPROVERS=jrubio,jpordonez$'
+
 # Inyectar un valor personalizado en .env.ci para comprobar que la 2da ejecución no lo sobrescribe
 printf 'CUSTOM_IDEMPOTENCY_TOKEN=preserve_across_runs\n' >> "${TMP_STATE}/.env.ci"
 
@@ -112,6 +125,38 @@ assert_file_contains "Ejecución #2 detecta limits ya actualizado sin reescribir
 assert_file_contains "Ejecución #2 detecta swap ya registrado sin duplicar entrada" "$RUN2_LOG" 'Swap ya registrado'
 assert_file_contains "Ejecución #2 conserva .env.ci existente sin sobrescribirlo" "$RUN2_LOG" 'ya existe; se conserva sin sobrescribir'
 assert_file_contains "Ejecución #2 preserva tokens personalizados dentro de .env.ci" "${TMP_STATE}/.env.ci" '^CUSTOM_IDEMPOTENCY_TOKEN=preserve_across_runs$'
+PASSWORDS_RUN2="$(grep -E '^JENKINS_(ADMIN_PASSWORD|PWD_[A-Z]+)=' "${TMP_STATE}/.env.ci")"
+assert_true "[US-31] Ejecución #2 conserva las 6 contraseñas de Jenkins sin regenerarlas" test "$PASSWORDS_RUN1" == "$PASSWORDS_RUN2"
+assert_file_contains "[US-31] Ejecución #2 informa que las contraseñas ya existen" "$RUN2_LOG" 'contraseñas de Jenkins ya existen'
+
+# US-31: un .env.ci anterior a US-31 recibe las variables nuevas sin perder las propias
+LEGACY_STATE="${TMP_STATE}/legacy"
+mkdir -p "$LEGACY_STATE"
+printf 'CI_PUBLIC_HOST=10.0.10.7\nLEGACY_VALUE=keep_me' > "${LEGACY_STATE}/.env.ci"
+bash "$BOOTSTRAP_SCRIPT" --dry-run --state-dir "$LEGACY_STATE" > "${LEGACY_STATE}/run.log" 2>&1
+assert_file_contains "[US-31] .env.ci anterior conserva sus valores (CI_PUBLIC_HOST)" "${LEGACY_STATE}/.env.ci" '^CI_PUBLIC_HOST=10\.0\.10\.7$'
+assert_file_contains "[US-31] .env.ci anterior conserva variables propias sin salto de línea final" "${LEGACY_STATE}/.env.ci" '^LEGACY_VALUE=keep_me$'
+assert_file_contains "[US-31] .env.ci anterior recibe CG_PROD_APPROVERS de la plantilla" "${LEGACY_STATE}/.env.ci" '^CG_PROD_APPROVERS='
+assert_file_contains "[US-31] .env.ci anterior recibe la contraseña de admin generada" "${LEGACY_STATE}/.env.ci" '^JENKINS_ADMIN_PASSWORD=[0-9a-f]{32,}$'
+
+# US-31: los secretos llegan a Jenkins como archivos y el contenedor no arranca sin ellos
+for key in "${JENKINS_SECRET_KEYS[@]}"; do
+    assert_file_contains "[US-31] docker-compose.ci.yml declara el secreto ${key} desde el entorno" "$COMPOSE_FILE" "^    environment: ${key}$"
+done
+assert_true "[US-31] Las contraseñas no se pasan como variables de entorno del contenedor" \
+    bash -c "! grep -Eq '^      JENKINS_(ADMIN_PASSWORD|PWD_[A-Z]+):' '$COMPOSE_FILE'"
+assert_file_contains "[US-31] Dockerfile de Jenkins usa el entrypoint que valida los secretos" "$JENKINS_DOCKERFILE" '^ENTRYPOINT \["/usr/local/bin/cg-entrypoint\.sh"\]'
+assert_file_contains "[US-31] plugins.txt incluye matrix-auth" "$JENKINS_PLUGINS" '^matrix-auth$'
+SECRETS_TMP="${TMP_STATE}/secrets"
+mkdir -p "$SECRETS_TMP"
+printf 'x' > "${SECRETS_TMP}/PRESENTE"
+: > "${SECRETS_TMP}/VACIO"
+ENTRY_RC=0
+SECRETS="$SECRETS_TMP" CG_REQUIRED_SECRETS="PRESENTE VACIO FALTANTE" \
+    bash "${SCRIPT_DIR}/jenkins/cg-entrypoint.sh" > "${TMP_STATE}/entry.log" 2>&1 || ENTRY_RC=$?
+assert_true "[US-31] El entrypoint se niega a arrancar si un secreto falta o está vacío (código 64)" test "$ENTRY_RC" -eq 64
+assert_file_contains "[US-31] El entrypoint nombra los secretos faltantes" "${TMP_STATE}/entry.log" 'Faltan secretos de Jenkins \(US-31\): VACIO FALTANTE'
+assert_file_contains "[US-31] El aprovisionamiento remoto nunca copia el .env.ci local" "$BOOTSTRAP_SCRIPT" "tar --no-xattrs --exclude='infra/bootstrap/\.env\.ci'"
 
 SYSCTL_LINES="$(grep -c '^vm\.max_map_count' "${TMP_STATE}/etc/sysctl.d/99-circleguard-ci.conf")"
 FSTAB_LINES="$(grep -c '^/swapfile ' "${TMP_STATE}/etc/fstab")"

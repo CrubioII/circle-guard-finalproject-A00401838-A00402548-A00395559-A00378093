@@ -11,14 +11,14 @@
 # Aplicación:
 #   1. Al arrancar Jenkins: exporta CASC_JENKINS_CONFIG=<ruta absoluta>/jenkins/ci/jenkins.yaml
 #      (o configura -Dcasc.jenkins.config=...).
-#   2. Para recargar tras un cambio:
-#      java -jar jenkins-cli.jar -s "${JENKINS_URL}" -auth admin:"${JENKINS_ADMIN_PASSWORD}" \
+#   2. Para recargar tras un cambio (como admin; con un API token, no con la contraseña):
+#      java -jar jenkins-cli.jar -s "${JENKINS_URL}" -auth admin:"${JENKINS_ADMIN_API_TOKEN}" \
 #           reload-jcasc-configuration
 # (o UI: Manage Jenkins -> Configuration as Code -> Reload existing configuration)
 #
 # Prerrequisitos (plugins): configuration-as-code, job-dsl, workflow-aggregator,
 # workflow-multibranch, github, github-branch-source, pipeline-githubnotify-step,
-# credentials-binding.
+# credentials-binding, matrix-auth (US-31).
 # Credenciales requeridas (creadas fuera del repositorio, nunca versionadas):
 #   - github-token       (Secret text con PAT; API del servidor GitHub y Branch Source).
 #   - github-credentials (Username with password: usuario + PAT; clonado de la libreria
@@ -27,12 +27,96 @@
 #                         descarga en los nodos de ambiente durante el despliegue, US-13).
 #   - circleguard-env-ssh (SSH Username with private key: usuario ec2-user + llave de los
 #                         nodos dev/stage de US-05; despliegue y túneles E2E de US-13).
-# Variables de entorno esperadas por este archivo: JENKINS_URL.
-# Variables globales opcionales (US-13): CG_DEV_HOST, CG_STAGE_HOST, CG_REGISTRY_URL.
-# Variables globales de US-31: CG_PROD_APPROVERS (IDs de usuario que aprueban releases a prod;
-#   vacío = release a prod omitido), CG_PROD_APPROVAL_TIMEOUT_MIN (60), CG_PROD_HOST (3.19.74.9).
+# Variables de entorno esperadas por este archivo. Las pasa docker-compose.ci.yml desde
+# infra/bootstrap/.env.ci, que bootstrap-ci.sh genera con permisos 0600 y nunca se versiona:
+#   - JENKINS_URL.
+#   - Seguridad (US-31): JENKINS_ADMIN_PASSWORD y JENKINS_PWD_<USUARIO>, una por cuenta.
+#   - Hosts (US-13): CG_DEV_HOST, CG_STAGE_HOST, CG_PROD_HOST y CG_REGISTRY_URL.
+#   - Aprobación de prod (US-31): CG_PROD_APPROVERS (IDs de la lista de usuarios de abajo;
+#     vacío = release a prod omitido) y CG_PROD_APPROVAL_TIMEOUT_MIN (60).
+# Estas variables se declaran aquí y no en la UI: JCasC reemplaza globalNodeProperties en cada
+# arranque, así que un valor escrito a mano en Manage Jenkins -> System se perdería.
+#
+# Seguridad (US-31, docs/operaciones/JENKINS_SEGURIDAD_US31.md):
+#   - Cuentas locales sin registro público. JCasC reaplica las contraseñas en cada arranque:
+#     para cambiar una se edita .env.ci y se reinicia Jenkins.
+#   - Autorización por matriz (matrix-auth): solo 'admin' administra, el equipo lanza y
+#     cancela builds, 'docente' solo lee y el usuario anónimo no tiene ningún permiso.
+#     Los webhooks /github-webhook/ y /sonarqube-webhook/ no requieren sesión.
 # =============================================================================
 jenkins:
+  # US-31: cuentas locales. Las contraseñas vienen del entorno, y docker-compose.ci.yml no
+  # arranca Jenkins si falta alguna (${VAR:?}): nunca se crea una cuenta con contraseña vacía.
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          name: "Administrador CircleGuard (emergencia)"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+        - id: "jrubio"
+          name: "Juan Camilo Rubio Arboleda"
+          password: "${JENKINS_PWD_JRUBIO}"
+        - id: "ecuellar"
+          name: "Esteban Cuéllar"
+          password: "${JENKINS_PWD_ECUELLAR}"
+        - id: "scastillo"
+          name: "Santiago Castillo"
+          password: "${JENKINS_PWD_SCASTILLO}"
+        - id: "jpordonez"
+          name: "Juan Pablo Ordóñez"
+          password: "${JENKINS_PWD_JPORDONEZ}"
+        - id: "docente"
+          name: "Docente (solo lectura)"
+          password: "${JENKINS_PWD_DOCENTE}"
+
+  # US-31: autorización por matriz. Solo 'admin' tiene Overall/Administer: consola de scripts,
+  # credenciales y configuración, que con el socket de Docker montado equivale a root en el host.
+  # El equipo lanza y cancela builds y responde el input de prod. Run/Replay y Job/Configure
+  # quedan fuera porque permitirían ejecutar código propio con las credenciales del pipeline.
+  # Quién puede APROBAR prod lo decide CG_PROD_APPROVERS (el pipeline valida la lista).
+  authorizationStrategy:
+    globalMatrix:
+      entries:
+        - user:
+            name: "admin"
+            permissions:
+              - "Overall/Administer"
+        - group:
+            name: "authenticated"
+            permissions:
+              - "Overall/Read"
+              - "Job/Read"
+              - "View/Read"
+        - user:
+            name: "jrubio"
+            permissions:
+              - "Job/Build"
+              - "Job/Cancel"
+              - "Job/Workspace"
+              - "Run/Update"
+        - user:
+            name: "ecuellar"
+            permissions:
+              - "Job/Build"
+              - "Job/Cancel"
+              - "Job/Workspace"
+              - "Run/Update"
+        - user:
+            name: "scastillo"
+            permissions:
+              - "Job/Build"
+              - "Job/Cancel"
+              - "Job/Workspace"
+              - "Run/Update"
+        - user:
+            name: "jpordonez"
+            permissions:
+              - "Job/Build"
+              - "Job/Cancel"
+              - "Job/Workspace"
+              - "Run/Update"
+
   systemMessage: |
     CircleGuard CI — Pipeline Multibranch (US-30)
     Repositorio: CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093
@@ -46,15 +130,43 @@ jenkins:
         env:
           - key: "CIRCLEGUARD_REPOSITORY"
             value: "CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093"
+          - key: "SONAR_PROJECT_KEY"
+            value: "circleguard-monorepo"
           # Clave de test para el perfil de pruebas de identity-service; el
           # application.yml de test no define jwt.secret. No es un secreto real.
           - key: "JWT_SECRET"
             value: "circleguard-ci-test-secret-32-chars-long-123456"
+          # US-13 / US-31: hosts de los ambientes y compuerta de prod, tomados de .env.ci.
+          - key: "CG_DEV_HOST"
+            value: "${CG_DEV_HOST:-52.15.213.209}"
+          - key: "CG_STAGE_HOST"
+            value: "${CG_STAGE_HOST:-3.17.163.44}"
+          - key: "CG_PROD_HOST"
+            value: "${CG_PROD_HOST:-3.19.74.9}"
+          - key: "CG_REGISTRY_URL"
+            value: "${CG_REGISTRY_URL:-52.14.6.11:5000}"
+          - key: "CG_PROD_APPROVERS"
+            value: "${CG_PROD_APPROVERS:-}"
+          - key: "CG_PROD_APPROVAL_TIMEOUT_MIN"
+            value: "${CG_PROD_APPROVAL_TIMEOUT_MIN:-60}"
 
 unclassified:
   location:
     url: "${JENKINS_URL}"
     adminAddress: "devops@circleguard.edu"
+
+  # Integración con SonarQube (US-10 / SCRUM-22 / SCRUM-58):
+  # Usa la credencial Secret text 'sonar-token' y recibe el webhook de retorno
+  # en ${JENKINS_URL}/sonarqube-webhook/ para resolver waitForQualityGate.
+  sonarGlobalConfiguration:
+    buildWrapperEnabled: true
+    installations:
+      - name: "SonarQube"
+        serverUrl: "${SONAR_HOST_URL:-http://localhost:9000}"
+        credentialsId: "sonar-token"
+        triggers:
+          skipScmCause: false
+          skipUpstreamCause: false
 
   # Servidor GitHub usado por el GitHub Branch Source plugin para descubrir
   # ramas y Pull Requests. manageHooks=false porque el webhook se registra de
