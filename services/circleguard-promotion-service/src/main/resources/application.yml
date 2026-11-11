@@ -26,6 +26,11 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "*"
+    # Sin esta sección KafkaTemplate usa StringSerializer y falla al publicar los Map de
+    # promotion.status.changed, alert.priority y circle.fenced (detectado por US-16).
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
   data:
     redis:
       host: localhost
