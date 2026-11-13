@@ -1,0 +1,248 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 940" width="1500" height="940" font-family="Helvetica, Arial, sans-serif">
+  <title>CircleGuard: flujo del pipeline CI/CD (Jenkinsfile multibranch)</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#374151"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#B42318"/>
+    </marker>
+  </defs>
+  <rect width="1500" height="1060" fill="#FFFFFF"/>
+  <text x="40" y="40" font-size="22" font-weight="bold" fill="#1A1A1A">CircleGuard: flujo del pipeline CI/CD (Jenkinsfile multibranch + Shared Library)</text>
+  <text x="40" y="63" font-size="13" fill="#6B7280">Un solo Jenkinsfile en la raíz; multibranchFlow.planPipeline decide qué etapas corren según la rama, el PR y los componentes que cambiaron</text>
+
+  <!-- Disparo -->
+  <g font-size="12" fill="#374151">
+    <rect x="40" y="84" width="300" height="62" rx="8" fill="#F9FAFB" stroke="#1A1A1A"/>
+    <text x="190" y="108" font-size="14" font-weight="bold" text-anchor="middle" fill="#1A1A1A">push o Pull Request en GitHub</text>
+    <text x="190" y="128" text-anchor="middle">webhook /github-webhook/ + indexación</text>
+    <rect x="380" y="84" width="330" height="62" rx="8" fill="#F9FAFB" stroke="#1A1A1A"/>
+    <text x="545" y="108" font-size="14" font-weight="bold" text-anchor="middle" fill="#1A1A1A">Jenkins Multibranch circleguard-monorepo</text>
+    <text x="545" y="128" text-anchor="middle">@Library('circleguard-shared-lib') _</text>
+  </g>
+  <line x1="340" y1="115" x2="378" y2="115" stroke="#374151" stroke-width="1.6" marker-end="url(#a)"/>
+
+  <!-- Matriz por contexto -->
+  <rect x="750" y="78" width="710" height="76" rx="8" fill="#FFFFFF" stroke="#9CA3AF"/>
+  <g font-size="12" fill="#374151">
+    <text x="766" y="99" font-weight="bold" fill="#1A1A1A">Qué corre en cada contexto</text>
+    <text x="766" y="117"><tspan font-weight="bold">PR y ramas feature/fix/docs:</tspan> solo el carril 1 (CI). Nunca despliegan (deploymentDecision).</text>
+    <text x="766" y="134"><tspan font-weight="bold">main:</tspan> carriles 1 a 4. <tspan font-weight="bold">Solo documentación:</tspan> Checkout + Detect y termina (skipCiBuild).</text>
+    <text x="766" y="148" font-size="11" fill="#6B7280">Las etapas Backend/Web solo corren si cambió services/ o mobile/ (o FORCE_FULL_BUILD).</text>
+  </g>
+
+  <line x1="104" y1="146" x2="104" y2="198" stroke="#374151" stroke-width="1.6" marker-end="url(#a)"/>
+
+  <!-- ===== Carril 1 ===== -->
+  <rect x="30" y="170" width="1440" height="148" rx="10" fill="#F5F6FE" stroke="#5454E9" stroke-width="1.2"/>
+  <text x="44" y="190" font-size="13" font-weight="bold" fill="#5454E9">1 · Integración continua (todas las ramas y PR)</text>
+  <g font-size="11" fill="#374151" text-anchor="middle">
+    <rect x="40" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="104" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Checkout &amp;</text>
+    <text x="104" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Context</text>
+    <text x="104" y="260">checkout scm</text>
+    <text x="104" y="276">estado PENDING</text>
+    <text x="104" y="292">en GitHub</text>
+
+    <rect x="180" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="244" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Detect Changed</text>
+    <text x="244" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Components</text>
+    <text x="244" y="260">detectChanged-</text>
+    <text x="244" y="276">Services + plan</text>
+    <text x="244" y="292">(US-09, US-30)</text>
+
+    <rect x="320" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="384" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Calculate</text>
+    <text x="384" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">SemVer</text>
+    <text x="384" y="260">calculate-semver.sh</text>
+    <text x="384" y="276">desde Conventional</text>
+    <text x="384" y="292">Commits (US-12)</text>
+
+    <rect x="460" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="524" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Compile &amp; Test</text>
+    <text x="524" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Backend</text>
+    <text x="524" y="260">servicios afectados</text>
+    <text x="524" y="276">JaCoCo + JUnit</text>
+    <text x="524" y="292">integración US-16</text>
+
+    <rect x="600" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="664" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Coverage Gate</text>
+    <text x="664" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">≥ 60 % líneas</text>
+    <text x="664" y="260">auth, identity,</text>
+    <text x="664" y="276">promotion, form,</text>
+    <text x="664" y="292">gateway (US-31/32)</text>
+
+    <rect x="740" y="200" width="128" height="100" rx="8" fill="#FFF8E6" stroke="#B7791F" stroke-width="1.6"/>
+    <text x="804" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">SonarQube</text>
+    <text x="804" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Analysis</text>
+    <text x="804" y="260">withSonarQubeEnv</text>
+    <text x="804" y="276">./gradlew sonar</text>
+    <text x="804" y="292">sonar-token (US-10)</text>
+
+    <rect x="880" y="200" width="128" height="100" rx="8" fill="#FFF8E6" stroke="#B7791F" stroke-width="1.6"/>
+    <text x="944" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Quality Gate</text>
+    <text x="944" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">(bloqueante)</text>
+    <text x="944" y="260">waitForQualityGate</text>
+    <text x="944" y="276">abortPipeline: true</text>
+    <text x="944" y="292">cobertura ≥ 60 %</text>
+
+    <rect x="1020" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="1084" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Compile &amp; Test</text>
+    <text x="1084" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Web</text>
+    <text x="1084" y="260">npm ci</text>
+    <text x="1084" y="276">npm run test</text>
+    <text x="1084" y="292">(mobile/)</text>
+
+    <rect x="1160" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="1224" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">E2E Playwright</text>
+    <text x="1224" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">(APIs simuladas)</text>
+    <text x="1224" y="260">login, cuestionario</text>
+    <text x="1224" y="276">y validación QR</text>
+    <text x="1224" y="292">JUnit + HTML (US-34)</text>
+
+    <rect x="1300" y="200" width="128" height="100" rx="8" fill="#FFFFFF" stroke="#5454E9" stroke-width="1.6"/>
+    <text x="1364" y="222" font-size="12.5" font-weight="bold" fill="#1A1A1A">Validate</text>
+    <text x="1364" y="238" font-size="12.5" font-weight="bold" fill="#1A1A1A">Compose</text>
+    <text x="1364" y="260">dev/stage/prod:</text>
+    <text x="1364" y="276">SemVer, sin latest,</text>
+    <text x="1364" y="292">healthchecks (US-08)</text>
+  </g>
+  <g stroke="#374151" stroke-width="1.5" marker-end="url(#a)">
+    <line x1="168" y1="250" x2="178" y2="250"/><line x1="308" y1="250" x2="318" y2="250"/><line x1="448" y1="250" x2="458" y2="250"/>
+    <line x1="588" y1="250" x2="598" y2="250"/><line x1="728" y1="250" x2="738" y2="250"/><line x1="868" y1="250" x2="878" y2="250"/>
+    <line x1="1008" y1="250" x2="1018" y2="250"/><line x1="1148" y1="250" x2="1158" y2="250"/><line x1="1288" y1="250" x2="1298" y2="250"/>
+  </g>
+
+  <!-- conector 1 -> 2 -->
+  <path d="M1364,300 L1364,330 L117,330 L117,364" stroke="#374151" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+
+  <!-- ===== Carril 2 ===== -->
+  <rect x="30" y="342" width="1440" height="126" rx="10" fill="#EFF9F3" stroke="#4CB978" stroke-width="1.2"/>
+  <text x="44" y="361" font-size="13" font-weight="bold" fill="#2F7A50">2 · Empaquetado inmutable y release (solo main; los PR y las demás ramas terminan en el carril 1 y publican su estado)</text>
+  <g font-size="11.5" fill="#374151" text-anchor="middle">
+    <rect x="40" y="368" width="250" height="90" rx="8" fill="#FFFFFF" stroke="#4CB978" stroke-width="1.6"/>
+    <text x="165" y="390" font-size="13" font-weight="bold" fill="#1A1A1A">Publish Images to Nexus</text>
+    <text x="165" y="410">8 servicios + web-client, multi-stage, no root</text>
+    <text x="165" y="426">52.14.6.11:5000/circleguard/&lt;svc&gt;:X.Y.Z</text>
+    <text x="165" y="442">(US-06, US-07, US-11)</text>
+
+    <rect x="310" y="368" width="250" height="90" rx="8" fill="#FFFFFF" stroke="#4CB978" stroke-width="1.6"/>
+    <text x="435" y="390" font-size="13" font-weight="bold" fill="#1A1A1A">Generate Release Notes &amp; Tag</text>
+    <text x="435" y="410">generate-release-notes.sh → CHANGELOG</text>
+    <text x="435" y="426">y docs/release-notes/; git tag vX.Y.Z</text>
+    <text x="435" y="442">(US-12, US-18)</text>
+  </g>
+  <line x1="290" y1="413" x2="308" y2="413" stroke="#374151" stroke-width="1.5" marker-end="url(#a)"/>
+  <g font-size="12" fill="#374151">
+    <text x="590" y="392" font-weight="bold" fill="#1A1A1A">Una sola versión X.Y.Z por build de main</text>
+    <text x="590" y="411">MAJOR si hay BREAKING CHANGE o «!», MINOR si hay feat, PATCH si hay fix/perf/refactor.</text>
+    <text x="590" y="430">Las mismas imágenes recorren dev → stage → prod: nunca se recompila por ambiente.</text>
+    <text x="590" y="449">requireReleaseVersion hace fallar el build si no hay versión: nunca se despliega un valor por defecto.</text>
+  </g>
+
+  <path d="M435,458 L435,478 L117,478 L117,506" stroke="#374151" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+
+  <!-- ===== Carril 3 ===== -->
+  <rect x="30" y="486" width="1440" height="142" rx="10" fill="#FEF5EF" stroke="#F0681A" stroke-width="1.2"/>
+  <text x="44" y="503" font-size="13" font-weight="bold" fill="#B5500F">3 · Entrega continua dev → stage (main, US-13)</text>
+  <g font-size="11.5" fill="#374151" text-anchor="middle">
+    <rect x="40" y="510" width="230" height="100" rx="8" fill="#FFFFFF" stroke="#F0681A" stroke-width="1.6"/>
+    <text x="155" y="532" font-size="13" font-weight="bold" fill="#1A1A1A">Deploy to dev</text>
+    <text x="155" y="553">environment.sh deploy: SCP del</text>
+    <text x="155" y="569">compose + SSH: login, pull,</text>
+    <text x="155" y="585">up -d --wait con IMAGE_TAG=X.Y.Z</text>
+
+    <rect x="292" y="510" width="230" height="100" rx="8" fill="#FFFFFF" stroke="#F0681A" stroke-width="1.6"/>
+    <text x="407" y="532" font-size="13" font-weight="bold" fill="#1A1A1A">Verify dev health</text>
+    <text x="407" y="553">12 contenedores healthy, imagen</text>
+    <text x="407" y="569">exacta X.Y.Z, readiness UP</text>
+    <text x="407" y="585">→ reports/ci/health-dev.json</text>
+
+    <rect x="544" y="510" width="230" height="100" rx="8" fill="#FFFFFF" stroke="#F0681A" stroke-width="1.6"/>
+    <text x="659" y="532" font-size="13" font-weight="bold" fill="#1A1A1A">E2E against dev</text>
+    <text x="659" y="553">Playwright por túneles SSH contra</text>
+    <text x="659" y="569">los servicios reales: @us17,</text>
+    <text x="659" y="585">@smoke y contratos @deployed</text>
+
+    <rect x="796" y="510" width="230" height="100" rx="8" fill="#FFFFFF" stroke="#F0681A" stroke-width="1.6"/>
+    <text x="911" y="532" font-size="13" font-weight="bold" fill="#1A1A1A">Promote to stage</text>
+    <text x="911" y="553">promotionDecision exige SUCCESS</text>
+    <text x="911" y="569">en las 3 compuertas; despliega</text>
+    <text x="911" y="585">la misma X.Y.Z en stage</text>
+
+    <rect x="1048" y="510" width="230" height="100" rx="8" fill="#FFFFFF" stroke="#F0681A" stroke-width="1.6"/>
+    <text x="1163" y="532" font-size="13" font-weight="bold" fill="#1A1A1A">Verify stage health</text>
+    <text x="1163" y="553">misma verificación en stage</text>
+    <text x="1163" y="569">→ reports/ci/health-stage.json</text>
+    <text x="1163" y="585">→ promotion-stage.json</text>
+  </g>
+  <g stroke="#374151" stroke-width="1.5" marker-end="url(#a)">
+    <line x1="270" y1="560" x2="290" y2="560"/><line x1="522" y1="560" x2="542" y2="560"/>
+    <line x1="774" y1="560" x2="794" y2="560"/><line x1="1026" y1="560" x2="1046" y2="560"/>
+  </g>
+  <g font-size="11.5" fill="#B42318">
+    <text x="1292" y="530" font-weight="bold">Si falla una</text>
+    <text x="1292" y="546" font-weight="bold">compuerta:</text>
+    <text x="1292" y="564">stage no recibe la</text>
+    <text x="1292" y="580">versión; queda BLOCKED</text>
+    <text x="1292" y="596">con el motivo</text>
+  </g>
+
+  <path d="M1163,610 L1163,640 L117,640 L117,672" stroke="#374151" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+
+  <!-- ===== Carril 4 ===== -->
+  <rect x="30" y="650" width="1440" height="146" rx="10" fill="#FDF1F1" stroke="#B42318" stroke-width="1.2"/>
+  <text x="44" y="668" font-size="13" font-weight="bold" fill="#B42318">4 · Release a prod con aprobación manual (main, US-31) y rollback (US-14)</text>
+  <g font-size="11.5" fill="#374151" text-anchor="middle">
+    <rect x="40" y="676" width="300" height="104" rx="8" fill="#FFFFFF" stroke="#B42318" stroke-width="1.6"/>
+    <text x="190" y="698" font-size="13" font-weight="bold" fill="#1A1A1A">Approve prod release (input)</text>
+    <text x="190" y="718">submitter = CG_PROD_APPROVERS; DECISION,</text>
+    <text x="190" y="734">VERSION (solo la validada) y COMMENT</text>
+    <text x="190" y="750">timeout CG_PROD_APPROVAL_TIMEOUT_MIN</text>
+    <text x="190" y="766">→ APPROVED / REJECTED / TIMEOUT / ABORTED</text>
+
+    <rect x="362" y="676" width="230" height="104" rx="8" fill="#FFFFFF" stroke="#B42318" stroke-width="1.6"/>
+    <text x="477" y="698" font-size="13" font-weight="bold" fill="#1A1A1A">Deploy to prod</text>
+    <text x="477" y="720">solo si APPROVED</text>
+    <text x="477" y="736">environment.sh deploy</text>
+    <text x="477" y="752">--env prod con la versión</text>
+    <text x="477" y="768">aprobada</text>
+
+    <rect x="614" y="676" width="230" height="104" rx="8" fill="#FFFFFF" stroke="#B42318" stroke-width="1.6"/>
+    <text x="729" y="698" font-size="13" font-weight="bold" fill="#1A1A1A">Verify prod health</text>
+    <text x="729" y="720">health-prod.json convertido</text>
+    <text x="729" y="736">a JUnit (circleguard.prod.health)</text>
+    <text x="729" y="752">→ pestaña Tests del build</text>
+    <text x="729" y="768">→ prod-approval.json</text>
+
+    <rect x="890" y="676" width="270" height="104" rx="8" fill="#FFFFFF" stroke="#B42318" stroke-width="1.6"/>
+    <text x="1025" y="698" font-size="13" font-weight="bold" fill="#1A1A1A">Rollback (US-14)</text>
+    <text x="1025" y="720">infra/scripts/rollback.sh y</text>
+    <text x="1025" y="736">rollbackDeployment: vuelve a la</text>
+    <text x="1025" y="752">última versión estable del ambiente</text>
+    <text x="1025" y="768">o a la indicada con --to X.Y.Z</text>
+  </g>
+  <g stroke="#374151" stroke-width="1.5" marker-end="url(#a)">
+    <line x1="340" y1="728" x2="360" y2="728"/><line x1="592" y1="728" x2="612" y2="728"/>
+  </g>
+  <path d="M844,728 L888,728" stroke="#B42318" stroke-width="1.5" stroke-dasharray="5 4" fill="none" marker-end="url(#aR)"/>
+  <text x="846" y="720" font-size="10.5" fill="#B42318">si falla</text>
+  <g font-size="11.5" fill="#374151">
+    <text x="1180" y="696" font-weight="bold" fill="#1A1A1A">Rechazo o timeout:</text>
+    <text x="1180" y="712">prod queda intacto y se registra</text>
+    <text x="1180" y="728">quién decidió y sobre qué versión.</text>
+    <text x="1180" y="750" font-weight="bold" fill="#1A1A1A">Respuesta inválida</text>
+    <text x="1180" y="766">(no listado, sin comentario):</text>
+    <text x="1180" y="782">se vuelve a pedir, máximo 3 veces.</text>
+  </g>
+
+  <!-- ===== post ===== -->
+  <rect x="30" y="814" width="1440" height="106" rx="10" fill="#F9FAFB" stroke="#9CA3AF"/>
+  <text x="44" y="836" font-size="13" font-weight="bold" fill="#1A1A1A">post { always } y post { cleanup } (todas las ejecuciones)</text>
+  <g font-size="12" fill="#374151">
+    <text x="44" y="858">publishBuildStatus → estado del commit en GitHub (continuous-integration/jenkins/pr-head y …/main) · junit (backend, E2E, salud de prod) · JaCoCo · Playwright HTML</text>
+    <text x="44" y="878">archiveArtifacts reports/** (plan, versión, promotion-stage.json, prod-approval.json) · descripción del build con la decisión de promoción y de prod</text>
+    <text x="44" y="898">cleanup → notifyPipeline (US-14): canal #pipeline de Discord con rama, commit, autor, versión, etapa fallida y log · fallos, abortos y recuperaciones siempre; éxitos solo en main · nunca cambia el resultado</text>
+  </g>
+</svg>
