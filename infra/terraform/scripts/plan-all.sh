@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Verificación de los módulos y ambientes Terraform de CircleGuard (US-35)
+# Verificación de los módulos y ambientes Terraform de CircleGuard (US-20, US-35)
 #
 # Uso:
-#   bash infra/terraform/scripts/plan-all.sh            # sin credenciales (proveedor simulado)
-#   bash infra/terraform/scripts/plan-all.sh --real     # plan real contra AWS
-#   bash infra/terraform/scripts/plan-all.sh --env prod # solo un ambiente
+#   bash infra/terraform/scripts/plan-all.sh                          # sin credenciales (proveedor simulado)
+#   bash infra/terraform/scripts/plan-all.sh --real                   # plan real con el backend S3 (backend.hcl)
+#   bash infra/terraform/scripts/plan-all.sh --real --local-backend   # plan real con estado local (sin US-36)
+#   bash infra/terraform/scripts/plan-all.sh --env prod               # solo un ambiente
 #
 # Pasos:
 #   1. terraform fmt -check en todo infra/terraform.
 #   2. Por módulo: init -backend=false, validate y terraform test.
 #   3. Por ambiente: init -backend=false, validate y terraform test (plan simulado
 #      con los valores de terraform.tfvars). Guarda el plan y un resumen de recursos.
-#   4. Con --real: init con envs/<env>/backend.hcl y terraform plan contra AWS.
+#   4. Con --real: terraform plan contra AWS. Usa envs/<env>/backend.hcl o, con
+#      --local-backend, un backend_override.tf temporal (estado local, ignorado por
+#      Git) para planear antes de que exista el backend remoto (US-36).
 #      Las credenciales salen de la cadena estándar de AWS (AWS_PROFILE, variables
 #      de entorno o rol), nunca de este script.
 #   5. Busca credenciales en texto plano en el código y en cada plan.
@@ -27,24 +30,26 @@ TF_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${TF_ROOT}/../.." && pwd)"
 REPORT_DIR="${REPORT_DIR:-${REPO_ROOT}/reports/terraform}"
 
-MODULES=(registry storage observability)
+MODULES=(network compute registry storage observability)
 ENVS=(dev stage prod)
 REAL_PLAN=false
+LOCAL_BACKEND=false
 
 # Patrones de credenciales que nunca deben aparecer en el código ni en un plan.
 SECRET_PATTERNS='(AKIA|ASIA)[0-9A-Z]{16}|aws_secret_access_key|-----BEGIN [A-Z ]*PRIVATE KEY-----|(access_key|secret_key|password|token)[[:space:]]*=[[:space:]]*"[^"]+"'
 
-log()  { printf '[terraform-us35][INFO]  %s\n' "$*"; }
-ok()   { printf '[terraform-us35][OK]    %s\n' "$*"; }
-fail() { printf '[terraform-us35][ERROR] %s\n' "$*" >&2; exit 1; }
+log()  { printf '[terraform][INFO]  %s\n' "$*"; }
+ok()   { printf '[terraform][OK]    %s\n' "$*"; }
+fail() { printf '[terraform][ERROR] %s\n' "$*" >&2; exit 1; }
 
 usage() {
-    sed -n '3,8p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --real) REAL_PLAN=true ;;
+        --local-backend) LOCAL_BACKEND=true ;;
         --env)
             [[ $# -ge 2 ]] || fail "--env necesita un valor: dev, stage o prod."
             case "$2" in dev|stage|prod) ENVS=("$2") ;; *) fail "Ambiente desconocido: $2" ;; esac
@@ -56,6 +61,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 command -v terraform >/dev/null 2>&1 || fail "terraform no está instalado."
+[[ "${LOCAL_BACKEND}" == "false" || "${REAL_PLAN}" == "true" ]] || fail "--local-backend solo aplica junto con --real."
+
+# Borra los backend_override.tf temporales aunque el script falle.
+OVERRIDES=()
+cleanup() {
+    local f
+    for f in "${OVERRIDES[@]}"; do rm -f "$f"; done
+}
+trap cleanup EXIT
 mkdir -p "${REPORT_DIR}"
 export TF_IN_AUTOMATION=1
 
@@ -109,11 +123,20 @@ for env in "${ENVS[@]}"; do
     summary="${REPORT_DIR}/${env}-resources.txt"
 
     if [[ "${REAL_PLAN}" == "true" ]]; then
-        [[ -f "${dir}/backend.hcl" ]] || fail "Falta envs/${env}/backend.hcl. Cópialo desde backend.hcl.example."
-        log "Ambiente ${env}: plan real contra AWS..."
-        terraform -chdir="${dir}" init -backend-config=backend.hcl -input=false -reconfigure -no-color >/dev/null
+        if [[ "${LOCAL_BACKEND}" == "true" ]]; then
+            log "Ambiente ${env}: plan real contra AWS con estado local..."
+            override="${dir}/backend_override.tf"
+            printf '%s
+' '# Temporal (plan-all.sh --local-backend): estado local mientras no exista US-36.'                 'terraform {' '  backend "local" {}' '}' > "${override}"
+            OVERRIDES+=("${override}")
+            terraform -chdir="${dir}" init -input=false -reconfigure -no-color >/dev/null
+        else
+            [[ -f "${dir}/backend.hcl" ]] || fail "Falta envs/${env}/backend.hcl. Cópialo desde backend.hcl.example o usa --local-backend."
+            log "Ambiente ${env}: plan real contra AWS..."
+            terraform -chdir="${dir}" init -backend-config=backend.hcl -input=false -reconfigure -no-color >/dev/null
+        fi
         terraform -chdir="${dir}" validate -no-color >/dev/null
-        terraform -chdir="${dir}" plan -input=false -lock-timeout=60s -no-color -out=tfplan > "${plan_txt}"
+        terraform -chdir="${dir}" plan -input=false -lock-timeout=60s -no-color -out=tfplan > "${plan_txt}"             || { tail -40 "${plan_txt}" >&2; fail "Falló terraform plan en ${env}."; }
         terraform -chdir="${dir}" show -json tfplan > "${REPORT_DIR}/${env}-plan.json"
         scan_secrets "plan JSON de ${env}" "${REPORT_DIR}/${env}-plan.json"
     else
