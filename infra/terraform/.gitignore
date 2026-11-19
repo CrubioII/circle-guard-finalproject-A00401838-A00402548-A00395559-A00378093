@@ -1,0 +1,19 @@
+# Terraform (US-35)
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+tfplan
+*.tfplan
+
+# Configuración local del backend y valores privados
+backend.hcl
+*.auto.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Los módulos no fijan versiones: el lock file solo se versiona en envs/
+modules/**/.terraform.lock.hcl
