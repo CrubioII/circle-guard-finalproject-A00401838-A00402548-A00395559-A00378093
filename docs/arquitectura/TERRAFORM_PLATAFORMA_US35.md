@@ -116,21 +116,23 @@ bash infra/terraform/scripts/plan-all.sh
 Salida esperada:
 
 ```
-[terraform-us35][OK]    Formato correcto.
-[terraform-us35][OK]    Sin credenciales en texto plano: código Terraform (42 archivos).
-[terraform-us35][OK]    Módulo registry: Success! 5 passed, 0 failed.
-[terraform-us35][OK]    Módulo storage: Success! 4 passed, 0 failed.
-[terraform-us35][OK]    Módulo observability: Success! 4 passed, 0 failed.
-[terraform-us35][OK]    Sin credenciales en texto plano: plan de dev.
-[terraform-us35][OK]    Ambiente dev: 64 recursos planeados. Resumen en reports/terraform/dev-resources.txt
-[terraform-us35][OK]    Sin credenciales en texto plano: plan de stage.
-[terraform-us35][OK]    Ambiente stage: 64 recursos planeados. Resumen en reports/terraform/stage-resources.txt
-[terraform-us35][OK]    Sin credenciales en texto plano: plan de prod.
-[terraform-us35][OK]    Ambiente prod: 73 recursos planeados. Resumen en reports/terraform/prod-resources.txt
-[terraform-us35][OK]    Verificación de Terraform completada para: dev stage prod.
+[terraform][OK]    Formato correcto.
+[terraform][OK]    Sin credenciales en texto plano: código Terraform (42 archivos).
+[terraform][OK]    Módulo registry: Success! 5 passed, 0 failed.
+[terraform][OK]    Módulo storage: Success! 4 passed, 0 failed.
+[terraform][OK]    Módulo observability: Success! 4 passed, 0 failed.
+[terraform][OK]    Sin credenciales en texto plano: plan de dev.
+[terraform][OK]    Ambiente dev: 64 recursos planeados. Resumen en reports/terraform/dev-resources.txt
+[terraform][OK]    Sin credenciales en texto plano: plan de stage.
+[terraform][OK]    Ambiente stage: 64 recursos planeados. Resumen en reports/terraform/stage-resources.txt
+[terraform][OK]    Sin credenciales en texto plano: plan de prod.
+[terraform][OK]    Ambiente prod: 73 recursos planeados. Resumen en reports/terraform/prod-resources.txt
+[terraform][OK]    Verificación de Terraform completada para: dev stage prod.
 ```
 
 Los planes completos quedan en `reports/terraform/<env>-plan.txt`, y el conteo por tipo de recurso en `<env>-resources.txt`.
+
+> Desde US-20 los ambientes también incluyen red y cómputo, así que el total de cada plan es mayor (dev 98, stage 98, prod 111). Los recursos de esta historia siguen siendo 64, 64 y 73. Ver [`TERRAFORM_RED_COMPUTO_US20.md`](TERRAFORM_RED_COMPUTO_US20.md).
 
 ### Plan real contra AWS
 
