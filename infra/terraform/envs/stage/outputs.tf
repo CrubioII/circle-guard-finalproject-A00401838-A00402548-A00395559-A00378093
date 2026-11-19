@@ -4,6 +4,89 @@ output "environment" {
 }
 
 # -----------------------------------------------------------------------------
+# Red
+# -----------------------------------------------------------------------------
+
+output "network_vpc_id" {
+  description = "VPC del ambiente."
+  value       = module.network.vpc_id
+}
+
+output "network_vpc_cidr" {
+  description = "Rango de la VPC del ambiente."
+  value       = module.network.vpc_cidr
+}
+
+output "network_availability_zones" {
+  description = "Zonas de disponibilidad de la red."
+  value       = module.network.availability_zones
+}
+
+output "network_public_subnet_ids" {
+  description = "Subredes públicas."
+  value       = module.network.public_subnet_ids
+}
+
+output "network_private_subnet_ids" {
+  description = "Subredes privadas."
+  value       = module.network.private_subnet_ids
+}
+
+output "network_nat_gateway_count" {
+  description = "NAT Gateways del ambiente."
+  value       = module.network.nat_gateway_count
+}
+
+output "network_flow_logs_log_group_name" {
+  description = "Log group de los Flow Logs, o null."
+  value       = module.network.flow_logs_log_group_name
+}
+
+# -----------------------------------------------------------------------------
+# Cómputo
+# -----------------------------------------------------------------------------
+
+output "compute_cluster_name" {
+  description = "Nombre del clúster k3s."
+  value       = module.compute.cluster_name
+}
+
+output "compute_k3s_version" {
+  description = "Versión de k3s."
+  value       = module.compute.k3s_version
+}
+
+output "compute_api_endpoint" {
+  description = "Endpoint de la API de Kubernetes."
+  value       = module.compute.api_endpoint
+}
+
+output "compute_server_public_ip" {
+  description = "IP elástica del nodo server."
+  value       = module.compute.server_public_ip
+}
+
+output "compute_server_instance_id" {
+  description = "Instancia del nodo server (para SSM Session Manager)."
+  value       = module.compute.server_instance_id
+}
+
+output "compute_node_count" {
+  description = "Cantidad total de nodos."
+  value       = module.compute.node_count
+}
+
+output "compute_node_role_arn" {
+  description = "Rol IAM de los nodos."
+  value       = module.compute.node_role_arn
+}
+
+output "compute_kubeconfig_parameter_name" {
+  description = "Parámetro SSM con el kubeconfig de administración."
+  value       = module.compute.kubeconfig_parameter_name
+}
+
+# -----------------------------------------------------------------------------
 # Registro
 # -----------------------------------------------------------------------------
 

@@ -1,4 +1,5 @@
-# Plan del ambiente stage con proveedor simulado y los valores de terraform.tfvars.
+# Plan del ambiente stage (red, cómputo, registro, almacenamiento y observabilidad)
+# con proveedor simulado y los valores de terraform.tfvars.
 # No necesita credenciales AWS ni backend remoto:
 #   cd infra/terraform/envs/stage && terraform init -backend=false && terraform test
 
@@ -21,6 +22,24 @@ mock_provider "aws" {
   mock_data "aws_partition" {
     defaults = {
       partition = "aws"
+    }
+  }
+
+  mock_data "aws_availability_zones" {
+    defaults = {
+      names = ["us-east-2a", "us-east-2b", "us-east-2c"]
+    }
+  }
+
+  mock_data "aws_ssm_parameter" {
+    defaults = {
+      insecure_value = "ami-0123456789abcdef0"
+    }
+  }
+
+  mock_resource "aws_eip" {
+    defaults = {
+      public_ip = "203.0.113.10"
     }
   }
 }
@@ -76,5 +95,46 @@ run "plan_stage" {
   assert {
     condition     = output.observability_metric_namespace == "CircleGuard/stage"
     error_message = "Las métricas de stage deben publicarse en CircleGuard/stage."
+  }
+
+  # Red y cómputo (US-20)
+  assert {
+    condition     = output.network_vpc_cidr == "10.20.0.0/16"
+    error_message = "La VPC de stage debe usar 10.20.0.0/16."
+  }
+
+  assert {
+    condition     = length(output.network_public_subnet_ids) == 2 && length(output.network_private_subnet_ids) == 2
+    error_message = "La red de stage debe tener subredes públicas y privadas en dos zonas."
+  }
+
+  assert {
+    condition     = output.network_nat_gateway_count == 0
+    error_message = "stage no debe crear NAT Gateway (los nodos salen por IP pública)."
+  }
+
+  assert {
+    condition     = output.network_flow_logs_log_group_name == null
+    error_message = "Los Flow Logs de stage no tienen la configuración esperada."
+  }
+
+  assert {
+    condition     = output.compute_cluster_name == "circleguard-stage-k3s" && output.compute_node_count == 1
+    error_message = "stage debe tener su propio clúster k3s de un nodo."
+  }
+
+  assert {
+    condition     = output.compute_k3s_version == "v1.37.2+k3s1"
+    error_message = "El clúster de stage debe usar la versión fija de k3s."
+  }
+
+  assert {
+    condition     = output.compute_api_endpoint == "https://203.0.113.10:6443"
+    error_message = "La API de stage debe publicarse en la IP elástica del server."
+  }
+
+  assert {
+    condition     = output.compute_kubeconfig_parameter_name == "/circleguard/stage/k3s/kubeconfig"
+    error_message = "El kubeconfig de stage debe quedar en SSM bajo /circleguard/stage/k3s/."
   }
 }
