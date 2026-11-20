@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" width="1400" height="900" font-family="Helvetica, Arial, sans-serif">
+  <title>CircleGuard: módulos Terraform de registro, almacenamiento y observabilidad (US-35)</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#374151"/>
+    </marker>
+    <marker id="aB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5454E9"/>
+    </marker>
+  </defs>
+  <rect width="1400" height="900" fill="#FFFFFF"/>
+  <text x="30" y="40" font-size="22" font-weight="bold" fill="#1A1A1A">CircleGuard: plataforma compartida con Terraform (US-35)</text>
+  <text x="30" y="63" font-size="13" fill="#6B7280">Tres módulos reutilizables y un solo código por ambiente: dev, stage y prod solo cambian su terraform.tfvars. AWS us-east-2.</text>
+
+  <!-- Módulos -->
+  <rect x="30" y="90" width="1340" height="190" rx="10" fill="#F5F5FF" stroke="#5454E9" stroke-dasharray="6 4"/>
+  <text x="50" y="116" font-size="15" font-weight="bold" fill="#5454E9">infra/terraform/modules/</text>
+
+  <g font-size="12" fill="#374151">
+    <rect x="60" y="132" width="400" height="128" rx="8" fill="#FFFFFF" stroke="#5454E9"/>
+    <text x="80" y="158" font-size="15" font-weight="bold" fill="#1A1A1A">registry · Amazon ECR</text>
+    <text x="80" y="182">1 repositorio por servicio: circleguard/&lt;env&gt;/&lt;servicio&gt;</text>
+    <text x="80" y="202">Escaneo al subir · cifrado KMS</text>
+    <text x="80" y="222">Ciclo de vida: sin tag + últimas N imágenes</text>
+    <text x="80" y="242">Tags MUTABLE / IMMUTABLE · pull por rol IAM</text>
+
+    <rect x="500" y="132" width="400" height="128" rx="8" fill="#FFFFFF" stroke="#5454E9"/>
+    <text x="520" y="158" font-size="15" font-weight="bold" fill="#1A1A1A">storage · Amazon S3</text>
+    <text x="520" y="182">Buckets documents y backups (file-service)</text>
+    <text x="520" y="202">Sin acceso público · SSE-KMS · solo TLS 1.2+</text>
+    <text x="520" y="222">Versionado · ciclo de vida · logs de acceso</text>
+    <text x="520" y="242">Política IAM de lectura/escritura (sin access keys)</text>
+
+    <rect x="940" y="132" width="400" height="128" rx="8" fill="#FFFFFF" stroke="#5454E9"/>
+    <text x="960" y="158" font-size="15" font-weight="bold" fill="#1A1A1A">observability · CloudWatch + SNS</text>
+    <text x="960" y="182">Log group cifrado por servicio con retención</text>
+    <text x="960" y="202">Métrica + alarma de errores por servicio</text>
+    <text x="960" y="222">Topic SNS de alertas (KMS) · correo opcional</text>
+    <text x="960" y="242">Dashboard de errores · clave KMS con rotación</text>
+  </g>
+
+  <!-- Flechas de módulos a ambientes -->
+  <g stroke="#5454E9" stroke-width="1.6" fill="none" marker-end="url(#aB)">
+    <path d="M700,280 L700,300 L245,300 L245,330"/>
+    <path d="M700,280 L700,330"/>
+    <path d="M700,300 L1155,300 L1155,330"/>
+  </g>
+  <text x="712" y="318" font-size="12" fill="#5454E9">source = "../../modules/…"</text>
+
+  <!-- Ambientes -->
+  <g font-size="12" fill="#374151">
+    <!-- dev -->
+    <rect x="30" y="335" width="430" height="370" rx="10" fill="#F0FAF4" stroke="#4CB978"/>
+    <text x="50" y="363" font-size="17" font-weight="bold" fill="#1A1A1A">envs/dev</text>
+    <text x="440" y="363" font-size="12" text-anchor="end" fill="#4CB978">64 recursos planeados</text>
+    <text x="50" y="392" font-weight="bold" fill="#1A1A1A">ECR</text>
+    <text x="50" y="410">9 repositorios · tags MUTABLE</text>
+    <text x="50" y="428">10 imágenes · sin tag 3 días · force_delete</text>
+    <text x="50" y="458" font-weight="bold" fill="#1A1A1A">S3</text>
+    <text x="50" y="476">documents (versionado, 7 días)</text>
+    <text x="50" y="494">backups (sin versionado, expira 14 días)</text>
+    <text x="50" y="512">force_destroy · sin logs de acceso</text>
+    <text x="50" y="542" font-weight="bold" fill="#1A1A1A">CloudWatch + SNS</text>
+    <text x="50" y="560">9 log groups · retención 7 días</text>
+    <text x="50" y="578">9 alarmas · umbral 20 errores / 5 min</text>
+    <text x="50" y="596">KMS: borrado en 7 días</text>
+    <text x="50" y="630" fill="#6B7280">Iteración rápida y destroy sin pasos manuales</text>
+    <text x="50" y="680" font-family="Menlo, Consolas, monospace" font-size="11" fill="#6B7280">key = envs/dev/platform.tfstate</text>
+
+    <!-- stage -->
+    <rect x="485" y="335" width="430" height="370" rx="10" fill="#F0FAF4" stroke="#4CB978"/>
+    <text x="505" y="363" font-size="17" font-weight="bold" fill="#1A1A1A">envs/stage</text>
+    <text x="895" y="363" font-size="12" text-anchor="end" fill="#4CB978">64 recursos planeados</text>
+    <text x="505" y="392" font-weight="bold" fill="#1A1A1A">ECR</text>
+    <text x="505" y="410">9 repositorios · tags IMMUTABLE</text>
+    <text x="505" y="428">20 imágenes · sin tag 7 días</text>
+    <text x="505" y="458" font-weight="bold" fill="#1A1A1A">S3</text>
+    <text x="505" y="476">documents (versionado, 14 días)</text>
+    <text x="505" y="494">backups (versionado, expira 30 días)</text>
+    <text x="505" y="512">force_destroy · sin logs de acceso</text>
+    <text x="505" y="542" font-weight="bold" fill="#1A1A1A">CloudWatch + SNS</text>
+    <text x="505" y="560">9 log groups · retención 14 días</text>
+    <text x="505" y="578">9 alarmas · umbral 10 errores / 5 min</text>
+    <text x="505" y="596">KMS: borrado en 7 días</text>
+    <text x="505" y="630" fill="#6B7280">Réplica de prod: la versión validada no cambia</text>
+    <text x="505" y="680" font-family="Menlo, Consolas, monospace" font-size="11" fill="#6B7280">key = envs/stage/platform.tfstate</text>
+
+    <!-- prod -->
+    <rect x="940" y="335" width="430" height="370" rx="10" fill="#FFF7ED" stroke="#F59E0B"/>
+    <text x="960" y="363" font-size="17" font-weight="bold" fill="#1A1A1A">envs/prod</text>
+    <text x="1350" y="363" font-size="12" text-anchor="end" fill="#B45309">73 recursos planeados</text>
+    <text x="960" y="392" font-weight="bold" fill="#1A1A1A">ECR</text>
+    <text x="960" y="410">9 repositorios · tags IMMUTABLE</text>
+    <text x="960" y="428">30 imágenes · sin borrado forzado</text>
+    <text x="960" y="458" font-weight="bold" fill="#1A1A1A">S3</text>
+    <text x="960" y="476">documents (versionado 30 días, IA a 90 días)</text>
+    <text x="960" y="494">backups (IA a 30 días, expira 365 días)</text>
+    <text x="960" y="512">+ bucket de logs de acceso · sin force_destroy</text>
+    <text x="960" y="542" font-weight="bold" fill="#1A1A1A">CloudWatch + SNS</text>
+    <text x="960" y="560">9 log groups · retención 30 días</text>
+    <text x="960" y="578">9 alarmas · umbral 5 errores / 5 min</text>
+    <text x="960" y="596">KMS: borrado en 30 días</text>
+    <text x="960" y="630" fill="#6B7280">Auditoría, retención mayor y protección de datos</text>
+    <text x="960" y="680" font-family="Menlo, Consolas, monospace" font-size="11" fill="#6B7280">key = envs/prod/platform.tfstate</text>
+  </g>
+
+  <!-- Backend y credenciales -->
+  <g stroke="#374151" stroke-width="1.4" fill="none" marker-end="url(#a)" stroke-dasharray="5 4">
+    <path d="M245,705 L245,760"/>
+    <path d="M700,705 L700,760"/>
+    <path d="M1155,705 L1155,760"/>
+  </g>
+  <rect x="30" y="765" width="1340" height="110" rx="10" fill="#F9FAFB" stroke="#9CA3AF" stroke-dasharray="6 4"/>
+  <g font-size="12" fill="#374151">
+    <text x="50" y="792" font-size="15" font-weight="bold" fill="#1A1A1A">Estado remoto (otra historia): S3 + bloqueo en DynamoDB</text>
+    <text x="50" y="814">backend "s3" {} parcial: bucket, tabla y cuenta se pasan con -backend-config=backend.hcl (ignorado por Git).</text>
+    <text x="50" y="836">Credenciales: AWS_PROFILE, variables de entorno o rol de Jenkins. El código, los tfvars y los planes no contienen secretos.</text>
+    <text x="50" y="858">Verificación: infra/terraform/scripts/plan-all.sh (fmt, validate, terraform test con proveedor simulado, búsqueda de credenciales; --real para plan contra AWS).</text>
+  </g>
+</svg>
