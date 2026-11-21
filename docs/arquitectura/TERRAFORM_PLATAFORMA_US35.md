@@ -136,18 +136,33 @@ Los planes completos quedan en `reports/terraform/<env>-plan.txt`, y el conteo p
 
 ### Plan real contra AWS
 
-Requiere credenciales de un usuario o rol IAM con permisos de lectura, y que exista el bucket de estado y la tabla de bloqueo. `plan` no crea recursos ni genera costo.
+**Estado:** todavía no se ejecutó, porque el equipo aún no tiene las credenciales de la cuenta. El CA3 queda cubierto por los planes simulados de la sección anterior.
+
+Requiere un usuario o rol IAM con `ReadOnlyAccess` en la cuenta del proyecto. `plan` no crea recursos ni genera costo. Las llaves quedan en `~/.aws`, nunca en el repositorio.
+
+**Sin backend remoto (opción actual).** El bucket de estado y la tabla de bloqueo los crea US-36, que aún no está hecha. Mientras tanto, `--local-backend` usa un estado local temporal:
 
 ```bash
-aws configure --profile personal          # una sola vez; queda en ~/.aws, fuera del repositorio
-export AWS_PROFILE=personal
+aws configure --profile circleguard-plan   # una sola vez
+export AWS_PROFILE=circleguard-plan
+bash infra/terraform/scripts/plan-all.sh --real --local-backend            # los tres ambientes
+bash infra/terraform/scripts/plan-all.sh --real --local-backend --env dev  # uno solo
+```
+
+`--local-backend` crea un `backend_override.tf` temporal (ignorado por Git) y lo borra al terminar, aunque el plan falle. Sin credenciales, el script falla con `No valid credential sources found` y no deja archivos temporales.
+
+**Con backend remoto (cuando exista US-36):**
+
+```bash
 cp infra/terraform/envs/dev/backend.hcl.example infra/terraform/envs/dev/backend.hcl   # reemplaza <ID_CUENTA>
 bash infra/terraform/scripts/plan-all.sh --real --env dev
 ```
 
-Con `--real`, el script también guarda `reports/terraform/<env>-plan.json` y busca credenciales en él.
+En ambos casos, con `--real` el script guarda `reports/terraform/<env>-plan.txt` y `<env>-plan.json` y busca credenciales en los dos. Desde US-20 el plan incluye también la red y el cómputo.
 
 ### Aplicar y destruir
+
+No se debe ejecutar `apply` sin el backend remoto de US-36. Con estado local, el estado quedaría en un solo computador y sin bloqueo.
 
 ```bash
 cd infra/terraform/envs/dev
