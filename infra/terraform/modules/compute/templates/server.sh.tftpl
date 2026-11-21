@@ -1,0 +1,55 @@
+#!/bin/bash
+# Arranque del nodo server de k3s — ${name} (US-20)
+# Instala la versión fija de k3s, guarda el token de unión y el kubeconfig en
+# SSM Parameter Store (SecureString) y nunca los escribe en los logs.
+set -euo pipefail
+exec > >(tee -a /var/log/circleguard-k3s-bootstrap.log) 2>&1
+
+REGION="${region}"
+TOKEN_PARAMETER="${token_parameter}"
+KUBECONFIG_PARAMETER="${kubeconfig_parameter}"
+PUBLIC_IP="${public_ip}"
+
+# La IP elástica se asocia después de crear la instancia: sin ella no hay salida a internet.
+echo "[k3s-server] Esperando la IP elástica $${PUBLIC_IP}..."
+for _ in $(seq 1 60); do
+  IMDS_TOKEN="$(curl -sf -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' || true)"
+  CURRENT_IP="$(curl -sf -H "X-aws-ec2-metadata-token: $${IMDS_TOKEN}" http://169.254.169.254/latest/meta-data/public-ipv4 || true)"
+  [[ "$${CURRENT_IP}" == "$${PUBLIC_IP}" ]] && break
+  sleep 5
+done
+[[ "$${CURRENT_IP:-}" == "$${PUBLIC_IP}" ]] || { echo "[k3s-server] La IP elástica no se asoció a tiempo." >&2; exit 1; }
+
+echo "[k3s-server] Instalando k3s ${k3s_version} para ${environment}..."
+dnf install -y --setopt=install_weak_deps=False iptables-nft >/dev/null || echo "[k3s] iptables-nft no disponible; k3s usa su iptables embebido."
+
+curl -sfL https://get.k3s.io | \
+  INSTALL_K3S_VERSION="${k3s_version}" \
+  INSTALL_K3S_EXEC="server" \
+  sh -s - \
+    --write-kubeconfig-mode 0600 \
+    --tls-san "$${PUBLIC_IP}" \
+    --node-label "circleguard.io/environment=${environment}" \
+%{ for key, value in node_labels ~}
+    --node-label "${key}=${value}" \
+%{ endfor ~}
+    --secrets-encryption
+
+echo "[k3s-server] Esperando el token de unión..."
+for _ in $(seq 1 60); do
+  [[ -s /var/lib/rancher/k3s/server/node-token ]] && break
+  sleep 5
+done
+[[ -s /var/lib/rancher/k3s/server/node-token ]] || { echo "[k3s-server] No se generó el token." >&2; exit 1; }
+
+# El token y el kubeconfig se envían por stdin del archivo para que no aparezcan en la línea de comandos.
+aws ssm put-parameter --region "$${REGION}" --name "$${TOKEN_PARAMETER}" \
+  --type SecureString --overwrite --value "file:///var/lib/rancher/k3s/server/node-token" >/dev/null
+
+install -m 0600 /dev/null /root/kubeconfig-external.yaml
+sed "s#https://127.0.0.1:6443#https://$${PUBLIC_IP}:6443#" /etc/rancher/k3s/k3s.yaml > /root/kubeconfig-external.yaml
+aws ssm put-parameter --region "$${REGION}" --name "$${KUBECONFIG_PARAMETER}" \
+  --type SecureString --tier Intelligent-Tiering --overwrite --value "file:///root/kubeconfig-external.yaml" >/dev/null
+shred -u /root/kubeconfig-external.yaml
+
+echo "[k3s-server] Listo: token y kubeconfig publicados en SSM."

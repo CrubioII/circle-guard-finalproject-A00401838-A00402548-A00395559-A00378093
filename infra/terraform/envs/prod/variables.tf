@@ -47,6 +47,85 @@ variable "services" {
 }
 
 # -----------------------------------------------------------------------------
+# Red (VPC) — US-20
+# -----------------------------------------------------------------------------
+
+variable "network_vpc_cidr" {
+  description = "Rango de la VPC del ambiente. Debe ser distinto en cada ambiente."
+  type        = string
+}
+
+variable "network_az_count" {
+  description = "Zonas de disponibilidad de la red."
+  type        = number
+  default     = 2
+}
+
+variable "network_enable_nat_gateway" {
+  description = "Crea NAT Gateway para las subredes privadas (≈ 32 USD/mes)."
+  type        = bool
+  default     = false
+}
+
+variable "network_enable_flow_logs" {
+  description = "Registra el tráfico de la VPC en CloudWatch Logs."
+  type        = bool
+}
+
+variable "network_flow_logs_retention_days" {
+  description = "Días de retención de los Flow Logs."
+  type        = number
+  default     = 30
+}
+
+# -----------------------------------------------------------------------------
+# Cómputo (clúster k3s) — US-20
+# -----------------------------------------------------------------------------
+
+variable "compute_server_instance_type" {
+  description = "Tipo de instancia del nodo server."
+  type        = string
+}
+
+variable "compute_agent_count" {
+  description = "Cantidad de nodos agent adicionales."
+  type        = number
+}
+
+variable "compute_root_volume_size_gb" {
+  description = "Tamaño del disco raíz de cada nodo, en GB."
+  type        = number
+}
+
+variable "compute_k3s_version" {
+  description = "Versión fija de k3s."
+  type        = string
+  default     = "v1.37.2+k3s1"
+}
+
+variable "compute_api_allowed_cidrs" {
+  description = "Rangos externos con acceso a la API de Kubernetes. Conviene pasarlos con TF_VAR_compute_api_allowed_cidrs en vez de versionarlos."
+  type        = list(string)
+  default     = []
+}
+
+variable "compute_ingress_allowed_cidrs" {
+  description = "Rangos con acceso al Ingress (80/443)."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "compute_enable_detailed_monitoring" {
+  description = "Métricas de EC2 cada minuto."
+  type        = bool
+}
+
+variable "compute_enable_termination_protection" {
+  description = "Protección contra terminación del nodo server."
+  type        = bool
+}
+
+# -----------------------------------------------------------------------------
 # Registro (ECR)
 # -----------------------------------------------------------------------------
 

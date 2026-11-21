@@ -4,6 +4,20 @@
 environment = "prod"
 aws_region  = "us-east-2"
 
+# Red (VPC) — US-20: Flow Logs para auditoría del tráfico.
+network_vpc_cidr                 = "10.30.0.0/16"
+network_az_count                 = 2
+network_enable_flow_logs         = true
+network_flow_logs_retention_days = 90
+
+# Cómputo (clúster k3s) — US-20. Un nodo para respetar la cuota de 8 vCPU;
+# subir compute_agent_count agrega capacidad sin cambiar el código.
+compute_server_instance_type          = "m7i-flex.large"
+compute_agent_count                   = 0
+compute_root_volume_size_gb           = 50
+compute_enable_detailed_monitoring    = true
+compute_enable_termination_protection = true
+
 # Registro (ECR)
 registry_image_tag_mutability           = "IMMUTABLE"
 registry_max_image_count                = 30

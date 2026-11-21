@@ -1,0 +1,37 @@
+#!/bin/bash
+# Arranque de un nodo agent de k3s — ${name} (US-20)
+# Lee el token de unión desde SSM Parameter Store con el rol IAM del nodo y se
+# une al server por su IP privada. El token no se guarda en Terraform.
+set -euo pipefail
+exec > >(tee -a /var/log/circleguard-k3s-bootstrap.log) 2>&1
+
+REGION="${region}"
+TOKEN_PARAMETER="${token_parameter}"
+SERVER_URL="https://${server_private_ip}:6443"
+
+dnf install -y --setopt=install_weak_deps=False iptables-nft >/dev/null || echo "[k3s] iptables-nft no disponible; k3s usa su iptables embebido."
+
+echo "[k3s-agent] Esperando a que el server publique el token..."
+K3S_TOKEN=""
+for _ in $(seq 1 120); do
+  K3S_TOKEN="$(aws ssm get-parameter --region "$${REGION}" --name "$${TOKEN_PARAMETER}" \
+    --with-decryption --query Parameter.Value --output text 2>/dev/null || true)"
+  [[ -n "$${K3S_TOKEN}" && "$${K3S_TOKEN}" != "${placeholder}" ]] && break
+  sleep 10
+done
+[[ -n "$${K3S_TOKEN}" && "$${K3S_TOKEN}" != "${placeholder}" ]] || { echo "[k3s-agent] El token no está disponible." >&2; exit 1; }
+
+echo "[k3s-agent] Instalando k3s ${k3s_version} y uniéndose a $${SERVER_URL}..."
+curl -sfL https://get.k3s.io | \
+  INSTALL_K3S_VERSION="${k3s_version}" \
+  K3S_URL="$${SERVER_URL}" \
+  K3S_TOKEN="$${K3S_TOKEN}" \
+  sh -s - agent \
+    --node-label "circleguard.io/environment=${environment}" \
+%{ for key, value in node_labels ~}
+    --node-label "${key}=${value}" \
+%{ endfor ~}
+    --node-label "circleguard.io/role=agent"
+
+unset K3S_TOKEN
+echo "[k3s-agent] Listo."

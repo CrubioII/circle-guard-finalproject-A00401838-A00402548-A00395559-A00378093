@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" width="1400" height="900" font-family="Helvetica, Arial, sans-serif">
+  <title>CircleGuard: red y cómputo por ambiente con Terraform (US-20)</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#374151"/>
+    </marker>
+    <marker id="aB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5454E9"/>
+    </marker>
+  </defs>
+  <rect width="1400" height="900" fill="#FFFFFF"/>
+  <text x="30" y="40" font-size="22" font-weight="bold" fill="#1A1A1A">CircleGuard: red y cómputo por ambiente (US-20)</text>
+  <text x="30" y="63" font-size="13" fill="#6B7280">Cada ambiente tiene su VPC y su clúster k3s, declarados con los módulos network y compute. Detalle de un ambiente (dev); stage y prod son iguales con su terraform.tfvars.</text>
+
+  <!-- Usuarios y administradores -->
+  <g font-size="12" fill="#374151">
+    <rect x="30" y="100" width="210" height="58" rx="29" fill="#F9FAFB" stroke="#9CA3AF"/>
+    <text x="135" y="125" font-size="14" font-weight="bold" text-anchor="middle" fill="#1A1A1A">Usuarios</text>
+    <text x="135" y="143" text-anchor="middle">HTTPS 443 / HTTP 80</text>
+
+    <rect x="30" y="180" width="210" height="58" rx="29" fill="#F9FAFB" stroke="#9CA3AF"/>
+    <text x="135" y="205" font-size="14" font-weight="bold" text-anchor="middle" fill="#1A1A1A">Administradores</text>
+    <text x="135" y="223" text-anchor="middle">SSM Session Manager · kubectl</text>
+
+    <rect x="30" y="270" width="210" height="90" rx="8" fill="#FFFFFF" stroke="#9CA3AF"/>
+    <text x="45" y="294" font-size="13" font-weight="bold" fill="#1A1A1A">SSM Parameter Store</text>
+    <text x="45" y="314">/circleguard/dev/k3s/</text>
+    <text x="45" y="332">  node-token (SecureString)</text>
+    <text x="45" y="350">  kubeconfig (SecureString)</text>
+
+    <rect x="30" y="380" width="210" height="72" rx="8" fill="#FFFFFF" stroke="#9CA3AF"/>
+    <text x="45" y="404" font-size="13" font-weight="bold" fill="#1A1A1A">Amazon ECR (US-35)</text>
+    <text x="45" y="424">circleguard/dev/&lt;servicio&gt;</text>
+    <text x="45" y="442">pull con el rol IAM del nodo</text>
+  </g>
+
+  <!-- VPC -->
+  <rect x="280" y="90" width="1090" height="480" rx="12" fill="#F5F5FF" stroke="#5454E9" stroke-width="1.5"/>
+  <text x="300" y="116" font-size="15" font-weight="bold" fill="#5454E9">VPC circleguard-dev-vpc · 10.10.0.0/16 · us-east-2</text>
+  <text x="1350" y="116" font-size="12" text-anchor="end" fill="#5454E9">SG por defecto sin reglas · endpoint gateway S3</text>
+
+  <!-- IGW -->
+  <rect x="300" y="140" width="150" height="46" rx="6" fill="#FFFFFF" stroke="#5454E9"/>
+  <text x="375" y="168" font-size="13" font-weight="bold" text-anchor="middle" fill="#1A1A1A">Internet Gateway</text>
+
+  <!-- AZ a -->
+  <rect x="480" y="140" width="430" height="410" rx="10" fill="#FFFFFF" stroke="#9CA3AF" stroke-dasharray="6 4"/>
+  <text x="500" y="164" font-size="13" font-weight="bold" fill="#374151">us-east-2a</text>
+  <rect x="500" y="176" width="390" height="230" rx="8" fill="#F0FAF4" stroke="#4CB978"/>
+  <text x="515" y="198" font-size="12" font-weight="bold" fill="#1A1A1A">Subred pública 10.10.0.0/24</text>
+
+  <rect x="520" y="212" width="350" height="180" rx="8" fill="#FFFFFF" stroke="#4CB978" stroke-width="1.5"/>
+  <text x="535" y="236" font-size="14" font-weight="bold" fill="#1A1A1A">Nodo server k3s · m7i-flex.large</text>
+  <g font-size="12" fill="#374151">
+    <text x="535" y="258">k3s v1.37.2+k3s1 · Traefik (Ingress) · secrets cifrados</text>
+    <text x="535" y="278">Amazon Linux 2023 · IMDSv2 · gp3 cifrado</text>
+    <text x="535" y="298">Rol IAM: SSM · ECR read-only · CloudWatch</text>
+    <text x="535" y="318">IP elástica fija → https://&lt;EIP&gt;:6443</text>
+    <text x="535" y="342" font-weight="bold" fill="#1A1A1A">SG circleguard-dev-k3s-nodes</text>
+    <text x="535" y="360">80/443 desde internet · 6443 solo desde la VPC</text>
+    <text x="535" y="378">sin SSH (22) · todo el tráfico entre nodos</text>
+  </g>
+
+  <rect x="500" y="420" width="390" height="110" rx="8" fill="#F9FAFB" stroke="#9CA3AF"/>
+  <text x="515" y="442" font-size="12" font-weight="bold" fill="#1A1A1A">Subred privada 10.10.10.0/24</text>
+  <text x="515" y="464" font-size="12" fill="#374151">Reservada para bases de datos o nodos privados.</text>
+  <text x="515" y="484" font-size="12" fill="#374151">Sale a internet solo con enable_nat_gateway = true</text>
+  <text x="515" y="504" font-size="12" fill="#374151">(apagado: ≈ 32 USD/mes por NAT).</text>
+
+  <!-- AZ b -->
+  <rect x="930" y="140" width="420" height="410" rx="10" fill="#FFFFFF" stroke="#9CA3AF" stroke-dasharray="6 4"/>
+  <text x="950" y="164" font-size="13" font-weight="bold" fill="#374151">us-east-2b</text>
+  <rect x="950" y="176" width="380" height="230" rx="8" fill="#F0FAF4" stroke="#4CB978"/>
+  <text x="965" y="198" font-size="12" font-weight="bold" fill="#1A1A1A">Subred pública 10.10.1.0/24</text>
+  <rect x="970" y="212" width="340" height="110" rx="8" fill="#FFFFFF" stroke="#4CB978" stroke-dasharray="5 4"/>
+  <text x="985" y="236" font-size="14" font-weight="bold" fill="#1A1A1A">Nodos agent (opcionales)</text>
+  <g font-size="12" fill="#374151">
+    <text x="985" y="258">compute_agent_count = N, repartidos por zona</text>
+    <text x="985" y="278">Se unen por IP privada con el token de SSM</text>
+    <text x="985" y="298">0 en los tres ambientes (cuota de 8 vCPU)</text>
+  </g>
+  <rect x="950" y="420" width="380" height="110" rx="8" fill="#F9FAFB" stroke="#9CA3AF"/>
+  <text x="965" y="442" font-size="12" font-weight="bold" fill="#1A1A1A">Subred privada 10.10.11.0/24</text>
+  <text x="965" y="464" font-size="12" fill="#374151">Misma función que la de us-east-2a.</text>
+
+  <!-- Flechas -->
+  <g stroke="#374151" stroke-width="1.5" fill="none" marker-end="url(#a)">
+    <path d="M240,129 L375,129 L375,140"/>
+    <path d="M450,163 L520,240"/>
+  </g>
+  <g stroke="#5454E9" stroke-width="1.5" fill="none" marker-end="url(#aB)" stroke-dasharray="5 4">
+    <path d="M240,209 L470,209 L520,260"/>
+    <path d="M520,300 L240,315"/>
+    <path d="M520,330 L240,416"/>
+  </g>
+  <text x="300" y="232" font-size="11" fill="#5454E9">sesión SSM (sin puertos abiertos)</text>
+  <text x="300" y="300" font-size="11" fill="#5454E9">token y kubeconfig</text>
+  <text x="330" y="414" font-size="11" fill="#5454E9">pull de imágenes</text>
+
+  <!-- Tabla de ambientes -->
+  <text x="30" y="612" font-size="16" font-weight="bold" fill="#1A1A1A">Mismo código, parámetros distintos (envs/&lt;env&gt;/terraform.tfvars)</text>
+  <g font-size="12" fill="#374151">
+    <rect x="30" y="626" width="1340" height="34" fill="#F5F5FF" stroke="#E5E7EB"/>
+    <text x="45" y="648" font-weight="bold" fill="#1A1A1A">Ambiente</text>
+    <text x="215" y="648" font-weight="bold" fill="#1A1A1A">VPC</text>
+    <text x="400" y="648" font-weight="bold" fill="#1A1A1A">Clúster</text>
+    <text x="660" y="648" font-weight="bold" fill="#1A1A1A">Disco</text>
+    <text x="780" y="648" font-weight="bold" fill="#1A1A1A">Flow Logs</text>
+    <text x="960" y="648" font-weight="bold" fill="#1A1A1A">Protección y monitoreo</text>
+    <text x="1250" y="648" font-weight="bold" fill="#1A1A1A">Recursos</text>
+
+    <rect x="30" y="660" width="1340" height="34" fill="#FFFFFF" stroke="#E5E7EB"/>
+    <text x="45" y="682" font-weight="bold" fill="#1A1A1A">dev</text>
+    <text x="215" y="682">10.10.0.0/16 · 2 zonas</text>
+    <text x="400" y="682">circleguard-dev-k3s · 1 nodo</text>
+    <text x="660" y="682">30 GB</text>
+    <text x="780" y="682">No</text>
+    <text x="960" y="682">Básico</text>
+    <text x="1250" y="682">34 (+64 US-35)</text>
+
+    <rect x="30" y="694" width="1340" height="34" fill="#FFFFFF" stroke="#E5E7EB"/>
+    <text x="45" y="716" font-weight="bold" fill="#1A1A1A">stage</text>
+    <text x="215" y="716">10.20.0.0/16 · 2 zonas</text>
+    <text x="400" y="716">circleguard-stage-k3s · 1 nodo</text>
+    <text x="660" y="716">40 GB</text>
+    <text x="780" y="716">No</text>
+    <text x="960" y="716">Básico</text>
+    <text x="1250" y="716">34 (+64 US-35)</text>
+
+    <rect x="30" y="728" width="1340" height="34" fill="#FFF7ED" stroke="#E5E7EB"/>
+    <text x="45" y="750" font-weight="bold" fill="#1A1A1A">prod</text>
+    <text x="215" y="750">10.30.0.0/16 · 2 zonas</text>
+    <text x="400" y="750">circleguard-prod-k3s · 1 nodo</text>
+    <text x="660" y="750">50 GB</text>
+    <text x="780" y="750">Sí · 90 días · KMS</text>
+    <text x="960" y="750">Anti-terminación · métricas 1 min</text>
+    <text x="1250" y="750">38 (+73 US-35)</text>
+  </g>
+
+  <rect x="30" y="784" width="1340" height="92" rx="10" fill="#F9FAFB" stroke="#9CA3AF" stroke-dasharray="6 4"/>
+  <g font-size="12" fill="#374151">
+    <text x="50" y="808" font-size="14" font-weight="bold" fill="#1A1A1A">Rangos que no se solapan y cuota de vCPU</text>
+    <text x="50" y="830">Las VPC usan 10.10/10.20/10.30 para poder conectarlas más adelante (peering) sin conflictos. CI (2 vCPU) + 3 clústeres de un nodo (6 vCPU) = 8 vCPU,</text>
+    <text x="50" y="850">la cuota actual de la cuenta: reemplazan 1 a 1 los nodos de ambiente de la Parte 1, que deben detenerse antes de un apply.</text>
+    <text x="50" y="870">Estado: un archivo por ambiente (envs/&lt;env&gt;/platform.tfstate) en el backend remoto de US-36.</text>
+  </g>
+</svg>

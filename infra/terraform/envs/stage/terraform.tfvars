@@ -4,6 +4,18 @@
 environment = "stage"
 aws_region  = "us-east-2"
 
+# Red (VPC) — US-20
+network_vpc_cidr         = "10.20.0.0/16"
+network_az_count         = 2
+network_enable_flow_logs = false
+
+# Cómputo (clúster k3s de un nodo) — US-20
+compute_server_instance_type          = "m7i-flex.large"
+compute_agent_count                   = 0
+compute_root_volume_size_gb           = 40
+compute_enable_detailed_monitoring    = false
+compute_enable_termination_protection = false
+
 # Registro (ECR)
 registry_image_tag_mutability           = "IMMUTABLE"
 registry_max_image_count                = 20
