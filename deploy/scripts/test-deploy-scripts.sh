@@ -43,23 +43,23 @@ expect_fail "--version latest"                 bash "${S}/environment.sh" deploy
 expect_fail "--host obligatorio"               bash "${S}/environment.sh" deploy --env dev --version 1.0.0
 
 secret="Sup3r-S3cret-\$(id)"
-out="$(SSH_KEY=/keys/id SSH_USER=ec2-user REGISTRY_USER=ci-bot REGISTRY_PASSWORD="${secret}" REGISTRY_URL=52.14.6.11:5000 \
-      bash "${S}/environment.sh" deploy --env dev --version 1.4.0 --host 52.15.213.209 --dry-run 2>&1)"
+out="$(SSH_KEY=/keys/id SSH_USER=ec2-user REGISTRY_USER=ci-bot REGISTRY_PASSWORD="${secret}" REGISTRY_URL=18.117.90.15:5000 \
+      bash "${S}/environment.sh" deploy --env dev --version 1.4.0 --host 52.15.165.116 --dry-run 2>&1)"
 expect_in "crea el directorio remoto de la pila"     "mkdir -p /opt/circleguard/dev/compose/stack" "${out}"
 expect_in "copia compose + scripts por SCP"           "docker-compose.dev.yml" "${out}"
-expect_in "copia deploy-env.sh y verify-env-health.sh" "verify-env-health.sh ec2-user@52.15.213.209:/opt/circleguard/dev/compose/stack/" "${out}"
+expect_in "copia deploy-env.sh y verify-env-health.sh" "verify-env-health.sh ec2-user@52.15.165.116:/opt/circleguard/dev/compose/stack/" "${out}"
 expect_in "usa la llave SSH inyectada"                "-i /keys/id" "${out}"
 expect_in "fija la versión SemVer remota"             "IMAGE_TAG=1.4.0" "${out}"
 expect_in "contraseña por stdin (flag)"               "REGISTRY_PASSWORD_STDIN=1" "${out}"
 expect_in "usuario del registro"                      "REGISTRY_USER=ci-bot" "${out}"
 if [[ "${out}" == *"${secret}"* || "${out}" == *"Sup3r-S3cret"* ]]; then ko "la contraseña NO aparece en los comandos"; else ok "la contraseña NO aparece en los comandos"; fi
 
-out="$(SSH_USER=ec2-user bash "${S}/environment.sh" deploy --env stage --version 1.4.0 --host 3.17.163.44 --dry-run 2>&1)"
+out="$(SSH_USER=ec2-user bash "${S}/environment.sh" deploy --env stage --version 1.4.0 --host 52.14.89.125 --dry-run 2>&1)"
 expect_in "stage usa su propio directorio"            "/opt/circleguard/stage/compose/stack" "${out}"
 expect_in "stage usa su compose"                      "docker-compose.stage.yml" "${out}"
 expect_in "sin credenciales no hay login"             "REGISTRY_PASSWORD_STDIN=0" "${out}"
 
-out="$(SSH_USER=ec2-user bash "${S}/environment.sh" verify --env dev --version 1.4.0 --host 52.15.213.209 --dry-run 2>&1)"
+out="$(SSH_USER=ec2-user bash "${S}/environment.sh" verify --env dev --version 1.4.0 --host 52.15.165.116 --dry-run 2>&1)"
 expect_in "verify ejecuta verify-env-health.sh remoto" "/opt/circleguard/dev/compose/stack/verify-env-health.sh dev" "${out}"
 
 echo "[4/6] run-e2e.sh valida argumentos"

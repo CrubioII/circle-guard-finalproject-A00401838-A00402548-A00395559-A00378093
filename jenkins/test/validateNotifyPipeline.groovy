@@ -24,7 +24,7 @@ Closure reset = { Map overrides = [:] ->
     state.putAll([
         env          : [
             BRANCH_NAME : 'main',
-            BUILD_URL   : 'http://52.14.6.11:8080/job/circleguard-monorepo/job/main/42/',
+            BUILD_URL   : 'http://18.117.90.15:8080/job/circleguard-monorepo/job/main/42/',
             BUILD_NUMBER: '42',
             JOB_NAME    : 'circleguard-monorepo/main'
         ],
@@ -92,7 +92,7 @@ assert result.notify == true && result.sent == true && result.httpCode == '204'
 Map embed = result.payload.embeds[0]
 Map fields = embed.fields.collectEntries { [(it.name): it.value] }
 assert embed.title.contains('FALLÓ') && embed.title.contains('#42')
-assert embed.url == 'http://52.14.6.11:8080/job/circleguard-monorepo/job/main/42/console'
+assert embed.url == 'http://18.117.90.15:8080/job/circleguard-monorepo/job/main/42/console'
 assert fields['Rama'] == '`main`'
 assert fields['Versión'] == '`1.4.0`'
 assert fields['Commit'] == '`0123456` feat(ci): notify pipeline results in Discord for US-14'
