@@ -14,7 +14,7 @@
 #   bash deploy/compose/smoke-up.sh                       # dev, IMAGE_TAG=1.0.0
 #   IMAGE_TAG=1.2.0 bash deploy/compose/smoke-up.sh dev
 #   KEEP_UP=1 bash deploy/compose/smoke-up.sh             # deja la pila arriba
-#   REGISTRY_URL=52.14.6.11:5000 IMAGE_TAG=1.2.0 PUBLIC_HOST=<ip> bash deploy/compose/smoke-up.sh stage
+#   REGISTRY_URL=18.117.90.15:5000 IMAGE_TAG=1.2.0 PUBLIC_HOST=<ip> bash deploy/compose/smoke-up.sh stage
 # =============================================================================
 set -euo pipefail
 

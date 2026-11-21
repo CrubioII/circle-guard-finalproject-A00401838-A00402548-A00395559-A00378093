@@ -76,9 +76,9 @@ prepare_env_file() {
   if [[ -z "${ENV_FILE:-}" ]]; then
     ENV_FILE="$(mktemp)"
     trap 'rm -f "${ENV_FILE}"' EXIT
-    REGISTRY_URL="${REGISTRY_URL:-52.14.6.11:5000}" \
+    REGISTRY_URL="${REGISTRY_URL:-18.117.90.15:5000}" \
       bash "${ROOT_DIR}/infra/bootstrap/inject-jenkins-secrets.sh" \
-        --env "${ENV_NAME}" --output "${ENV_FILE}" --registry-url "${REGISTRY_URL:-52.14.6.11:5000}" >/dev/null
+        --env "${ENV_NAME}" --output "${ENV_FILE}" --registry-url "${REGISTRY_URL:-18.117.90.15:5000}" >/dev/null
   fi
   [[ -f "${ENV_FILE}" ]] || fail "No existe el archivo de entorno ${ENV_FILE}."
 }

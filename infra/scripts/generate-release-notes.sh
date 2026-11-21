@@ -184,15 +184,15 @@ NOTES_CONTENT+="
 ## Artefactos e imagenes inmutables asociadas
 
 Las siguientes imagenes fueron construidas y etiquetadas para este release:
-- \`52.14.6.11:5000/circleguard/auth:${VERSION_CLEAN}\`
-- \`52.14.6.11:5000/circleguard/identity:${VERSION_CLEAN}\`
-- \`52.14.6.11:5000/circleguard/promotion:${VERSION_CLEAN}\`
-- \`52.14.6.11:5000/circleguard/form:${VERSION_CLEAN}\`
-- \`52.14.6.11:5000/circleguard/gateway:${VERSION_CLEAN}\`
-- \`52.14.6.11:5000/circleguard/notification:${VERSION_CLEAN}\`
-- \`52.14.6.11:5000/circleguard/file:${VERSION_CLEAN}\`
-- \`52.14.6.11:5000/circleguard/dashboard:${VERSION_CLEAN}\`
-- \`52.14.6.11:5000/circleguard/mobile:${VERSION_CLEAN}\`
+- \`18.117.90.15:5000/circleguard/auth:${VERSION_CLEAN}\`
+- \`18.117.90.15:5000/circleguard/identity:${VERSION_CLEAN}\`
+- \`18.117.90.15:5000/circleguard/promotion:${VERSION_CLEAN}\`
+- \`18.117.90.15:5000/circleguard/form:${VERSION_CLEAN}\`
+- \`18.117.90.15:5000/circleguard/gateway:${VERSION_CLEAN}\`
+- \`18.117.90.15:5000/circleguard/notification:${VERSION_CLEAN}\`
+- \`18.117.90.15:5000/circleguard/file:${VERSION_CLEAN}\`
+- \`18.117.90.15:5000/circleguard/dashboard:${VERSION_CLEAN}\`
+- \`18.117.90.15:5000/circleguard/mobile:${VERSION_CLEAN}\`
 "
 
 # 1. Escribir archivo individual en docs/release-notes/

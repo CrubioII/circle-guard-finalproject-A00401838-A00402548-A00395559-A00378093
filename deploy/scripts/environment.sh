@@ -13,8 +13,8 @@
 #   REGISTRY_USER / REGISTRY_PASSWORD    -> usernamePassword 'nexus-credentials'
 #
 # Uso:
-#   deploy/scripts/environment.sh deploy --env dev --version 1.4.0 --host 52.15.213.209
-#   deploy/scripts/environment.sh verify --env dev --version 1.4.0 --host 52.15.213.209 \
+#   deploy/scripts/environment.sh deploy --env dev --version 1.4.0 --host 52.15.165.116
+#   deploy/scripts/environment.sh verify --env dev --version 1.4.0 --host 52.15.165.116 \
 #       --report reports/ci/health-dev.json
 #   --local    ejecuta los scripts en esta máquina (pruebas; usa ENV_FILE/COMPOSE_FILE locales)
 #   --dry-run  imprime los comandos SSH/SCP sin ejecutarlos
