@@ -1,0 +1,33 @@
+# CircleGuard — Ambiente prod (US-21)
+# Namespace circleguard-prod en el clúster circleguard-prod-k3s (US-20).
+# Límites de deploy/compose/docker-compose.prod.yml y más disco (nodo de 50 GB).
+#   kubectl apply -k deploy/k8s/overlays/prod
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: circleguard-prod
+
+resources:
+  - ../../base
+
+components:
+  - ../../components/prod-sizing
+
+labels:
+  - pairs:
+      circleguard.io/environment: prod
+    includeSelectors: false
+    includeTemplates: true
+
+configMapGenerator:
+  - name: middleware-config
+    behavior: merge
+    literals:
+      - POSTGRES_DB=circleguard_prod
+      - LDAP_ORGANISATION=CircleGuard-prod
+      - LDAP_DOMAIN=prod.circleguard.edu
+      - LDAP_BASE_DN=dc=prod,dc=circleguard,dc=edu
+      - KAFKA_LOG_RETENTION_HOURS=168
+
+patches:
+  - path: storage.yaml
