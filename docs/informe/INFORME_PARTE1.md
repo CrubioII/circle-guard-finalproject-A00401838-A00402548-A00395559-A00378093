@@ -16,6 +16,8 @@ Universidad Icesi · Ingeniería de Software V (09776) · Período 2026-2
 | **Ambientes** | dev `52.15.213.209` · stage `3.17.163.44` · prod `3.19.74.9` (puertos en la sección 1) |
 | **Uso de IA generativa** | Nivel 3: Colaboración con IAG. Bitácora en [`docs/BITACORA_IAG_EQUIPO.md`](../BITACORA_IAG_EQUIPO.md) y resumen en el anexo B |
 
+> **Nota (migración de cuenta AWS):** las IPs de este informe corresponden a la cuenta AWS de la Parte 1. La infraestructura se migró a una cuenta nueva: CI/Jenkins, SonarQube, Nexus y registro en `18.117.90.15`, dev `52.15.165.116`, stage `52.14.89.125` y prod `77.113.211.62`. Las direcciones vigentes están en el [`README`](../../README.md).
+
 
 ## Contenido
 

@@ -33,11 +33,13 @@ Todos los recursos se aprovisionaron en la Región seleccionada del proyecto (`u
 
 | Ambiente | Instancia EC2 | IP Pública / Privada | Security Group Aislado | Red Docker Aislada | Directorio y Secretos (`0600`) | Base de Datos PostgreSQL |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `dev` | `i-0afac282e0fa495ce` (`m7i-flex.large`, 8 GB RAM) | `52.15.213.209` / `172.31.17.179` | `sg-0b1f66b12e154410d` (`circleguard-dev-sg`) | `circleguard_dev_net` (`bridge`) | `/opt/circleguard/dev/.env` | `circleguard_dev` |
-| `stage` | `i-0856938aef6905ddc` (`m7i-flex.large`, 8 GB RAM) | `3.17.163.44` / `172.31.19.153` | `sg-01a67ffaa84eb8d74` (`circleguard-stage-sg`) | `circleguard_stage_net` (`bridge`) | `/opt/circleguard/stage/.env` | `circleguard_stage` |
-| `prod` | `i-087a647cdd67fb57a` (`m7i-flex.large`, 8 GB RAM) | `3.19.74.9` / `172.31.21.79` | `sg-02704674d547db612` (`circleguard-prod-sg`) | `circleguard_prod_net` (`bridge`) | `/opt/circleguard/prod/.env` | `circleguard_prod` |
+| `dev` | `i-018eeb2ef96a6d94d` (`m7i-flex.large`, 8 GB RAM) | `52.15.165.116` / `172.31.17.179` | `sg-0b1f66b12e154410d` (`circleguard-dev-sg`) | `circleguard_dev_net` (`bridge`) | `/opt/circleguard/dev/.env` | `circleguard_dev` |
+| `stage` | `i-05022e77d42dfafe5` (`m7i-flex.large`, 8 GB RAM) | `52.14.89.125` / `172.31.19.153` | `sg-01a67ffaa84eb8d74` (`circleguard-stage-sg`) | `circleguard_stage_net` (`bridge`) | `/opt/circleguard/stage/.env` | `circleguard_stage` |
+| `prod` | `i-00e21144a1c89b8a5` (`m7i-flex.large`, 8 GB RAM) | `77.113.211.62` / `172.31.21.79` | `sg-02704674d547db612` (`circleguard-prod-sg`) | `circleguard_prod_net` (`bridge`) | `/opt/circleguard/prod/.env` | `circleguard_prod` |
 
-Cada entorno cuenta además con `/etc/docker/daemon.json` configurado hacia el registro privado de imágenes en Nexus (`52.14.6.11:5000`) y soporte para `docker login` no interactivo (`--password-stdin`).
+> **Migración de cuenta AWS:** la infraestructura se movió a una cuenta AWS nueva. Las instancias e IPs públicas de la tabla ya son las nuevas; las IPs privadas y los IDs de Security Group corresponden a la cuenta original y deben revisarse en EC2. La evidencia SSH de la sección 4 se tomó en la cuenta original (CI `52.14.6.11`).
+
+Cada entorno cuenta además con `/etc/docker/daemon.json` configurado hacia el registro privado de imágenes en Nexus (`18.117.90.15:5000`) y soporte para `docker login` no interactivo (`--password-stdin`).
 
 ---
 
