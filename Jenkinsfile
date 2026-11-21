@@ -206,14 +206,14 @@ pipeline {
         SONAR_PROJECT_KEY = 'circleguard-monorepo'   // US-10
         // US-13: nodos de ambiente (US-05) y registro (US-11). Sobrescribibles con variables
         // globales de Jenkins (CG_DEV_HOST, CG_STAGE_HOST, CG_REGISTRY_URL) sin tocar el repo.
-        DEV_HOST = "${env.CG_DEV_HOST ?: '52.15.213.209'}"
-        STAGE_HOST = "${env.CG_STAGE_HOST ?: '3.17.163.44'}"
-        DEPLOY_REGISTRY_URL = "${env.CG_REGISTRY_URL ?: '52.14.6.11:5000'}"
+        DEV_HOST = "${env.CG_DEV_HOST ?: '52.15.165.116'}"
+        STAGE_HOST = "${env.CG_STAGE_HOST ?: '52.14.89.125'}"
+        DEPLOY_REGISTRY_URL = "${env.CG_REGISTRY_URL ?: '18.117.90.15:5000'}"
         ENV_SSH_CREDENTIALS_ID = 'circleguard-env-ssh'
         NEXUS_CREDENTIALS_ID = 'nexus-credentials'
         // US-31: nodo de prod (US-05) y compuerta manual. CG_PROD_APPROVERS = IDs de usuario o
         // grupos de Jenkins separados por comas; vacío => el release a prod se omite (no aprueba cualquiera).
-        PROD_HOST = "${env.CG_PROD_HOST ?: '3.19.74.9'}"
+        PROD_HOST = "${env.CG_PROD_HOST ?: '77.113.211.62'}"
         PROD_APPROVERS = "${env.CG_PROD_APPROVERS ?: ''}"
         PROD_APPROVAL_TIMEOUT_MIN = "${env.CG_PROD_APPROVAL_TIMEOUT_MIN ?: '60'}"
     }
@@ -478,7 +478,7 @@ pipeline {
                     )]) {
                         sh 'chmod +x infra/scripts/publish-docker-images.sh'
                         sh """
-                            REGISTRY_URL="52.14.6.11:5000" \
+                            REGISTRY_URL="${env.DEPLOY_REGISTRY_URL}" \
                             REGISTRY_USER="\${NEXUS_USER}" \
                             REGISTRY_PASSWORD="\${NEXUS_PASSWORD}" \
                             VERSION="${semver}" \

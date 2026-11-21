@@ -28,7 +28,7 @@ import groovy.transform.Field
  * Parámetros:
  * - env (String, obligatorio): dev | stage | prod.
  * - targetVersion (String): versión a restaurar; vacío = última versión estable registrada.
- * - registryUrl (String): registro Docker (por defecto 52.14.6.11:5000).
+ * - registryUrl (String): registro Docker (por defecto 18.117.90.15:5000).
  * - host (String): IP del nodo del ambiente; redespliega por SSH con deploy/scripts/environment.sh (US-13).
  *   Requiere las credenciales SSH y de Nexus inyectadas con withCredentials, igual que el despliegue.
  * - dryRun (Boolean): muestra los comandos sin ejecutarlos.
@@ -61,7 +61,7 @@ void markStable(Map config = [:]) {
 }
 
 private void runScript(Map config, String args) {
-    List<String> vars = ["REGISTRY_URL=${config.registryUrl ?: '52.14.6.11:5000'}"]
+    List<String> vars = ["REGISTRY_URL=${config.registryUrl ?: '18.117.90.15:5000'}"]
     if (config.dryRun) {
         vars << 'DRY_RUN=1'
     }
