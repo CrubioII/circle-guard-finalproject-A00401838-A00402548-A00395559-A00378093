@@ -440,6 +440,23 @@ pipeline {
             }
         }
 
+        // US-21: namespaces y middleware de Kubernetes (Kustomize). Corre en todo build,
+        // también en los PR: no necesita clúster ni credenciales y tarda menos de un minuto.
+        stage('Validate Kubernetes Manifests') {
+            steps {
+                script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+                    echo 'Validando namespaces y middleware de Kubernetes para dev, stage y prod (US-21)...'
+                    sh 'bash deploy/k8s/scripts/validate.sh'
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/k8s/**', allowEmptyArchive: true
+                }
+            }
+        }
+
         stage('Publish Images to Nexus') {
             when {
                 expression { flow?.isMainBranch == true && plan?.runHeavyBuild == true }
