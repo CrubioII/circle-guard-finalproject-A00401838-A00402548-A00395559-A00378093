@@ -57,6 +57,12 @@
 //   'Publish Images to Nexus'. HIGH/CRITICAL con --exit-code 1; excepciones en .trivyignore.
 //   Reportes en reports/trivy/ (tabla, JSON y JUnit). Desactivable con ENABLE_TRIVY_GATE=false.
 //
+// US-39 — Despliegue y promoción en Kubernetes: con DEPLOY_PLATFORM=k8s (o CG_DEPLOY_PLATFORM=k8s)
+//   las mismas etapas de dev, stage y prod usan deploy/scripts/k8s-deploy.sh (kubectl apply -k con
+//   la versión SemVer de US-12 y kubectl rollout status). Si el rollout no queda listo, la etapa
+//   falla. Kubeconfig: credencial de archivo 'kubeconfig-<env>'.
+//   La notificación de éxito/fallo es la de US-14 (Discord).
+//
 // Requisitos del agente: JDK 21, Node.js 20+, librerías de sistema de Chromium (imagen
 // infra/bootstrap/jenkins), plugins htmlpublisher y sonar, git, openssh-client y permisos de
 // ejecución sobre ./gradlew. Credenciales: 'nexus-credentials', 'circleguard-env-ssh',
@@ -86,7 +92,7 @@ import groovy.transform.Field
 @Field def prodResults = [deployProd: 'NOT_RUN', verifyProd: 'NOT_RUN']
 // US-14: última etapa iniciada; si el build falla, es la etapa que se reporta en Discord.
 @Field def pipelineTrack = [stage: '']
-// US-22 / US-38: paso platformFlow (cargado del workspace) y su plan de etapas.
+// US-22 / US-38 / US-39: paso platformFlow (cargado del workspace) y su plan de etapas.
 @Field def platformFlow = null
 @Field def platform = [:]
 // US-22: resultado del apply de Terraform por ambiente (SUCCESS | FAILURE | SKIPPED | NOT_RUN).
@@ -149,6 +155,22 @@ void withTerraformCredentials(Closure body) {
                  "TF_STATE_BUCKET=${env.TF_STATE_BUCKET}", "TF_LOCK_TABLE=${env.TF_LOCK_TABLE}"]) {
             body()
         }
+    }
+}
+
+// US-39: kubeconfig del clúster k3s de cada ambiente (credencial de archivo 'kubeconfig-<env>').
+void withKubeconfig(String envName, Closure body) {
+    withCredentials([file(credentialsId: "kubeconfig-${envName}", variable: 'KUBECONFIG')]) {
+        withEnv(["REGISTRY_URL=${env.DEPLOY_REGISTRY_URL}"]) {
+            body()
+        }
+    }
+}
+
+// US-39 CA2: kubectl rollout status de todo el namespace; si algo no queda listo, la etapa falla.
+void verifyK8sRollout(String envName, String version, String report) {
+    withKubeconfig(envName) {
+        sh "./deploy/scripts/k8s-deploy.sh verify --env '${envName}' --version '${version}' --report '${report}'"
     }
 }
 
@@ -220,6 +242,11 @@ pipeline {
             defaultValue: true,
             description: 'US-10: ejecuta el análisis estático con SonarQube y el bloqueo waitForQualityGate(abortPipeline: true).'
         )
+        choice(
+            name: 'DEPLOY_PLATFORM',
+            choices: ['default', 'compose', 'k8s'],
+            description: 'US-39: plataforma de despliegue. default = variable global CG_DEPLOY_PLATFORM (o compose si no existe); k8s = kubectl apply -k por overlay.'
+        )
         booleanParam(
             name: 'FORCE_TERRAFORM',
             defaultValue: false,
@@ -259,6 +286,8 @@ pipeline {
         TF_STATE_BUCKET = "${env.CG_TF_STATE_BUCKET ?: ''}"
         TF_LOCK_TABLE = "${env.CG_TF_LOCK_TABLE ?: 'circleguard-terraform-locks'}"
         TF_STATE_REGION = "${env.CG_AWS_REGION ?: 'us-east-2'}"
+        // US-39: plataforma por defecto cuando DEPLOY_PLATFORM=default.
+        DEPLOY_PLATFORM_DEFAULT = "${env.CG_DEPLOY_PLATFORM ?: ''}"
     }
 
     stages {
@@ -427,7 +456,7 @@ pipeline {
                     sh 'IMAGE_TAG="' + (versionMap.APP_VERSION ?: '0.1.0') + '" ./deploy/compose/validate-compose.sh'
                     // US-13: los scripts de despliegue/promoción se prueban también en los PR (sin Docker ni credenciales).
                     sh 'chmod +x deploy/scripts/*.sh && ./deploy/scripts/test-deploy-scripts.sh'
-                    // US-22 / US-38: scripts de plataforma con binarios simulados.
+                    // US-22 / US-38 / US-39: scripts de plataforma con binarios simulados.
                     sh 'chmod +x infra/scripts/*.sh infra/terraform/scripts/*.sh && ./infra/scripts/test-platform-scripts.sh'
                 }
             }
@@ -855,10 +884,14 @@ void runDetectChangedComponentsStage() {
         multibranchFlow.requireDeploymentAllowed(flow, params.TARGET_ENV)
     }
 
-    // US-22 / US-38: etapas de plataforma (Terraform y Trivy).
+    // US-22 / US-38 / US-39: etapas de plataforma (Terraform, Trivy y plataforma de despliegue).
     platformFlow = load 'jenkins/vars/platformFlow.groovy'
+    boolean k8sOverlaysPresent = ['dev', 'stage', 'prod'].every { fileExists("deploy/k8s/overlays/${it}/kustomization.yaml") }
     platform = platformFlow.planPlatform(plan, detection, [
         forceTerraform    : params.FORCE_TERRAFORM as boolean,
+        deployPlatform    : params.DEPLOY_PLATFORM,
+        configuredPlatform: env.DEPLOY_PLATFORM_DEFAULT,
+        k8sOverlaysPresent: k8sOverlaysPresent,
         enableTrivy       : params.ENABLE_TRIVY_GATE as boolean
     ])
     echo platformFlow.formatPlatformSummary(platform)
@@ -986,9 +1019,17 @@ void runDeployToDevStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     deployResults.deployDev = 'FAILURE'
     String version = requireReleaseVersion(versionMap)
-    echo "Desplegando automáticamente ${version} en dev (${env.DEV_HOST}) (US-13 / CA1)..."
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/environment.sh deploy --env dev --version '${version}' --host '${env.DEV_HOST}'"
+    if (platform?.deployPlatform == 'k8s') {
+        // US-39 CA1: kubectl apply -k del overlay dev con la etiqueta SemVer de US-12.
+        echo "Desplegando automáticamente ${version} en el namespace circleguard-dev (US-39)..."
+        withKubeconfig('dev') {
+            sh "./deploy/scripts/k8s-deploy.sh deploy --env dev --version '${version}'"
+        }
+    } else {
+        echo "Desplegando automáticamente ${version} en dev (${env.DEV_HOST}) (US-13 / CA1)..."
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh deploy --env dev --version '${version}' --host '${env.DEV_HOST}'"
+        }
     }
     deployResults.deployDev = 'SUCCESS'
 }
@@ -997,9 +1038,14 @@ void runVerifyDevHealthStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     deployResults.verifyDev = 'FAILURE'
     String version = requireReleaseVersion(versionMap)
-    echo "Verificando healthchecks de los 12 contenedores de dev para ${version} (US-13 / CA1)..."
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/environment.sh verify --env dev --version '${version}' --host '${env.DEV_HOST}' --report reports/ci/health-dev.json"
+    if (platform?.deployPlatform == 'k8s') {
+        // US-39 CA2: kubectl rollout status; si algo no queda listo, la etapa falla.
+        verifyK8sRollout('dev', version, 'reports/ci/health-dev.json')
+    } else {
+        echo "Verificando healthchecks de los 12 contenedores de dev para ${version} (US-13 / CA1)..."
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh verify --env dev --version '${version}' --host '${env.DEV_HOST}' --report reports/ci/health-dev.json"
+        }
     }
     deployResults.verifyDev = 'SUCCESS'
 }
@@ -1008,8 +1054,14 @@ void runE2EAgainstDevStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     deployResults.e2eDev = 'FAILURE'
     echo 'Ejecutando contra los servicios REALES de dev los flujos E2E de US-17 (@us17, @smoke) y los contratos @deployed (US-13 / CA2)...'
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/run-e2e.sh --env dev --host '${env.DEV_HOST}'"
+    if (platform?.deployPlatform == 'k8s') {
+        withKubeconfig('dev') {
+            sh './deploy/scripts/run-e2e.sh --env dev --k8s'
+        }
+    } else {
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/run-e2e.sh --env dev --host '${env.DEV_HOST}'"
+        }
     }
     deployResults.e2eDev = 'SUCCESS'
 }
@@ -1037,9 +1089,17 @@ void runPromoteToStageStage() {
         error(promotion.reason)
     }
     deployResults.promoteStage = 'FAILURE'
-    echo "${promotion.reason} Desplegando en stage (${env.STAGE_HOST})..."
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/environment.sh deploy --env stage --version '${version}' --host '${env.STAGE_HOST}'"
+    if (platform?.deployPlatform == 'k8s') {
+        // US-39 CA3: promoción automática a stage tras E2E, en el namespace circleguard-stage.
+        echo "${promotion.reason} Desplegando en el namespace circleguard-stage (US-39)..."
+        withKubeconfig('stage') {
+            sh "./deploy/scripts/k8s-deploy.sh deploy --env stage --version '${version}'"
+        }
+    } else {
+        echo "${promotion.reason} Desplegando en stage (${env.STAGE_HOST})..."
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh deploy --env stage --version '${version}' --host '${env.STAGE_HOST}'"
+        }
     }
     deployResults.promoteStage = 'SUCCESS'
 }
@@ -1048,8 +1108,12 @@ void runVerifyStageHealthStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     deployResults.verifyStage = 'FAILURE'
     String version = requireReleaseVersion(versionMap)
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/environment.sh verify --env stage --version '${version}' --host '${env.STAGE_HOST}' --report reports/ci/health-stage.json"
+    if (platform?.deployPlatform == 'k8s') {
+        verifyK8sRollout('stage', version, 'reports/ci/health-stage.json')
+    } else {
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh verify --env stage --version '${version}' --host '${env.STAGE_HOST}' --report reports/ci/health-stage.json"
+        }
     }
     deployResults.verifyStage = 'SUCCESS'
 }
@@ -1125,8 +1189,14 @@ void runDeployToProdStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     prodResults.deployProd = 'FAILURE'
     echo "Desplegando ${prodApproval.version} en PRODUCCIÓN (${env.PROD_HOST}), aprobado por ${prodApproval.approver} (US-31)..."
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/environment.sh deploy --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}'"
+    if (platform?.deployPlatform == 'k8s') {
+        withKubeconfig('prod') {
+            sh "./deploy/scripts/k8s-deploy.sh deploy --env prod --version '${prodApproval.version}'"
+        }
+    } else {
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh deploy --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}'"
+        }
     }
     prodResults.deployProd = 'SUCCESS'
 }
@@ -1135,8 +1205,12 @@ void runVerifyProdHealthStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     prodResults.verifyProd = 'FAILURE'
     try {
-        withEnvironmentCredentials {
-            sh "./deploy/scripts/environment.sh verify --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}' --report reports/ci/health-prod.json"
+        if (platform?.deployPlatform == 'k8s') {
+            verifyK8sRollout('prod', prodApproval.version, 'reports/ci/health-prod.json')
+        } else {
+            withEnvironmentCredentials {
+                sh "./deploy/scripts/environment.sh verify --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}' --report reports/ci/health-prod.json"
+            }
         }
     } finally {
         // CA3: el resultado (sano o no) se publica como pruebas JUnit, un caso por contenedor.
