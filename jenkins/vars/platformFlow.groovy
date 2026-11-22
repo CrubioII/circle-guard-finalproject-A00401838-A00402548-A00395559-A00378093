@@ -1,6 +1,6 @@
 // jenkins/vars/platformFlow.groovy
-// Historias de Usuario: US-22 (Terraform en Jenkins), US-38 (Trivy bloqueante) y
-// US-39 (despliegue y promoción en Kubernetes).
+// Historias de Usuario: US-22 (Terraform en Jenkins), US-38 (Trivy bloqueante),
+// US-39 (despliegue y promoción en Kubernetes) y US-28 (rollback manual).
 //
 // Propósito: decidir, sin depender de una instancia Jenkins, qué etapas de plataforma
 // corre cada build. El Jenkinsfile lo carga desde el workspace (load), igual que
@@ -13,6 +13,7 @@
 //     `trivy image` sobre las 9 imágenes antes de publicarlas en Nexus (solo main).
 //   - Plataforma de despliegue: 'compose' (Parte 1, nodos EC2 por SSH) o 'k8s'
 //     (kubectl apply -k por overlay). El valor por defecto sale de CG_DEPLOY_PLATFORM.
+//   - Rollback manual (US-28): solo desde main y sin construir ni desplegar nada nuevo.
 
 import groovy.transform.Field
 
@@ -168,6 +169,47 @@ Map terraformApplyDecision(Map platformPlan, String envName, Map gates = [:]) {
     return approved
         ? [env: envName, apply: true, reason: "Apply en prod aprobado por ${gates.prodApproval.approver} (US-31)."]
         : [env: envName, apply: false, reason: 'prod espera la aprobación manual de US-31; sin ella no se aplica.']
+}
+
+/**
+ * US-28: rollback manual pedido con los parámetros ROLLBACK_ENV / ROLLBACK_TARGET_VERSION.
+ * Solo main puede restaurar un ambiente; la versión, si se da, debe ser SemVer (nunca 'latest').
+ * Vacío = revisión anterior (k8s) o última versión estable registrada (compose).
+ */
+Map rollbackRequest(Map context, String envName, String targetVersion) {
+    String target = (envName ?: 'none').trim().toLowerCase()
+    String version = (targetVersion ?: '').trim()
+    if (target == 'none') {
+        return [requested: false, allowed: false, env: 'none', version: '', reason: 'No se pidió rollback.']
+    }
+    if (!TERRAFORM_ENVS.contains(target)) {
+        throw new IllegalArgumentException("ROLLBACK_ENV='${envName}' no es válido. Valores: none, ${TERRAFORM_ENVS.join(', ')}.")
+    }
+    if (version && !(version ==~ /^\d+\.\d+\.\d+(-rc\.\d+)?$/)) {
+        throw new IllegalArgumentException("ROLLBACK_TARGET_VERSION='${version}' no es SemVer X.Y.Z (y nunca 'latest').")
+    }
+    boolean isMain = ((context?.isMainBranch ?: false) as boolean) && !((context?.isPullRequest ?: false) as boolean)
+    if (!isMain) {
+        return [requested: true, allowed: false, env: target, version: version,
+                reason: "Bloqueado: solo main puede hacer rollback; '${context?.branchName ?: 'desconocida'}' no está autorizada."]
+    }
+    return [requested: true, allowed: true, env: target, version: version, requiresApproval: target == 'prod',
+            reason: "Rollback de ${target} a ${version ?: 'la versión anterior'}" + (target == 'prod' ? ' (requiere aprobación de US-31).' : '.')]
+}
+
+/**
+ * US-28: una ejecución de rollback no construye, no publica ni despliega una versión nueva.
+ * Devuelve copias del plan y del plan de plataforma con todo eso apagado.
+ */
+Map rollbackOnlyPlans(Map plan, Map platformPlan) {
+    Map p = new LinkedHashMap(plan ?: [:])
+    ['runHeavyBuild', 'runBackendBuild', 'runMobileBuild', 'runSonarAnalysis', 'runQualityGate',
+     'autoDeployDev', 'promoteToStage', 'prodRelease', 'deploymentAllowed'].each { p[it] = false }
+    p.rollbackOnly = true
+    Map pf = new LinkedHashMap(platformPlan ?: [:])
+    ['runTerraformPlan', 'terraformApply', 'runTrivyConfig', 'runTrivyImages'].each { pf[it] = false }
+    pf.stages = ['Manual Rollback']
+    return [plan: p, platform: pf]
 }
 
 String formatPlatformSummary(Map p) {
