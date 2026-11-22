@@ -551,7 +551,7 @@ println('[OK] Caso 21: aprobar/rechazar registran quién y qué versión; timeou
     'multibranchFlow.prodApprovalDecision(response',
     'classifyApprovalInterruption(interruption, System.currentTimeMillis() - waitStartedMs, timeoutMinutes)',
     "PROD_APPROVERS = \"\${env.CG_PROD_APPROVERS ?: ''}\"",
-    "PROD_HOST = \"\${env.CG_PROD_HOST ?: '3.19.74.9'}\"",
+    "PROD_HOST = \"\${env.CG_PROD_HOST ?: '77.113.211.62'}\"",
     "./deploy/scripts/environment.sh deploy --env prod --version '\${prodApproval.version}'",
     "./deploy/scripts/environment.sh verify --env prod",
     './deploy/scripts/health-report-to-junit.sh reports/ci/health-prod.json reports/ci/junit/health-prod.xml',

@@ -97,7 +97,7 @@ for env_name in dev stage prod; do
     RUN1="${TMP_STATE}/run1_${env_name}.log"
     RUN2="${TMP_STATE}/run2_${env_name}.log"
 
-    bash "$BOOTSTRAP_ENV" "$env_name" --state-dir "$TMP_STATE" --registry-url "52.14.6.11:5000" > "$RUN1" 2>&1
+    bash "$BOOTSTRAP_ENV" "$env_name" --state-dir "$TMP_STATE" --registry-url "18.117.90.15:5000" > "$RUN1" 2>&1
     ENV_PATH="${TMP_STATE}/opt/circleguard/${env_name}/.env"
     assert_true "[${env_name}] Ejecución #1 crea directorio aislado y archivo .env" test -f "$ENV_PATH"
     assert_file_contains "[${env_name}] Define red aislada circleguard_${env_name}_net" "$ENV_PATH" "^DOCKER_NETWORK_NAME=circleguard_${env_name}_net$"
@@ -105,7 +105,7 @@ for env_name in dev stage prod; do
 
     FIRST_PG_PASS="$(grep '^POSTGRES_PASSWORD=' "$ENV_PATH" | cut -d= -f2)"
 
-    bash "$BOOTSTRAP_ENV" "$env_name" --state-dir "$TMP_STATE" --registry-url "52.14.6.11:5000" > "$RUN2" 2>&1
+    bash "$BOOTSTRAP_ENV" "$env_name" --state-dir "$TMP_STATE" --registry-url "18.117.90.15:5000" > "$RUN2" 2>&1
     SECOND_PG_PASS="$(grep '^POSTGRES_PASSWORD=' "$ENV_PATH" | cut -d= -f2)"
 
     assert_file_contains "[${env_name}] Ejecución #2 detecta sysctl ya actualizado" "$RUN2" 'Archivo sysctl .* ya actualizado'
