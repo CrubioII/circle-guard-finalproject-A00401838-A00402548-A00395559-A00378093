@@ -1,0 +1,19 @@
+# Tope del namespace. Cada ambiente corre en un nodo m7i-flex.large (2 vCPU,
+# 8 GiB, US-20), así que la cuota reserva lugar para el middleware (unos 0,6 vCPU
+# y 2 GiB pedidos) y para los servicios de US-37. Los límites pueden superar la
+# capacidad del nodo porque no todos los pods llegan al máximo a la vez.
+# El overlay ajusta el almacenamiento según el disco del ambiente (30, 40 o 50 GB).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: environment-quota
+spec:
+  hard:
+    requests.cpu: 1800m
+    requests.memory: 6Gi
+    limits.cpu: "10"
+    limits.memory: 14Gi
+    persistentvolumeclaims: "10"
+    requests.storage: 12Gi
+    services.loadbalancers: "0"
+    services.nodeports: "0"
