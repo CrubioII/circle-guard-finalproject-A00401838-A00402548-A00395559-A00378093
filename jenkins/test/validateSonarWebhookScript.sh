@@ -27,13 +27,13 @@ echo "[OK] Sintaxis Bash valida."
 SECRET_VALUE="sonar-hmac-secret-dont-leak-987654"
 DRY_OUTPUT="$(
     SONAR_WEBHOOK_SECRET="${SECRET_VALUE}" \
-    JENKINS_URL="http://3.145.182.10:8080" \
+    JENKINS_URL="http://18.117.90.15:8080" \
     SONAR_HOST_URL="http://localhost:9000" \
     bash "${TARGET_SCRIPT}" --dry-run
 )"
 
 [[ "${DRY_OUTPUT}" == *"[DRY-RUN]"* ]] || { echo "Fallo: falta marca DRY-RUN"; exit 1; }
-[[ "${DRY_OUTPUT}" == *"http://3.145.182.10:8080/sonarqube-webhook/"* ]] || { echo "Fallo: URL de webhook incorrecta"; exit 1; }
+[[ "${DRY_OUTPUT}" == *"http://18.117.90.15:8080/sonarqube-webhook/"* ]] || { echo "Fallo: URL de webhook incorrecta"; exit 1; }
 [[ "${DRY_OUTPUT}" == *"\"metric\": \"coverage\""* ]] || { echo "Fallo: falta condicion coverage"; exit 1; }
 [[ "${DRY_OUTPUT}" == *"\"error\": \"60\""* ]] || { echo "Fallo: falta umbral 60%"; exit 1; }
 [[ "${DRY_OUTPUT}" == *"\"secret\": \"***\""* ]] || { echo "Fallo: secreto no enmascarado"; exit 1; }
@@ -107,7 +107,7 @@ elif "/api/qualitygates/show" in url:
 elif "/api/qualitygates/select" in url:
     print("{}")
 elif "/api/webhooks/list" in url:
-    hooks = [{"key": "wh-101", "name": "jenkins-sonarqube-webhook", "url": "http://3.145.182.10:8080/sonarqube-webhook/"}] if state["webhook_exists"] else []
+    hooks = [{"key": "wh-101", "name": "jenkins-sonarqube-webhook", "url": "http://18.117.90.15:8080/sonarqube-webhook/"}] if state["webhook_exists"] else []
     print(json.dumps({"webhooks": hooks}))
 elif "/api/webhooks/create" in url:
     state["webhook_exists"] = True
@@ -129,7 +129,7 @@ RUN1_OUT="$(
     MOCK_CALLS_LOG="${CALLS_LOG}" \
     SONAR_TOKEN="squ_test_token_123" \
     SONAR_WEBHOOK_SECRET="${SECRET_VALUE}" \
-    JENKINS_URL="http://3.145.182.10:8080" \
+    JENKINS_URL="http://18.117.90.15:8080" \
     SONAR_HOST_URL="http://localhost:9000" \
     bash "${TARGET_SCRIPT}"
 )"
@@ -148,7 +148,7 @@ RUN2_OUT="$(
     MOCK_CALLS_LOG="${CALLS_LOG}" \
     SONAR_TOKEN="squ_test_token_123" \
     SONAR_WEBHOOK_SECRET="${SECRET_VALUE}" \
-    JENKINS_URL="http://3.145.182.10:8080" \
+    JENKINS_URL="http://18.117.90.15:8080" \
     SONAR_HOST_URL="http://localhost:9000" \
     bash "${TARGET_SCRIPT}"
 )"

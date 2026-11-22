@@ -61,14 +61,14 @@ jenkins/ci/jenkins.yaml  password: "${JENKINS_PWD_*}"  (JCasC lee /run/secrets)
 | `infra/bootstrap/bootstrap-ci.sh` | Genera las contraseñas que falten |
 | `jenkins/test/validateJenkinsSecurity.sh` | 32 verificaciones estáticas (sección 6) |
 
-## 4. Desplegar en el servidor de CI (`52.14.6.11`)
+## 4. Desplegar en el servidor de CI (`18.117.90.15`)
 
 Se hace una sola vez, después de fusionar este cambio en `main`. El servidor no tiene un clon de Git: `bootstrap-ci.sh --provision-aws` copia `docker-compose.ci.yml`, `infra/bootstrap/` y `jenkins/ci/` a `/opt/circleguard-ci` y ejecuta allí el bootstrap.
 
 1. **Respaldar** la configuración de Jenkins, por SSH. Revisa antes el espacio libre con `df -h /`, porque el disco ya se llenó una vez. Se excluyen los workspaces y las cachés, que se regeneran solos:
 
    ```bash
-   ssh -i ~/.ssh/proyectoIngeClave.pem ec2-user@52.14.6.11
+   ssh -i ~/.ssh/proyectoIngeClave.pem ec2-user@18.117.90.15
    sudo docker run --rm -v circleguard_jenkins_home:/data -v /home/ec2-user:/backup alpine \
      tar czf /backup/jenkins_home-$(date +%F).tgz -C /data \
        --exclude=./workspace --exclude=./caches --exclude=./.cache --exclude=./.gradle .
@@ -91,9 +91,9 @@ Se hace una sola vez, después de fusionar este cambio en `main`. El servidor no
      ```bash
      # en tu equipo, desde la raíz del repositorio en main actualizado:
      tar --exclude='infra/bootstrap/.env.ci' -czf - docker-compose.ci.yml infra/bootstrap jenkins/ci \
-       | ssh -i ~/.ssh/proyectoIngeClave.pem ec2-user@52.14.6.11 "tar -C /opt/circleguard-ci -xzf -"
+       | ssh -i ~/.ssh/proyectoIngeClave.pem ec2-user@18.117.90.15 "tar -C /opt/circleguard-ci -xzf -"
      # en el servidor:
-     sudo bash /opt/circleguard-ci/infra/bootstrap/bootstrap-ci.sh --mode jenkins --public-host 52.14.6.11
+     sudo bash /opt/circleguard-ci/infra/bootstrap/bootstrap-ci.sh --mode jenkins --public-host 18.117.90.15
      ```
 
    En cualquiera de las dos, el bootstrap:
@@ -105,7 +105,7 @@ Se hace una sola vez, después de fusionar este cambio en `main`. El servidor no
    El volumen con jobs, builds y credenciales no se toca.
 
 3. **Verificar:**
-   - `curl -s -o /dev/null -w '%{http_code}' http://52.14.6.11:8080/api/json` debe dar `403`;
+   - `curl -s -o /dev/null -w '%{http_code}' http://18.117.90.15:8080/api/json` debe dar `403`;
    - en GitHub → *Settings → Webhooks*, la entrega más reciente debe tener respuesta `200`;
    - entra como `admin` y revisa que el job `circleguard-monorepo` siga ahí.
 

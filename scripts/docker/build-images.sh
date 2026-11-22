@@ -8,7 +8,7 @@
 #
 # Without arguments it builds all 8 services. 'web-client' (mobile/, US-07) can be requested
 # explicitly, e.g. to build the 6 images of deploy/compose (US-08):
-#   TAG=1.2.0 REGISTRY=52.14.6.11:5000/circleguard scripts/docker/build-images.sh #     auth-service identity-service promotion-service form-service gateway-service web-client
+#   TAG=1.2.0 REGISTRY=18.117.90.15:5000/circleguard scripts/docker/build-images.sh #     auth-service identity-service promotion-service form-service gateway-service web-client
 # Images are tagged
 #   ${REGISTRY}/<service>:${TAG}       (default: circleguard/<service>:1.0.0-SNAPSHOT)
 # The ':latest' tag is never produced on purpose (immutable versioned images).

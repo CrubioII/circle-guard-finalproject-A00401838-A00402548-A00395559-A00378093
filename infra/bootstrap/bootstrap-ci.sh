@@ -722,6 +722,46 @@ ensure_jenkins_passwords() {
     fi
 }
 
+# -----------------------------------------------------------------------------
+# Registro Docker de Nexus por HTTP: el demonio del host (usado por Jenkins vía
+# /var/run/docker.sock) debe aceptar <host>:5000 como registro inseguro para
+# que 'docker login/push' no intente HTTPS (US-11). Idempotente.
+# -----------------------------------------------------------------------------
+configure_docker_insecure_registry() {
+    local registry="${CI_PUBLIC_HOST}:${NEXUS_DOCKER_REGISTRY_PORT:-5000}"
+    local daemon_json="${STATE_ROOT}/etc/docker/daemon.json"
+    local desired
+    desired="$(cat <<EOF
+{
+  "insecure-registries": ["${registry}", "localhost:${NEXUS_DOCKER_REGISTRY_PORT:-5000}"],
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+EOF
+)"
+    if [[ -f "$daemon_json" ]] && [[ "$(cat "$daemon_json")" == "$desired" ]]; then
+        log_ok "Registro inseguro ${registry} ya configurado en ${daemon_json} (idempotente)."
+        return 0
+    fi
+    if [[ -n "$STATE_ROOT" ]]; then
+        mkdir -p "$(dirname "$daemon_json")"
+        printf '%s\n' "$desired" > "$daemon_json"
+        log_ok "Registro inseguro escrito en ${daemon_json}."
+        return 0
+    fi
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "[DRY-RUN] Se escribiría ${daemon_json} con insecure-registries=${registry} y se reiniciaría Docker."
+        return 0
+    fi
+    run_privileged mkdir -p "$(dirname "$daemon_json")"
+    printf '%s\n' "$desired" | run_privileged tee "$daemon_json" >/dev/null
+    run_privileged systemctl restart docker
+    log_ok "Docker configurado con el registro inseguro ${registry} y reiniciado."
+}
+
 resolve_target_services() {
     case "$BOOTSTRAP_MODE" in
         all)
@@ -854,7 +894,7 @@ configure_nexus_docker_hosted() {
             -H "Content-Type: application/json" \
             -d '{"name":"circleguard-docker","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":true,"writePolicy":"ALLOW"},"docker":{"v1Enabled":false,"forceBasicAuth":true,"httpPort":5000}}' \
             http://localhost:8081/service/rest/v1/repositories/docker/hosted || true
-        log_success "Repositorio Docker hosted 'circleguard-docker' creado en puerto 5000."
+        log_ok "Repositorio Docker hosted 'circleguard-docker' creado en puerto 5000."
     else
         log_info "Repositorio Docker hosted 'circleguard-docker' ya existe."
     fi
@@ -868,7 +908,7 @@ configure_nexus_docker_hosted() {
             curl -s -c /tmp/jk_c.txt -b /tmp/jk_c.txt -H "${crumb_field}: ${crumb}" \
                 --data-urlencode "script=import com.cloudbees.plugins.credentials.*; import com.cloudbees.plugins.credentials.domains.*; import com.cloudbees.plugins.credentials.impl.*; def domain = Domain.global(); def store = SystemCredentialsProvider.getInstance().getStore(); def existing = store.getCredentials(domain).find { it.id == 'nexus-credentials' }; if (existing) { store.removeCredentials(domain, existing) }; def cred = new UsernamePasswordCredentialsImpl(CredentialsScope.GLOBAL, 'nexus-credentials', 'Credenciales para registro Docker en Nexus (US-11)', 'admin', '${nexus_pass}'); store.addCredentials(domain, cred);" \
                 http://localhost:8080/scriptText >/dev/null 2>&1 || true
-            log_success "Credencial 'nexus-credentials' inyectada en Jenkins."
+            log_ok "Credencial 'nexus-credentials' inyectada en Jenkins."
         fi
         rm -f /tmp/jk_c.txt
     fi
@@ -925,6 +965,7 @@ main() {
     configure_swap_space
     install_system_and_docker
     prepare_env_file
+    configure_docker_insecure_registry
     deploy_ci_services
     verify_all_healthchecks
     configure_nexus_docker_hosted

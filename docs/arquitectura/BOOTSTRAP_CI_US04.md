@@ -23,19 +23,19 @@ El plano de control CI/CD de CircleGuard se compone de tres servicios principale
 ## 2. Instancia Aprovisionada en AWS EC2, URLs, Puertos y Healthchecks
 
 ### Recursos de nube en la Región seleccionada (`us-east-2`)
-- Instancia del plano de control CI/CD (`circleguard-ci-server`): `i-0f933271f06cf571d` (`m7i-flex.large`, 8 GB RAM, 30 GB EBS `gp3`, Amazon Linux 2023).
-- IP pública del plano de control CI/CD: `52.14.6.11`
-- Security Group (`circleguard-ci-control-plane-sg`): `sg-0b600afa26557c730` (puertos `22`, `8080`, `9000`, `8081`, `5000`).
-- Servidor Jenkins de webhooks activos (`proyectoIngesoft`): `i-049ab346f627b61a6` (`http://3.145.182.10:8080/`).
+- Instancia del plano de control CI/CD (`circleguard-ci-server`): `i-061a73505a3aa1baa` (`m7i-flex.large`, 8 GB RAM, 30 GB EBS `gp3`, Amazon Linux 2023).
+- IP pública del plano de control CI/CD: `18.117.90.15`
+- Security Group (`circleguard-ci-control-plane-sg`): `sg-0b1e199e0b9ed8073` (puertos `22`, `8080`, `9000`, `8081`, `5000`).
+- Servidor Jenkins de webhooks activos: el mismo plano de control `circleguard-ci-server` (`http://18.117.90.15:8080/`).
 
-### Tabla de Servicios, Puertos, URLs y Healthchecks (`52.14.6.11`)
+### Tabla de Servicios, Puertos, URLs y Healthchecks (`18.117.90.15`)
 
 | Servicio | Contenedor | Imagen (versión fija) | Puertos expuestos | URL pública de acceso | Endpoint de Healthcheck | Volumen persistente |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| Jenkins Controller y Agent | `circleguard-jenkins` | `circleguard/jenkins-ci:2.580.2-jdk21` | `8080/tcp` (HTTP), `50000/tcp` (JNLP) | `http://52.14.6.11:8080/` | `GET http://52.14.6.11:8080/login` (`HTTP 200 OK`) | `circleguard_jenkins_home` |
-| SonarQube Community | `circleguard-sonarqube` | `sonarqube:10.6.0-community` | `9000/tcp` | `http://52.14.6.11:9000/` | `GET http://52.14.6.11:9000/api/system/status` (`{"status":"UP"}`) | `circleguard_sonarqube_data`, `circleguard_sonarqube_extensions`, `circleguard_sonarqube_logs` |
+| Jenkins Controller y Agent | `circleguard-jenkins` | `circleguard/jenkins-ci:2.580.2-jdk21` | `8080/tcp` (HTTP), `50000/tcp` (JNLP) | `http://18.117.90.15:8080/` | `GET http://18.117.90.15:8080/login` (`HTTP 200 OK`) | `circleguard_jenkins_home` |
+| SonarQube Community | `circleguard-sonarqube` | `sonarqube:10.6.0-community` | `9000/tcp` | `http://18.117.90.15:9000/` | `GET http://18.117.90.15:9000/api/system/status` (`{"status":"UP"}`) | `circleguard_sonarqube_data`, `circleguard_sonarqube_extensions`, `circleguard_sonarqube_logs` |
 | Base de datos SonarQube | `circleguard-sonarqube-db` | `postgres:16.4-alpine` | Interno (`5432/tcp` en `ci-network`) | `jdbc:postgresql://sonarqube-db:5432/sonarqube` | `pg_isready -U sonar -d sonarqube` | `circleguard_sonarqube_db_data` |
-| Nexus Repository 3 | `circleguard-nexus` | `sonatype/nexus3:3.70.1` | `8081/tcp` (UI y Maven), `5000/tcp` (Docker Registry) | `http://52.14.6.11:8081/` y `http://52.14.6.11:5000/v2/` | `GET http://52.14.6.11:8081/service/rest/v1/status` (`HTTP 200 OK`) | `circleguard_nexus_data` |
+| Nexus Repository 3 | `circleguard-nexus` | `sonatype/nexus3:3.70.1` | `8081/tcp` (UI y Maven), `5000/tcp` (Docker Registry) | `http://18.117.90.15:8081/` y `http://18.117.90.15:5000/v2/` | `GET http://18.117.90.15:8081/service/rest/v1/status` (`HTTP 200 OK`) | `circleguard_nexus_data` |
 
 ---
 
@@ -61,13 +61,13 @@ bash infra/bootstrap/bootstrap-ci.sh --provision-aws --aws-profile personal --aw
 
 ### Ejecución directa dentro de la instancia EC2
 ```bash
-sudo bash infra/bootstrap/bootstrap-ci.sh --public-host 52.14.6.11
+sudo bash infra/bootstrap/bootstrap-ci.sh --public-host 18.117.90.15
 ```
 
 ### Evidencia de segunda ejecución consecutiva (prueba de idempotencia en AWS EC2)
 ```text
-[bootstrap-ci][OK]    Security Group 'circleguard-ci-control-plane-sg' ya existe (sg-0b600afa26557c730); reutilizando de forma idempotente.
-[bootstrap-ci][OK]    Instancia EC2 'circleguard-ci-server' ya existe (i-0f933271f06cf571d); reutilizando sin duplicar recursos.
+[bootstrap-ci][OK]    Security Group 'circleguard-ci-control-plane-sg' ya existe (sg-0b1e199e0b9ed8073); reutilizando de forma idempotente.
+[bootstrap-ci][OK]    Instancia EC2 'circleguard-ci-server' ya existe (i-061a73505a3aa1baa); reutilizando sin duplicar recursos.
 [bootstrap-ci][OK]    vm.max_map_count actual (262144) ya cumple el mínimo (262144).
 [bootstrap-ci][OK]    Persistencia sysctl en /etc/sysctl.d/99-circleguard-ci.conf ya configurada (idempotente).
 [bootstrap-ci][OK]    Límites ulimit en /etc/security/limits.d/99-circleguard-ci.conf ya configurados (idempotente).

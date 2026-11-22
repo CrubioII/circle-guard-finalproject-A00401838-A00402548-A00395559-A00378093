@@ -33,11 +33,11 @@ Todos los recursos se aprovisionaron en la Región seleccionada del proyecto (`u
 
 | Ambiente | Instancia EC2 | IP Pública / Privada | Security Group Aislado | Red Docker Aislada | Directorio y Secretos (`0600`) | Base de Datos PostgreSQL |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `dev` | `i-0afac282e0fa495ce` (`m7i-flex.large`, 8 GB RAM) | `52.15.213.209` / `172.31.17.179` | `sg-0b1f66b12e154410d` (`circleguard-dev-sg`) | `circleguard_dev_net` (`bridge`) | `/opt/circleguard/dev/.env` | `circleguard_dev` |
-| `stage` | `i-0856938aef6905ddc` (`m7i-flex.large`, 8 GB RAM) | `3.17.163.44` / `172.31.19.153` | `sg-01a67ffaa84eb8d74` (`circleguard-stage-sg`) | `circleguard_stage_net` (`bridge`) | `/opt/circleguard/stage/.env` | `circleguard_stage` |
-| `prod` | `i-087a647cdd67fb57a` (`m7i-flex.large`, 8 GB RAM) | `3.19.74.9` / `172.31.21.79` | `sg-02704674d547db612` (`circleguard-prod-sg`) | `circleguard_prod_net` (`bridge`) | `/opt/circleguard/prod/.env` | `circleguard_prod` |
+| `dev` | `i-018eeb2ef96a6d94d` (`m7i-flex.large`, 8 GB RAM) | `52.15.165.116` / `172.31.33.120` | `sg-0983786e4f03717b7` (`circleguard-dev-sg`) | `circleguard_dev_net` (`bridge`) | `/opt/circleguard/dev/.env` | `circleguard_dev` |
+| `stage` | `i-05022e77d42dfafe5` (`m7i-flex.large`, 8 GB RAM) | `52.14.89.125` / `172.31.44.35` | `sg-0f076666a88db69db` (`circleguard-stage-sg`) | `circleguard_stage_net` (`bridge`) | `/opt/circleguard/stage/.env` | `circleguard_stage` |
+| `prod` | `i-00e21144a1c89b8a5` (`m7i-flex.large`, 8 GB RAM) | `77.113.211.62` / `172.31.39.29` | `sg-0124081c0bb001caf` (`circleguard-prod-sg`) | `circleguard_prod_net` (`bridge`) | `/opt/circleguard/prod/.env` | `circleguard_prod` |
 
-Cada entorno cuenta además con `/etc/docker/daemon.json` configurado hacia el registro privado de imágenes en Nexus (`52.14.6.11:5000`) y soporte para `docker login` no interactivo (`--password-stdin`).
+Cada entorno cuenta además con `/etc/docker/daemon.json` configurado hacia el registro privado de imágenes en Nexus (`18.117.90.15:5000`) y soporte para `docker login` no interactivo (`--password-stdin`).
 
 ---
 
@@ -64,21 +64,21 @@ sudo bash infra/bootstrap/bootstrap-env.sh stage
 sudo bash infra/bootstrap/bootstrap-env.sh prod
 ```
 
-### Evidencia de conectividad SSH y aislamiento verificada desde el servidor Jenkins (`52.14.6.11`)
+### Evidencia de conectividad SSH y aislamiento verificada desde el servidor Jenkins (`18.117.90.15`)
 ```text
-=== [Jenkins CI (52.14.6.11) -> 172.31.17.179 (dev)] ===
+=== [Jenkins CI (18.117.90.15) -> 172.31.33.120 (dev)] ===
 ip-172-31-17-179.us-east-2.compute.internal
 Mem: 7.6Gi total, 7.1Gi available
 -rw-------. 1 ec2-user ec2-user 1235 Nov  8 21:57 /opt/circleguard/dev/.env
 Network=circleguard_dev_net Driver=bridge
 
-=== [Jenkins CI (52.14.6.11) -> 172.31.19.153 (stage)] ===
+=== [Jenkins CI (18.117.90.15) -> 172.31.44.35 (stage)] ===
 ip-172-31-19-153.us-east-2.compute.internal
 Mem: 7.6Gi total, 7.1Gi available
 -rw-------. 1 ec2-user ec2-user 1251 Nov  8 21:57 /opt/circleguard/stage/.env
 Network=circleguard_stage_net Driver=bridge
 
-=== [Jenkins CI (52.14.6.11) -> 172.31.21.79 (prod)] ===
+=== [Jenkins CI (18.117.90.15) -> 172.31.39.29 (prod)] ===
 ip-172-31-21-79.us-east-2.compute.internal
 Mem: 7.6Gi total, 7.1Gi available
 -rw-------. 1 ec2-user ec2-user 1243 Nov  8 21:58 /opt/circleguard/prod/.env
