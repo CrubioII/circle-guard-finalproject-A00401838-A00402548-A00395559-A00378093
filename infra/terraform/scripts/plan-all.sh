@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Verificación de los módulos y ambientes Terraform de CircleGuard (US-20, US-35)
+# Verificación de los módulos y ambientes Terraform de CircleGuard (US-20, US-35, US-36)
 #
 # Uso:
 #   bash infra/terraform/scripts/plan-all.sh                          # sin credenciales (proveedor simulado)
-#   bash infra/terraform/scripts/plan-all.sh --real                   # plan real con el backend S3 (backend.hcl)
-#   bash infra/terraform/scripts/plan-all.sh --real --local-backend   # plan real con estado local (sin US-36)
+#   bash infra/terraform/scripts/plan-all.sh --real                   # plan real con el backend S3 remoto (backend.hcl)
+#   bash infra/terraform/scripts/plan-all.sh --real --local-backend   # plan real con estado local (respaldo)
 #   bash infra/terraform/scripts/plan-all.sh --env prod               # solo un ambiente
 #
 # Pasos:
 #   1. terraform fmt -check en todo infra/terraform.
 #   2. Por módulo: init -backend=false, validate y terraform test.
-#   3. Por ambiente: init -backend=false, validate y terraform test (plan simulado
+#   3. Stack del backend remoto (bootstrap): init -backend=false, validate y test.
+#      Configuración de la prueba de bloqueo (tests/state-lock): validate.
+#   4. Por ambiente: init -backend=false, validate y terraform test (plan simulado
 #      con los valores de terraform.tfvars). Guarda el plan y un resumen de recursos.
-#   4. Con --real: terraform plan contra AWS. Usa envs/<env>/backend.hcl o, con
-#      --local-backend, un backend_override.tf temporal (estado local, ignorado por
-#      Git) para planear antes de que exista el backend remoto (US-36).
+#   5. Con --real: terraform init, validate y plan contra AWS con el backend remoto
+#      de US-36 (envs/<env>/backend.hcl, lo genera init-backend.sh). Con
+#      --local-backend usa un backend_override.tf temporal con estado local.
 #      Las credenciales salen de la cadena estándar de AWS (AWS_PROFILE, variables
 #      de entorno o rol), nunca de este script.
-#   5. Busca credenciales en texto plano en el código y en cada plan.
+#   6. Busca credenciales en texto plano en el código y en cada plan.
 #
 # Reportes: reports/terraform/<env>-plan.txt y <env>-resources.txt
 # Sale con código distinto de 0 si cualquier paso falla.
@@ -116,6 +118,19 @@ for module in "${MODULES[@]}"; do
     ok "Módulo ${module}: $(grep -E 'passed, [0-9]+ failed' "${REPORT_DIR}/module-${module}-test.txt" | tail -1)"
 done
 
+# 3b. Backend remoto (US-36) ----------------------------------------------------
+dir="${TF_ROOT}/bootstrap"
+log "Stack bootstrap (backend remoto): init, validate y test..."
+terraform -chdir="${dir}" init -backend=false -input=false -no-color >/dev/null
+terraform -chdir="${dir}" validate -no-color >/dev/null
+terraform -chdir="${dir}" test -no-color > "${REPORT_DIR}/bootstrap-test.txt" 2>&1     || { cat "${REPORT_DIR}/bootstrap-test.txt" >&2; fail "Fallaron las pruebas del stack bootstrap."; }
+ok "Stack bootstrap: $(grep -E 'passed, [0-9]+ failed' "${REPORT_DIR}/bootstrap-test.txt" | tail -1)"
+
+dir="${TF_ROOT}/tests/state-lock"
+terraform -chdir="${dir}" init -backend=false -input=false -no-color >/dev/null
+terraform -chdir="${dir}" validate -no-color >/dev/null
+ok "Configuración de la prueba de bloqueo válida (tests/state-lock)."
+
 # 4. Ambientes -----------------------------------------------------------------
 for env in "${ENVS[@]}"; do
     dir="${TF_ROOT}/envs/${env}"
@@ -127,11 +142,11 @@ for env in "${ENVS[@]}"; do
             log "Ambiente ${env}: plan real contra AWS con estado local..."
             override="${dir}/backend_override.tf"
             printf '%s
-' '# Temporal (plan-all.sh --local-backend): estado local mientras no exista US-36.'                 'terraform {' '  backend "local" {}' '}' > "${override}"
+' '# Temporal (plan-all.sh --local-backend): estado local en lugar del backend remoto.'                 'terraform {' '  backend "local" {}' '}' > "${override}"
             OVERRIDES+=("${override}")
             terraform -chdir="${dir}" init -input=false -reconfigure -no-color >/dev/null
         else
-            [[ -f "${dir}/backend.hcl" ]] || fail "Falta envs/${env}/backend.hcl. Cópialo desde backend.hcl.example o usa --local-backend."
+            [[ -f "${dir}/backend.hcl" ]] || fail "Falta envs/${env}/backend.hcl. Genéralo con: bash infra/terraform/scripts/init-backend.sh --profile <perfil>"
             log "Ambiente ${env}: plan real contra AWS..."
             terraform -chdir="${dir}" init -backend-config=backend.hcl -input=false -reconfigure -no-color >/dev/null
         fi
