@@ -49,7 +49,7 @@ Para separar construcción y publicación, [`publish-docker-images.sh`](../../in
 | `aws-terraform` | Credencial usuario/contraseña (Access Key ID / Secret) | Terraform plan y apply. Debe ser una identidad con permisos solo sobre los recursos de CircleGuard |
 | `CG_TF_STATE_BUCKET`, `CG_TF_LOCK_TABLE`, `CG_AWS_REGION` | Variables globales (opcionales) | Backend de Terraform. Por defecto `circleguard-terraform-state-<cuenta>`, `circleguard-terraform-locks` y `us-east-2` |
 
-La imagen de Jenkins ([`infra/bootstrap/jenkins/Dockerfile`](../../infra/bootstrap/jenkins/Dockerfile)) instala Terraform 1.11.4 y Trivy 0.58.1 (con las plantillas JUnit y HTML), cada uno comparado contra el checksum del proveedor. Hay que reconstruirla en el servidor de CI para que las etapas nuevas funcionen:
+La imagen de Jenkins ([`infra/bootstrap/jenkins/Dockerfile`](../../infra/bootstrap/jenkins/Dockerfile)) instala Terraform 1.11.4 y Trivy 0.69.3 (con las plantillas JUnit y HTML), cada uno comparado contra el checksum del proveedor. Hay que reconstruirla en el servidor de CI para que las etapas nuevas funcionen:
 
 ```bash
 sudo bash /opt/circleguard-ci/infra/bootstrap/bootstrap-ci.sh --mode jenkins --public-host 18.117.90.15

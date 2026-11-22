@@ -20,7 +20,8 @@ ARG GRADLE_VERSION=8.5
 ARG NODE_MAJOR=20
 # US-22 / US-38: herramientas de plataforma con versión fija.
 ARG TERRAFORM_VERSION=1.11.4
-ARG TRIVY_VERSION=0.58.1
+# 0.69.3: versión segura publicada con releases inmutables (las anteriores a 0.69.2 se retiraron de GitHub).
+ARG TRIVY_VERSION=0.69.3
 
 USER root
 
