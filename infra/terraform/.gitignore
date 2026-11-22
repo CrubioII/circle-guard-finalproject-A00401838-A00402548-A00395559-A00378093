@@ -17,3 +17,6 @@ override.tf.json
 
 # Los módulos no fijan versiones: el lock file solo se versiona en envs/
 modules/**/.terraform.lock.hcl
+
+# La configuración de la prueba de bloqueo se inicializa en carpetas temporales
+tests/**/.terraform.lock.hcl
