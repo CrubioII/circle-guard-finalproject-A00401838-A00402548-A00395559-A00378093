@@ -11,7 +11,7 @@
 # Comandos:
 #   rollback.sh mark-deployed <env> <version>   Registra <version> como desplegada (antes del smoke test)
 #   rollback.sh mark-stable <env> <version>     Registra <version> como estable en <env>
-#   rollback.sh rollback    <env> [--to X.Y.Z] [--host IP]
+#   rollback.sh rollback    <env> [--to X.Y.Z] [--host IP] [--platform compose|k8s]
 #                                               Restaura --to o, si se omite, la última estable
 #   rollback.sh status      <env>               Muestra versión actual, estable e historial
 #
@@ -19,6 +19,9 @@
 #   --host IP  Nodo remoto del ambiente: reutiliza deploy/scripts/environment.sh
 #              (deploy + verify por SSH, US-13) con la versión a restaurar.
 #   sin --host docker compose local con deploy/compose/docker-compose.<env>.yml (US-08).
+#   --platform k8s (US-28) Kubernetes con deploy/scripts/k8s-deploy.sh: sin --to hace
+#              `kubectl rollout undo` (revisión anterior de cada Deployment); con --to
+#              redespliega esa etiqueta SemVer. En ambos casos espera el rollout.
 #
 # Variables:
 #   ENV_FILE           .env del ambiente en modo local (por defecto lo genera inject-jenkins-secrets.sh)
@@ -26,6 +29,8 @@
 #   ROLLBACK_STATE_DIR Estado de versiones (por defecto $JENKINS_HOME/circleguard-releases,
 #                      persistente en el volumen de Jenkins, o /var/lib/circleguard/releases)
 #   ENVIRONMENT_SCRIPT Orquestador remoto (por defecto deploy/scripts/environment.sh)
+#   K8S_DEPLOY_SCRIPT  Orquestador de Kubernetes (por defecto deploy/scripts/k8s-deploy.sh)
+#   ROLLBACK_PLATFORM  Plataforma por defecto (compose | k8s; por defecto compose)
 #   WAIT_TIMEOUT       Segundos máximos para que la pila quede healthy (por defecto 600)
 #   DRY_RUN=1          Muestra los comandos sin ejecutarlos
 #
@@ -39,6 +44,8 @@ DEFAULT_STATE="/var/lib/circleguard/releases"
 [[ -n "${JENKINS_HOME:-}" ]] && DEFAULT_STATE="${JENKINS_HOME}/circleguard-releases"
 STATE_ROOT="${ROLLBACK_STATE_DIR:-${DEFAULT_STATE}}"
 ENVIRONMENT_SCRIPT="${ENVIRONMENT_SCRIPT:-${ROOT_DIR}/deploy/scripts/environment.sh}"
+K8S_DEPLOY_SCRIPT="${K8S_DEPLOY_SCRIPT:-${ROOT_DIR}/deploy/scripts/k8s-deploy.sh}"
+PLATFORM="${ROLLBACK_PLATFORM:-compose}"
 HOST=""
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-600}"
 DRY_RUN="${DRY_RUN:-0}"
@@ -47,7 +54,7 @@ SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'
 log()  { printf '[rollback][%s] %s\n' "${ENV_NAME:-?}" "$*"; }
 fail() { printf '[rollback][%s][ERROR] %s\n' "${ENV_NAME:-?}" "$*" >&2; exit "${2:-1}"; }
 
-usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; }
 
 validate_env() {
   case "$1" in dev|stage|prod) ;; *) fail "Ambiente inválido '$1' (dev|stage|prod)." ;; esac
@@ -112,13 +119,13 @@ redeploy_remote() {
     || fail "No existe ${ENVIRONMENT_SCRIPT} (despliegue de US-13)."
   local dry=(); [[ "${DRY_RUN}" == "1" ]] && dry=(--dry-run)
   log "Redesplegando ${TARGET_VERSION} en ${HOST} con ${ENVIRONMENT_SCRIPT##*/}"
-  if ! bash "${ENVIRONMENT_SCRIPT}" deploy --env "${ENV_NAME}" --version "${TARGET_VERSION}" --host "${HOST}" "${dry[@]}"; then
+  if ! bash "${ENVIRONMENT_SCRIPT}" deploy --env "${ENV_NAME}" --version "${TARGET_VERSION}" --host "${HOST}" ${dry[@]+"${dry[@]}"}; then
     history_add "rollback-failed" "${TARGET_VERSION}"
     fail "Falló el redespliegue de ${TARGET_VERSION} en ${HOST}." 3
   fi
   mkdir -p reports/ci 2>/dev/null || true
   if ! bash "${ENVIRONMENT_SCRIPT}" verify --env "${ENV_NAME}" --version "${TARGET_VERSION}" --host "${HOST}" \
-       --report "reports/ci/rollback-health-${ENV_NAME}.json" "${dry[@]}"; then
+       --report "reports/ci/rollback-health-${ENV_NAME}.json" ${dry[@]+"${dry[@]}"}; then
     history_add "rollback-failed" "${TARGET_VERSION}"
     fail "La pila restaurada con ${TARGET_VERSION} no quedó saludable en ${HOST}." 3
   fi
@@ -144,8 +151,41 @@ redeploy_local() {
   fi
 }
 
+# US-28: rollback en Kubernetes. Sin --to se usa el historial de revisiones del clúster
+# (kubectl rollout undo), que no depende del estado local de versiones.
+rollback_k8s() {
+  local requested="$1"
+  local args=(rollback --env "${ENV_NAME}")
+  [[ -f "${K8S_DEPLOY_SCRIPT}" ]] || fail "No existe ${K8S_DEPLOY_SCRIPT} (despliegue de US-39)."
+  if [[ -n "${requested}" ]]; then
+    validate_version "${requested}"
+    args+=(--to "${requested}")
+  fi
+  [[ "${DRY_RUN}" == "1" ]] && args+=(--dry-run)
+  local label="${requested:-revision-anterior}"
+  log "Rollback en Kubernetes (namespace circleguard-${ENV_NAME}): $(read_state current_version || true) -> ${label}"
+  history_add "rollback-start" "${label}"
+  if ! bash "${K8S_DEPLOY_SCRIPT}" "${args[@]}"; then
+    history_add "rollback-failed" "${label}"
+    fail "Falló el rollback en Kubernetes hacia ${label}." 3
+  fi
+  if [[ -n "${requested}" ]]; then
+    write_state current_version "${requested}"
+    write_state last_stable_version "${requested}"
+  elif [[ -n "$(read_state previous_stable_version)" ]]; then
+    # rollout undo vuelve a la revisión anterior, que es la estable anterior registrada.
+    write_state current_version "$(read_state previous_stable_version)"
+  fi
+  history_add "rollback-ok" "${label}"
+  log "Rollback completado en Kubernetes: ${ENV_NAME} -> ${label}."
+}
+
 cmd_rollback() {
   local requested="${1:-}"
+  if [[ "${PLATFORM}" == "k8s" ]]; then
+    rollback_k8s "${requested}"
+    return
+  fi
   local current stable previous
   current="$(read_state current_version)"
   stable="$(read_state last_stable_version)"
@@ -206,9 +246,11 @@ case "${COMMAND}" in
       case "$1" in
         --to) TO="${2:?Falta valor para --to}"; shift 2 ;;
         --host) HOST="${2:?Falta valor para --host}"; shift 2 ;;
+        --platform) PLATFORM="${2:?Falta valor para --platform}"; shift 2 ;;
         *) fail "Opción desconocida: $1" ;;
       esac
     done
+    case "${PLATFORM}" in compose|k8s) ;; *) fail "Plataforma inválida '${PLATFORM}' (compose|k8s)." ;; esac
     cmd_rollback "${TO}" ;;
   status)
     ENV_NAME="${1:-}"; validate_env "${ENV_NAME}"
