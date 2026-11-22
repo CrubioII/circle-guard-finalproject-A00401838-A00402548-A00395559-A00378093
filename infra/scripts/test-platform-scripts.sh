@@ -72,7 +72,7 @@ export REPORT_DIR="${WORK}/trivy" TRIVY_TEMPLATES_DIR="${WORK}/tpl"
 mkdir -p "${TRIVY_TEMPLATES_DIR}" && : > "${TRIVY_TEMPLATES_DIR}/junit.tpl"
 : > "${STUB_LOG}"
 bash "${ROOT}/infra/scripts/trivy-scan.sh" config --target infra/terraform --target no/existe >/dev/null
-grep -q "trivy config --severity HIGH,CRITICAL --exit-code 1 --no-progress --ignorefile ${ROOT}/.trivyignore --format table" "${STUB_LOG}" \
+grep -q "trivy config --severity HIGH,CRITICAL --exit-code 1 --ignorefile ${ROOT}/.trivyignore --format table" "${STUB_LOG}" \
   || die "trivy config no usa HIGH,CRITICAL + exit-code 1 + .trivyignore"
 [[ -f "${WORK}/trivy/junit/config-infra-terraform.xml" ]] || die "falta el JUnit del escaneo de IaC"
 grep -q '"target":"no/existe","kind":"config","result":"SKIPPED"' "${WORK}/trivy/summary-config.json" || die "un directorio inexistente debería omitirse"

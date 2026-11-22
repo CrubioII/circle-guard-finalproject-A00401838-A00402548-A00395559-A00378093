@@ -66,7 +66,9 @@ mkdir -p "${REPORT_DIR}/junit"
 
 ignore_flags=()
 [[ -f "${IGNORE_FILE}" ]] && ignore_flags=(--ignorefile "${IGNORE_FILE}")
-common_flags=(--severity "${SEVERITY}" --exit-code 1 --no-progress ${ignore_flags[@]+"${ignore_flags[@]}"})
+# Trivy 0.69+ ya no acepta --no-progress en "config"; la variable aplica a todos los modos.
+export TRIVY_NO_PROGRESS=true
+common_flags=(--severity "${SEVERITY}" --exit-code 1 ${ignore_flags[@]+"${ignore_flags[@]}"})
 
 declare -a SUMMARY=()
 FAILED=0
@@ -83,11 +85,11 @@ scan() {
         return 0
     fi
     # JSON completo (sin cortar el build) y JUnit para el reporte de pruebas de Jenkins.
-    "${TRIVY_BIN}" "${kind}" ${extra[@]+"${extra[@]}"} --severity "${SEVERITY}" --no-progress --exit-code 0 \
+    "${TRIVY_BIN}" "${kind}" ${extra[@]+"${extra[@]}"} --severity "${SEVERITY}" --exit-code 0 \
         ${ignore_flags[@]+"${ignore_flags[@]}"} \
         --format json --output "${base}.json" "${target}" || true
     if [[ -f "${TEMPLATES_DIR}/junit.tpl" ]]; then
-        "${TRIVY_BIN}" "${kind}" ${extra[@]+"${extra[@]}"} --severity "${SEVERITY}" --no-progress --exit-code 0 \
+        "${TRIVY_BIN}" "${kind}" ${extra[@]+"${extra[@]}"} --severity "${SEVERITY}" --exit-code 0 \
             ${ignore_flags[@]+"${ignore_flags[@]}"} \
             --format template --template "@${TEMPLATES_DIR}/junit.tpl" \
             --output "${REPORT_DIR}/junit/${label}.xml" "${target}" || true
