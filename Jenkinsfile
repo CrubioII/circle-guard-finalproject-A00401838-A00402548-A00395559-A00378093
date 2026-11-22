@@ -49,7 +49,8 @@
 //
 // Requisitos del agente: JDK 21, Node.js 20+, librerías de sistema de Chromium (imagen
 // infra/bootstrap/jenkins), plugins htmlpublisher y sonar, git, openssh-client y permisos de
-// ejecución sobre ./gradlew. Credenciales: 'nexus-credentials', 'circleguard-env-ssh',
+// ejecución sobre ./gradlew. Terraform es opcional: 'Validate Terraform' descarga la versión
+// fija si falta (necesita curl y unzip, python3 o jar). Credenciales: 'nexus-credentials', 'circleguard-env-ssh',
 // 'sonar-token' (US-10) y 'discord-webhook' (opcional: si falta, la notificación solo deja una
 // advertencia).
 // =============================================================================
@@ -475,6 +476,41 @@ pipeline {
             post {
                 always {
                     archiveArtifacts artifacts: 'reports/k8s/**', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // US-36: formato, validate y terraform test de módulos, bootstrap y ambientes, con
+        // proveedor simulado: no usa credenciales de AWS ni el backend remoto. Si el agente no
+        // tiene Terraform, plan-all.sh descarga la versión fija y verifica su SHA-256. Tarda unos
+        // 2,5 min con el caché de proveedores lleno, por eso solo corre cuando cambia
+        // infra/terraform o el Jenkinsfile, en main, con FORCE_FULL_BUILD o si no se pudo
+        // calcular qué archivos cambiaron.
+        stage('Validate Terraform') {
+            when {
+                expression {
+                    List files = detection?.changedFiles ?: []
+                    String joined = '\n' + files.join('\n')
+                    return params.FORCE_FULL_BUILD || env.BRANCH_NAME == 'main' || files.isEmpty() ||
+                        joined.contains('\ninfra/terraform/') || joined.contains('\nJenkinsfile')
+                }
+            }
+            steps {
+                script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+                    echo 'Validando módulos, backend remoto y ambientes de Terraform sin credenciales (US-20, US-35, US-36)...'
+                    // El caché de proveedores vive fuera del workspace y se reutiliza entre builds.
+                    // Los módulos no versionan su lock file, por eso se permite usar el caché sin él.
+                    sh '''
+                        export TF_PLUGIN_CACHE_DIR="${HOME}/.cache/circleguard/terraform-plugins"
+                        export TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true
+                        bash infra/terraform/scripts/plan-all.sh
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/terraform/**', allowEmptyArchive: true
                 }
             }
         }

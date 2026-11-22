@@ -62,7 +62,13 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-command -v terraform >/dev/null 2>&1 || fail "terraform no está instalado."
+# Con TF_PLUGIN_CACHE_DIR el proveedor AWS se descarga una vez y lo comparten módulos y
+# ambientes. Terraform exige que la carpeta exista antes de ejecutarse.
+[[ -z "${TF_PLUGIN_CACHE_DIR:-}" ]] || mkdir -p "${TF_PLUGIN_CACHE_DIR}"
+# Terraform del PATH (1.11+) o la versión fija verificada con SHA-256 (agente de Jenkins).
+TERRAFORM_BIN="$(bash "${SCRIPT_DIR}/ensure-terraform.sh")" || fail "No hay Terraform disponible."
+PATH="$(dirname "${TERRAFORM_BIN}"):${PATH}"
+log "Usando $(terraform version | head -1) (${TERRAFORM_BIN})."
 [[ "${LOCAL_BACKEND}" == "false" || "${REAL_PLAN}" == "true" ]] || fail "--local-backend solo aplica junto con --real."
 
 # Borra los backend_override.tf temporales aunque el script falle.
@@ -73,6 +79,19 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "${REPORT_DIR}"
+# Validaciones sin credenciales. Si la raíz ya se inicializó contra el backend S3 (por
+# --real o init-backend.sh --init), init -backend=false pediría credenciales; en ese caso se
+# usa una carpeta de datos aparte (.terraform-offline). Solo entonces, porque cada carpeta
+# guarda su propia copia del proveedor AWS (unos 790 MB).
+# Uso: tf_offline -chdir=<raíz> <comando> ...
+tf_offline() {
+    local root="${1#-chdir=}"
+    if grep -qs '"backend"' "${root}/.terraform/terraform.tfstate"; then
+        TF_DATA_DIR=.terraform-offline terraform "$@"
+    else
+        terraform "$@"
+    fi
+}
 export TF_IN_AUTOMATION=1
 
 scan_secrets() {
@@ -104,16 +123,16 @@ terraform -chdir="${TF_ROOT}" fmt -recursive -check -diff >/dev/null || fail "Ha
 ok "Formato correcto."
 
 # 2. Código sin credenciales ---------------------------------------------------
-mapfile -t TF_FILES < <(find "${TF_ROOT}" -type f \( -name '*.tf' -o -name '*.tfvars' -o -name '*.hcl' -o -name '*.hcl.example' \) -not -path '*/.terraform/*' -not -name '.terraform.lock.hcl')
+mapfile -t TF_FILES < <(find "${TF_ROOT}" -type f \( -name '*.tf' -o -name '*.tfvars' -o -name '*.hcl' -o -name '*.hcl.example' \) -not -path '*/.terraform/*' -not -path '*/.terraform-offline/*' -not -name '.terraform.lock.hcl')
 scan_secrets "código Terraform (${#TF_FILES[@]} archivos)" "${TF_FILES[@]}"
 
 # 3. Módulos -------------------------------------------------------------------
 for module in "${MODULES[@]}"; do
     dir="${TF_ROOT}/modules/${module}"
     log "Módulo ${module}: init, validate y test..."
-    terraform -chdir="${dir}" init -backend=false -input=false -no-color >/dev/null
-    terraform -chdir="${dir}" validate -no-color >/dev/null
-    terraform -chdir="${dir}" test -no-color > "${REPORT_DIR}/module-${module}-test.txt" 2>&1 \
+    tf_offline -chdir="${dir}" init -backend=false -input=false -no-color >/dev/null
+    tf_offline -chdir="${dir}" validate -no-color >/dev/null
+    tf_offline -chdir="${dir}" test -no-color > "${REPORT_DIR}/module-${module}-test.txt" 2>&1 \
         || { cat "${REPORT_DIR}/module-${module}-test.txt" >&2; fail "Fallaron las pruebas del módulo ${module}."; }
     ok "Módulo ${module}: $(grep -E 'passed, [0-9]+ failed' "${REPORT_DIR}/module-${module}-test.txt" | tail -1)"
 done
@@ -121,14 +140,14 @@ done
 # 3b. Backend remoto (US-36) ----------------------------------------------------
 dir="${TF_ROOT}/bootstrap"
 log "Stack bootstrap (backend remoto): init, validate y test..."
-terraform -chdir="${dir}" init -backend=false -input=false -no-color >/dev/null
-terraform -chdir="${dir}" validate -no-color >/dev/null
-terraform -chdir="${dir}" test -no-color > "${REPORT_DIR}/bootstrap-test.txt" 2>&1     || { cat "${REPORT_DIR}/bootstrap-test.txt" >&2; fail "Fallaron las pruebas del stack bootstrap."; }
+tf_offline -chdir="${dir}" init -backend=false -input=false -no-color >/dev/null
+tf_offline -chdir="${dir}" validate -no-color >/dev/null
+tf_offline -chdir="${dir}" test -no-color > "${REPORT_DIR}/bootstrap-test.txt" 2>&1     || { cat "${REPORT_DIR}/bootstrap-test.txt" >&2; fail "Fallaron las pruebas del stack bootstrap."; }
 ok "Stack bootstrap: $(grep -E 'passed, [0-9]+ failed' "${REPORT_DIR}/bootstrap-test.txt" | tail -1)"
 
 dir="${TF_ROOT}/tests/state-lock"
-terraform -chdir="${dir}" init -backend=false -input=false -no-color >/dev/null
-terraform -chdir="${dir}" validate -no-color >/dev/null
+tf_offline -chdir="${dir}" init -backend=false -input=false -no-color >/dev/null
+tf_offline -chdir="${dir}" validate -no-color >/dev/null
 ok "Configuración de la prueba de bloqueo válida (tests/state-lock)."
 
 # 4. Ambientes -----------------------------------------------------------------
@@ -156,9 +175,9 @@ for env in "${ENVS[@]}"; do
         scan_secrets "plan JSON de ${env}" "${REPORT_DIR}/${env}-plan.json"
     else
         log "Ambiente ${env}: plan simulado (sin credenciales)..."
-        terraform -chdir="${dir}" init -backend=false -input=false -no-color >/dev/null
-        terraform -chdir="${dir}" validate -no-color >/dev/null
-        terraform -chdir="${dir}" test -verbose -no-color > "${plan_txt}" 2>&1 \
+        tf_offline -chdir="${dir}" init -backend=false -input=false -no-color >/dev/null
+        tf_offline -chdir="${dir}" validate -no-color >/dev/null
+        tf_offline -chdir="${dir}" test -verbose -no-color > "${plan_txt}" 2>&1 \
             || { tail -40 "${plan_txt}" >&2; fail "Falló el plan simulado de ${env}."; }
     fi
 

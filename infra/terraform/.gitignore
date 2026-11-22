@@ -20,3 +20,6 @@ modules/**/.terraform.lock.hcl
 
 # La configuración de la prueba de bloqueo se inicializa en carpetas temporales
 tests/**/.terraform.lock.hcl
+
+# Carpeta de datos de las validaciones sin credenciales (plan-all.sh)
+**/.terraform-offline/
