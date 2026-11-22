@@ -353,6 +353,13 @@ Cada servicio expone su documentación OpenAPI en `http://localhost:<puerto>/swa
 | E2E con Playwright (US-34) | [`docs/agil/PLAYWRIGHT_E2E_US34.md`](docs/agil/PLAYWRIGHT_E2E_US34.md) |
 | Terraform: módulos de red y cómputo con clúster k3s por ambiente (US-20) | [`docs/arquitectura/TERRAFORM_RED_COMPUTO_US20.md`](docs/arquitectura/TERRAFORM_RED_COMPUTO_US20.md) |
 | Terraform: módulos de registro, almacenamiento y observabilidad (US-35) | [`docs/arquitectura/TERRAFORM_PLATAFORMA_US35.md`](docs/arquitectura/TERRAFORM_PLATAFORMA_US35.md) y [`infra/terraform/README.md`](infra/terraform/README.md) |
+| Terraform, Trivy y despliegue en Kubernetes en el pipeline (US-22, US-38, US-39) | [`docs/arquitectura/PIPELINE_PLATAFORMA_US22_US38_US39.md`](docs/arquitectura/PIPELINE_PLATAFORMA_US22_US38_US39.md) |
+| Rollback en Kubernetes (US-28) y registro de cambios por ambiente | [`docs/operaciones/ROLLBACK_K8S_US28.md`](docs/operaciones/ROLLBACK_K8S_US28.md) y [`docs/release-notes/REGISTRO_CAMBIOS_POR_AMBIENTE.md`](docs/release-notes/REGISTRO_CAMBIOS_POR_AMBIENTE.md) |
+| Patrones de diseño existentes (US-23) | [`docs/patrones/PATRONES_EXISTENTES.md`](docs/patrones/PATRONES_EXISTENTES.md) |
+| Backlog, reparto y ceremonias del Sprint 2 (US-29) | [`docs/agil/SPRINT2_BACKLOG_Y_REPARTO.md`](docs/agil/SPRINT2_BACKLOG_Y_REPARTO.md) y [`docs/agil/SPRINT_2_CEREMONIAS.md`](docs/agil/SPRINT_2_CEREMONIAS.md) |
+| Manual de operaciones (US-48) | [`docs/operaciones/MANUAL_OPERACIONES.md`](docs/operaciones/MANUAL_OPERACIONES.md) |
+| Costos: estimación frente a costo real (US-48) | [`docs/costos/COSTOS.md`](docs/costos/COSTOS.md) |
+| Executive Summary en inglés (US-48) y guion de la sustentación (US-49) | [`docs/informe/EXECUTIVE_SUMMARY.md`](docs/informe/EXECUTIVE_SUMMARY.md) y [`docs/presentacion/GUION_DEMO.md`](docs/presentacion/GUION_DEMO.md) |
 | Informe de la Parte 1 y cómo actualizarlo | [`docs/informe/INFORME_PARTE1.md`](docs/informe/INFORME_PARTE1.md) y [`docs/informe/README.md`](docs/informe/README.md) |
 | Uso de IA generativa | [`docs/BITACORA_IAG_EQUIPO.md`](docs/BITACORA_IAG_EQUIPO.md) |
 
@@ -367,3 +374,4 @@ Cada servicio expone su documentación OpenAPI en `http://localhost:<puerto>/swa
 - **Costos.**
   - Al terminar cada sesión de trabajo o evaluación, detén las 4 instancias EC2 (`aws ec2 stop-instances --instance-ids …`).
   - En la Parte 2 la infraestructura se destruye con `terraform destroy`.
+  - Estimación frente a costo real: [`docs/costos/COSTOS.md`](docs/costos/COSTOS.md).
