@@ -7,6 +7,7 @@
 #   - Docker CLI + Docker Compose v2 plugin (para construir y publicar imágenes)
 #   - Node.js 20 LTS + npm + dependencias del sistema para Playwright (Chromium headless)
 #   - Plugins de Jenkins preinstalados vía jenkins-plugin-cli (JCasC, Multibranch, JaCoCo, SonarQube)
+#   - Terraform (US-22), con versión fija y verificación SHA-256 del binario descargado
 # =============================================================================
 FROM jenkins/jenkins:2.580.2-jdk21
 
@@ -16,6 +17,8 @@ LABEL org.opencontainers.image.title="CircleGuard Jenkins CI Controller & Agent"
 
 ARG GRADLE_VERSION=8.5
 ARG NODE_MAJOR=20
+# US-22: Terraform con versión fija.
+ARG TERRAFORM_VERSION=1.11.4
 
 USER root
 
@@ -77,6 +80,18 @@ RUN set -eux; \
     ln -sf "/opt/gradle/gradle-${GRADLE_VERSION}/bin/gradle" /usr/local/bin/gradle; \
     rm -f /tmp/gradle.zip; \
     gradle --version
+
+# 2b. US-22: terraform. La descarga se compara con el
+#     archivo de checksums publicado por el proveedor antes de instalarse.
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    cd /tmp; \
+    curl -fsSLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${arch}.zip"; \
+    curl -fsSLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_SHA256SUMS"; \
+    grep " terraform_${TERRAFORM_VERSION}_linux_${arch}.zip$" "terraform_${TERRAFORM_VERSION}_SHA256SUMS" | sha256sum -c -; \
+    unzip -q "terraform_${TERRAFORM_VERSION}_linux_${arch}.zip" terraform -d /usr/local/bin; \
+    rm -rf /tmp/terraform_*; \
+    terraform version
 
 # 3. Preinstalar los plugins requeridos por el pipeline y JCasC
 COPY --chown=jenkins:jenkins plugins.txt /usr/share/jenkins/ref/plugins.txt
