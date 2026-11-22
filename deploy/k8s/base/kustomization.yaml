@@ -22,6 +22,7 @@ resources:
   - namespace/resource-quota.yaml
   - namespace/network-policies.yaml
   - middleware/postgres.yaml
+  - middleware/neo4j.yaml
   - middleware/redis.yaml
 
 configMapGenerator:
