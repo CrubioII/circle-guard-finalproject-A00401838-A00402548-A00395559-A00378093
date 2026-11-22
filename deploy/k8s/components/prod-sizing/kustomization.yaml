@@ -1,0 +1,17 @@
+# Componente compartido por stage y prod (US-21): límites de CPU y memoria de
+# deploy/compose/docker-compose.prod.yml y memoria de las JVM acorde a esos límites.
+# Stage es réplica de prod, así que ambos lo usan; dev se queda con la base.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+configMapGenerator:
+  - name: middleware-config
+    behavior: merge
+    literals:
+      - NEO4J_HEAP_SIZE=640m
+      - NEO4J_PAGECACHE_SIZE=384m
+      - KAFKA_HEAP_OPTS=-Xms512m -Xmx640m
+      - ZOOKEEPER_HEAP_OPTS=-Xms256m -Xmx320m
+
+patches:
+  - path: resources.yaml
