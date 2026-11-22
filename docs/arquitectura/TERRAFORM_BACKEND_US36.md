@@ -4,7 +4,7 @@
 |---|---|
 | Historia | US-36 (3 SP), épico E2.1 — IaC con Terraform. Jira [SCRUM-118](https://circleguard777.atlassian.net/browse/SCRUM-118) |
 | Alcance | Bucket S3 para el estado de Terraform, bloqueo del estado, conexión de dev, stage y prod al backend, prueba de concurrencia y diagramas de la infraestructura |
-| Fuera de alcance | `apply` de la red, el cómputo y los servicios de US-20 y US-35; etapa de Jenkins con credenciales de AWS |
+| Fuera de alcance | `apply` de la red, el cómputo y los servicios de US-20 y US-35; `plan` real desde Jenkins (necesitaría credenciales de AWS en CI) |
 | Relación | Completa el backend parcial que dejaron [US-20](TERRAFORM_RED_COMPUTO_US20.md) y [US-35](TERRAFORM_PLATAFORMA_US35.md). Los namespaces sobre el clúster son [US-21](KUBERNETES_PLATAFORMA_US21.md). |
 | Código | [`infra/terraform/bootstrap`](../../infra/terraform/bootstrap/), [`infra/terraform/scripts`](../../infra/terraform/scripts/), [`infra/terraform/tests/state-lock`](../../infra/terraform/tests/state-lock/main.tf) |
 
@@ -20,7 +20,7 @@
 | El estado del bootstrap vive en el mismo bucket | Se crea con estado local y luego se migra (`init -migrate-state`). Así ningún estado queda solo en un computador. |
 | SSE-S3 (AES256) en vez de SSE-KMS | Quien lee el estado no necesita permisos sobre una clave KMS, y la clave de US-35 es por ambiente, no compartida. |
 | `backend.hcl` generado por `init-backend.sh` | Los archivos `backend.tf` siguen siendo parciales. El ID de la cuenta sale de `sts get-caller-identity` y no se versiona. |
-| Sin etapa de Jenkins con `plan` real | El servidor de CI no tiene credenciales de AWS y esta historia no se las da. El plan real se corre con un perfil local. La validación sin credenciales (`plan-all.sh`) tampoco está hoy en el `Jenkinsfile`; agregarla requiere Terraform en el agente. |
+| Jenkins valida sin credenciales | La etapa `Validate Terraform` corre `plan-all.sh` con proveedor simulado. El servidor de CI no tiene credenciales de AWS y esta historia no se las da, así que el plan real se corre con un perfil local. |
 
 ## 2. Estructura
 
@@ -42,6 +42,7 @@ infra/terraform/
     ├── bootstrap-backend.sh       # crea o actualiza el bucket y migra su estado
     ├── init-backend.sh            # genera backend.hcl en cada raíz
     ├── test-state-lock.sh         # prueba de CA2
+    ├── ensure-terraform.sh        # Terraform 1.14.6 con SHA-256 si el agente no lo tiene
     └── plan-all.sh                # ahora también valida bootstrap y tests/state-lock
 ```
 
@@ -135,7 +136,7 @@ El script falla si alguna comprobación no se cumple y deja el reporte en `repor
 
 ### CA3 — `init`, `validate` y `plan` funcionan, con diagramas actualizados
 
-**Sin credenciales** (cualquier integrante, sin perfil de AWS):
+**Sin credenciales** (etapa `Validate Terraform` de Jenkins y cualquier integrante sin perfil de AWS):
 
 ```
 $ bash infra/terraform/scripts/plan-all.sh
@@ -149,6 +150,18 @@ $ bash infra/terraform/scripts/plan-all.sh
 [terraform][OK]    Ambiente prod: 111 recursos planeados.
 [terraform][OK]    Verificación de Terraform completada para: dev stage prod.
 ```
+
+**Etapa `Validate Terraform` de Jenkins.** Corre `plan-all.sh` después de `Validate Kubernetes Manifests` y archiva `reports/terraform/`. Se activa cuando el cambio toca `infra/terraform/` o el `Jenkinsfile`, en `main`, con `FORCE_FULL_BUILD` o si no se pudo calcular qué archivos cambiaron.
+
+- Si el agente no tiene Terraform 1.11 o superior, `ensure-terraform.sh` descarga la 1.14.6 de `releases.hashicorp.com`, compara su SHA-256 con el valor fijo del script y la guarda en `~/.cache/circleguard/tools`.
+- Los proveedores se guardan en `~/.cache/circleguard/terraform-plugins` (unos 790 MB, sobre todo el proveedor AWS) y se reutilizan entre builds. Los módulos no versionan su `.terraform.lock.hcl`, por eso la etapa activa `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE`; los ambientes y `bootstrap` sí verifican contra su lock file.
+
+Se probó en un contenedor `jenkins/jenkins:lts` sin Terraform, solo con los archivos versionados:
+
+| Ejecución | Resultado | Duración |
+|---|---|---|
+| Primera (descarga Terraform y el proveedor AWS) | Todo `OK`; dev 98, stage 98 y prod 111 recursos | 294 s |
+| Siguiente, workspace limpio y caché lleno | Todo `OK`, sin descargas | 143 s |
 
 **Contra AWS con el backend remoto** (`init -backend-config=backend.hcl`, `validate` y `plan` de cada ambiente):
 
@@ -224,5 +237,4 @@ El bucket guarda unos pocos archivos de menos de 1 MB. El costo esperado es meno
 ## 6. Pendiente
 
 - `apply` de dev, stage y prod (US-20 y US-35), con un perfil que pueda crear recursos y con las condiciones de la §6 de US-20 (cuota de vCPU, acceso a la API).
-- Agregar `plan-all.sh` (sin credenciales) como etapa del `Jenkinsfile`; hoy solo se corre a mano.
 - Si el pipeline necesita `plan` o `apply` real, darle a Jenkins un rol IAM propio (no llaves fijas) con acceso a este bucket.

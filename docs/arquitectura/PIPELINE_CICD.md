@@ -17,6 +17,7 @@
 | Solo cambios de documentación | `Checkout & Context` y `Detect Changed Components`; no compila (`skipCiBuild`) |
 | Cambio en un servicio | `Compile & Test Backend` solo de los servicios afectados, seguido de `SonarQube Analysis` y `Quality Gate`. Si cambia un archivo compartido, como `build.gradle.kts`, se construyen los 8 |
 | Cambio en `mobile/` o `e2e/` | `Compile & Test Web` y `E2E Playwright` |
+| Cambio en `infra/terraform/` o en el `Jenkinsfile` | `Validate Terraform` (también corre siempre en `main`) |
 
 ## 2. Etapas
 
@@ -33,16 +34,17 @@
 | 9 | `E2E Playwright` | Flujos de login, cuestionario y validación QR, con las APIs simuladas | JUnit y reporte HTML |
 | 10 | `Validate Compose Environments` | `deploy/compose/validate-compose.sh` revisa SemVer, que no haya `latest` y los healthchecks de dev, stage y prod | Log |
 | 11 | `Validate Kubernetes Manifests` | `deploy/k8s/scripts/validate.sh` genera los overlays de Kustomize de dev, stage y prod y revisa namespaces, middleware, imágenes, probes, recursos, Secrets y esquema con kubeconform (US-21). Corre en todo build, también en los PR | `reports/k8s/<env>.yaml` y `<env>-summary.txt` |
-| 12 | `Publish Images to Nexus` | `infra/scripts/publish-docker-images.sh` publica 8 servicios y el cliente web en `52.14.6.11:5000/circleguard/<svc>:X.Y.Z` | Imágenes en Nexus |
-| 13 | `Generate Release Notes & Tag` | `generate-release-notes.sh` (CHANGELOG y `docs/release-notes/`) y `git-tag-release.sh` (`vX.Y.Z`) | Tag en Git |
-| 14 | `Deploy to dev` | `deploy/scripts/environment.sh deploy --env dev`: SCP y SSH, luego `docker compose pull` y `up -d --wait` | — |
-| 15 | `Verify dev health` | Los 12 contenedores `healthy`, la imagen exacta `X.Y.Z` y readiness `UP` | `reports/ci/health-dev.json` |
-| 16 | `E2E against dev` | `deploy/scripts/run-e2e.sh` corre por túneles SSH los flujos `@us17` y `@smoke` y los contratos `@deployed` | `e2e/reports/dev/` |
-| 17 | `Promote to stage` | `promotionDecision` exige `SUCCESS` en 14, 15 y 16, y despliega la misma versión en stage | — |
-| 18 | `Verify stage health` | La misma verificación de salud, en stage | `health-stage.json` y `promotion-stage.json` |
-| 19 | `Approve prod release` | `input` restringido a `CG_PROD_APPROVERS` (`jrubio,jpordonez`). Solo ofrece la versión validada y exige un comentario o RFC | `prod-approval.json` |
-| 20 | `Deploy to prod` | Solo corre con `APPROVED` | — |
-| 21 | `Verify prod health` | Salud de prod publicada como JUnit (`circleguard.prod.health`) | Pestaña **Tests** del build |
+| 12 | `Validate Terraform` | `infra/terraform/scripts/plan-all.sh`: formato, `validate` y `terraform test` de los módulos, el backend remoto (`bootstrap`) y los tres ambientes, con proveedor simulado y sin credenciales de AWS (US-36). Si el agente no tiene Terraform, descarga la 1.14.6 y verifica su SHA-256. Corre cuando cambia `infra/terraform/` o el `Jenkinsfile`, en `main` y con `FORCE_FULL_BUILD` | `reports/terraform/` |
+| 13 | `Publish Images to Nexus` | `infra/scripts/publish-docker-images.sh` publica 8 servicios y el cliente web en `52.14.6.11:5000/circleguard/<svc>:X.Y.Z` | Imágenes en Nexus |
+| 14 | `Generate Release Notes & Tag` | `generate-release-notes.sh` (CHANGELOG y `docs/release-notes/`) y `git-tag-release.sh` (`vX.Y.Z`) | Tag en Git |
+| 15 | `Deploy to dev` | `deploy/scripts/environment.sh deploy --env dev`: SCP y SSH, luego `docker compose pull` y `up -d --wait` | — |
+| 16 | `Verify dev health` | Los 12 contenedores `healthy`, la imagen exacta `X.Y.Z` y readiness `UP` | `reports/ci/health-dev.json` |
+| 17 | `E2E against dev` | `deploy/scripts/run-e2e.sh` corre por túneles SSH los flujos `@us17` y `@smoke` y los contratos `@deployed` | `e2e/reports/dev/` |
+| 18 | `Promote to stage` | `promotionDecision` exige `SUCCESS` en 15, 16 y 17, y despliega la misma versión en stage | — |
+| 19 | `Verify stage health` | La misma verificación de salud, en stage | `health-stage.json` y `promotion-stage.json` |
+| 20 | `Approve prod release` | `input` restringido a `CG_PROD_APPROVERS` (`jrubio,jpordonez`). Solo ofrece la versión validada y exige un comentario o RFC | `prod-approval.json` |
+| 21 | `Deploy to prod` | Solo corre con `APPROVED` | — |
+| 22 | `Verify prod health` | Salud de prod publicada como JUnit (`circleguard.prod.health`) | Pestaña **Tests** del build |
 | — | `Release Gate` | Revalida el contexto cuando se pide `TARGET_ENV` manualmente | Descripción del build |
 | — | `post { always }` | Estado final en GitHub, `junit`, JaCoCo, `archiveArtifacts reports/**` y descripción del build | — |
 | — | `post { cleanup }` | `notifyPipeline` (US-14) publica el resultado en el canal `#pipeline` de Discord: rama, commit, autor, versión, etapa fallida y enlace al log. Un error al notificar nunca cambia el resultado del build | `reports/ci/discord-notification.json` |

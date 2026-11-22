@@ -15,6 +15,7 @@ Infraestructura de CircleGuard en AWS (`us-east-2`) declarada con Terraform. Hay
 | [`scripts/bootstrap-backend.sh`](scripts/bootstrap-backend.sh) | Crea el bucket de estado y migra su propio estado a S3 (US-36) |
 | [`scripts/init-backend.sh`](scripts/init-backend.sh) | Genera `backend.hcl` en cada raíz con el ID de la cuenta (US-36) |
 | [`scripts/test-state-lock.sh`](scripts/test-state-lock.sh) | Prueba que dos `apply` simultáneos no escriben el mismo estado (US-36) |
+| [`scripts/ensure-terraform.sh`](scripts/ensure-terraform.sh) | Usa el Terraform del PATH o descarga la 1.14.6 verificando su SHA-256 (etapa `Validate Terraform` de Jenkins) |
 
 Requisitos: Terraform 1.11 o superior. Para validar y probar no hacen falta credenciales AWS.
 

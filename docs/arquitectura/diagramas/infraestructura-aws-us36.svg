@@ -35,9 +35,9 @@
     <text x="60" y="646" font-size="13" font-weight="bold" fill="#1A1A1A">CI de la Parte 1</text>
     <text x="60" y="666">EC2 con Jenkins, SonarQube</text>
     <text x="60" y="684">y Nexus (fuera de Terraform)</text>
-    <text x="60" y="708">Valida los manifiestos de</text>
-    <text x="60" y="726">Kubernetes; no corre Terraform</text>
-    <text x="60" y="744" fill="#6B7280">deploy/k8s/scripts/validate.sh</text>
+    <text x="60" y="708">Valida Kubernetes y Terraform</text>
+    <text x="60" y="726">sin credenciales de AWS</text>
+    <text x="60" y="744" fill="#6B7280">validate.sh · plan-all.sh</text>
     <rect x="45" y="790" width="240" height="226" rx="8" fill="#FFFFFF" stroke="#E5E7EB"/>
     <text x="60" y="814" font-size="13" font-weight="bold" fill="#1A1A1A">Historias</text>
     <text x="60" y="836">US-20  red y cómputo k3s</text>
