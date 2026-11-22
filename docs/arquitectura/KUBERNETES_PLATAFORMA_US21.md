@@ -55,7 +55,8 @@ deploy/k8s/
 | Acceso | el server publica su kubeconfig, ya apuntando a la IP elástica, en `/circleguard/<env>/k3s/kubeconfig` (SSM SecureString) |
 
 ```bash
-# 1. Crear el clúster (US-20; necesita credenciales y el backend de US-36)
+# 1. Crear el clúster (US-20; estado en el backend remoto de US-36)
+bash infra/terraform/scripts/init-backend.sh --env dev
 cd infra/terraform/envs/dev && terraform init -backend-config=backend.hcl && terraform apply
 
 # 2. Conectarse
@@ -193,10 +194,9 @@ Además, Zookeeper publica su dirección antes de estar listo (`publishNotReadyA
 ## 6. Pendiente
 
 - **Desplegar en los clústeres de AWS.** Requiere:
-  1. credenciales;
-  2. el backend remoto (US-36);
-  3. el `apply` de US-20;
-  4. luego, `get-kubeconfig.sh` y `deploy-middleware.sh` en cada ambiente.
+  1. un perfil de AWS que pueda crear recursos (el de US-36 solo planea);
+  2. el `apply` de US-20, ya con el backend remoto de [US-36](TERRAFORM_BACKEND_US36.md);
+  3. luego, `get-kubeconfig.sh` y `deploy-middleware.sh` en cada ambiente.
 
   La versión de k3s y los manifiestos ya se probaron en local (§4).
 - **Antes del `apply`:** detener los nodos de la Parte 1 para liberar la cuota de vCPU (ver US-20, §6).

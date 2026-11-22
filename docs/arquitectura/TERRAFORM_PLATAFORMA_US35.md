@@ -4,7 +4,7 @@
 |---|---|
 | Historia | US-35 (5 SP), épico E2.1 — IaC con Terraform |
 | Alcance | Servicios compartidos de cada ambiente: registro de imágenes (ECR), almacenamiento de objetos (S3) y observabilidad base (CloudWatch + SNS) |
-| Fuera de alcance | Red y cómputo/clúster (otra historia), creación del bucket de estado y la tabla de bloqueo (otra historia), Prometheus/Grafana/Jaeger/Loki en Kubernetes (E2.5) y migración del pipeline de Nexus a ECR (E2.3) |
+| Fuera de alcance | Red y cómputo/clúster (otra historia), creación del bucket de estado y su bloqueo ([US-36](TERRAFORM_BACKEND_US36.md)), Prometheus/Grafana/Jaeger/Loki en Kubernetes (E2.5) y migración del pipeline de Nexus a ECR (E2.3) |
 | Código | [`infra/terraform/`](../../infra/terraform/) |
 
 ![Módulos y ambientes de US-35](diagramas/terraform-plataforma-us35.svg)
@@ -136,33 +136,24 @@ Los planes completos quedan en `reports/terraform/<env>-plan.txt`, y el conteo p
 
 ### Plan real contra AWS
 
-**Estado:** todavía no se ejecutó, porque el equipo aún no tiene las credenciales de la cuenta. El CA3 queda cubierto por los planes simulados de la sección anterior.
+**Estado:** ejecutado el 2026-11-22 con el backend remoto de [US-36](TERRAFORM_BACKEND_US36.md). `init`, `validate` y `plan` funcionan en los tres ambientes: dev 98, stage 98 y prod 111 recursos, igual que los planes simulados.
 
-Requiere un usuario o rol IAM con `ReadOnlyAccess` en la cuenta del proyecto. `plan` no crea recursos ni genera costo. Las llaves quedan en `~/.aws`, nunca en el repositorio.
-
-**Sin backend remoto (opción actual).** El bucket de estado y la tabla de bloqueo los crea US-36, que aún no está hecha. Mientras tanto, `--local-backend` usa un estado local temporal:
+Requiere un perfil con `ReadOnlyAccess` y acceso al bucket de estado (ver US-36, §2). `plan` no crea recursos ni genera costo. Las llaves quedan en `~/.aws`, nunca en el repositorio.
 
 ```bash
-aws configure --profile circleguard-plan   # una sola vez
-export AWS_PROFILE=circleguard-plan
-bash infra/terraform/scripts/plan-all.sh --real --local-backend            # los tres ambientes
-bash infra/terraform/scripts/plan-all.sh --real --local-backend --env dev  # uno solo
+export AWS_PROFILE=circleguard-terraform
+bash infra/terraform/scripts/init-backend.sh                       # genera backend.hcl en cada ambiente
+bash infra/terraform/scripts/plan-all.sh --real                    # los tres ambientes
+bash infra/terraform/scripts/plan-all.sh --real --env dev          # uno solo
 ```
 
-`--local-backend` crea un `backend_override.tf` temporal (ignorado por Git) y lo borra al terminar, aunque el plan falle. Sin credenciales, el script falla con `No valid credential sources found` y no deja archivos temporales.
+Con `--real` el script guarda `reports/terraform/<env>-plan.txt` y `<env>-plan.json` y busca credenciales en los dos. Desde US-20 el plan incluye también la red y el cómputo.
 
-**Con backend remoto (cuando exista US-36):**
-
-```bash
-cp infra/terraform/envs/dev/backend.hcl.example infra/terraform/envs/dev/backend.hcl   # reemplaza <ID_CUENTA>
-bash infra/terraform/scripts/plan-all.sh --real --env dev
-```
-
-En ambos casos, con `--real` el script guarda `reports/terraform/<env>-plan.txt` y `<env>-plan.json` y busca credenciales en los dos. Desde US-20 el plan incluye también la red y el cómputo.
+`--local-backend` sigue disponible como respaldo: crea un `backend_override.tf` temporal con estado local (ignorado por Git) y lo borra al terminar. No sirve para `apply`.
 
 ### Aplicar y destruir
 
-No se debe ejecutar `apply` sin el backend remoto de US-36. Con estado local, el estado quedaría en un solo computador y sin bloqueo.
+El `apply` se hace siempre con el backend remoto de US-36 (`backend.hcl`), para que el estado quede compartido y bloqueado durante la ejecución.
 
 ```bash
 cd infra/terraform/envs/dev
