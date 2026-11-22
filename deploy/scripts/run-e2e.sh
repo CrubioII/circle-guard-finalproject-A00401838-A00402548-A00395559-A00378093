@@ -18,18 +18,23 @@
 # Uso:
 #   deploy/scripts/run-e2e.sh --env dev --host 52.15.165.116   # SSH_KEY / SSH_USER del entorno
 #   deploy/scripts/run-e2e.sh --env dev --local                 # pila local (smoke-up.sh KEEP_UP=1)
+#   deploy/scripts/run-e2e.sh --env dev --k8s                   # clúster k8s (US-39), KUBECONFIG del entorno
+# Con --k8s los túneles son `kubectl port-forward svc/<servicio>` en el namespace circleguard-<env>;
+#   nombres y puertos de los Services: K8S_SVC_<AUTH|IDENTITY|PROMOTION|FORM|GATEWAY|WEB> y
+#   K8S_PORT_<...> (por defecto los de compose: auth-service:8180, identity-service:8083, ...).
 # Opcionales: SSH_PORT, SSH_KNOWN_HOSTS, E2E_TUNNEL_TARGET (127.0.0.1), E2E_WEB_LOCAL_PORT (8081),
 #   E2E_SKIP_BROWSER_INSTALL=1.
 # =============================================================================
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ENV_NAME=""; HOST=""; LOCAL=false
+ENV_NAME=""; HOST=""; LOCAL=false; K8S=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --env) ENV_NAME="${2:?}"; shift 2 ;;
     --host) HOST="${2:?}"; shift 2 ;;
     --local) LOCAL=true; shift ;;
+    --k8s) K8S=true; shift ;;
     *) echo "[run-e2e] opción desconocida: $1" >&2; exit 2 ;;
   esac
 done
@@ -39,7 +44,7 @@ case "${ENV_NAME}" in
   dev) offset=0 ;; stage) offset=1000 ;; prod) offset=2000 ;;
   *) log "ERROR: --env inválido '${ENV_NAME}'"; exit 2 ;;
 esac
-${LOCAL} || [[ -n "${HOST}" ]] || { log "ERROR: --host es obligatorio (o use --local)"; exit 2; }
+${LOCAL} || ${K8S} || [[ -n "${HOST}" ]] || { log "ERROR: --host es obligatorio (o use --local / --k8s)"; exit 2; }
 
 # servicio -> puerto publicado en el nodo según deploy/compose/docker-compose.<env>.yml
 declare -A REMOTE_PORT=(
@@ -53,18 +58,51 @@ declare -A LOCAL_PORT=(
 )
 
 TUNNEL_PID=""
+PF_PIDS=()
 close_tunnel() {
   if [[ -n "${TUNNEL_PID}" ]] && kill -0 "${TUNNEL_PID}" 2>/dev/null; then
     kill "${TUNNEL_PID}" 2>/dev/null || true
     wait "${TUNNEL_PID}" 2>/dev/null || true
     log "Túnel SSH cerrado"
   fi
+  local pid
+  for pid in ${PF_PIDS[@]+"${PF_PIDS[@]}"}; do
+    kill "${pid}" 2>/dev/null || true
+  done
+  [[ ${#PF_PIDS[@]} -eq 0 ]] || log "port-forward de kubectl cerrados"
 }
 trap close_tunnel EXIT
 
 port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 
-if ${LOCAL}; then
+if ${K8S}; then
+  # US-39: mismos puertos locales que el túnel SSH, pero con kubectl port-forward a los Services.
+  namespace="${K8S_NAMESPACE:-circleguard-${ENV_NAME}}"
+  declare -A K8S_SVC=(
+    [AUTH]="${K8S_SVC_AUTH:-auth-service}" [IDENTITY]="${K8S_SVC_IDENTITY:-identity-service}"
+    [PROMOTION]="${K8S_SVC_PROMOTION:-promotion-service}" [FORM]="${K8S_SVC_FORM:-form-service}"
+    [GATEWAY]="${K8S_SVC_GATEWAY:-gateway-service}" [WEB]="${K8S_SVC_WEB:-web-client}"
+  )
+  declare -A K8S_PORT=(
+    [AUTH]="${K8S_PORT_AUTH:-8180}" [IDENTITY]="${K8S_PORT_IDENTITY:-8083}" [PROMOTION]="${K8S_PORT_PROMOTION:-8088}"
+    [FORM]="${K8S_PORT_FORM:-8086}" [GATEWAY]="${K8S_PORT_GATEWAY:-8087}" [WEB]="${K8S_PORT_WEB:-8080}"
+  )
+  for svc in AUTH IDENTITY PROMOTION FORM GATEWAY WEB; do
+    kubectl -n "${namespace}" port-forward "svc/${K8S_SVC[$svc]}" "${LOCAL_PORT[$svc]}:${K8S_PORT[$svc]}" >/dev/null 2>&1 &
+    PF_PIDS+=("$!")
+  done
+  for svc in AUTH IDENTITY PROMOTION FORM GATEWAY; do export "E2E_${svc}_URL=http://127.0.0.1:${LOCAL_PORT[$svc]}"; done
+  export E2E_WEB_URL="http://localhost:${WEB_LOCAL_PORT}"
+  all_up=false
+  for _ in $(seq 1 60); do
+    all_up=true
+    for svc in "${!LOCAL_PORT[@]}"; do port_open "${LOCAL_PORT[$svc]}" || { all_up=false; break; }; done
+    ${all_up} && break
+    sleep 0.5
+  done
+  ${all_up} || { log "ERROR: los port-forward de kubectl hacia ${namespace} no quedaron disponibles"; exit 1; }
+  log "port-forward listos hacia ${namespace} (${#PF_PIDS[@]} servicios)"
+elif ${LOCAL}; then
   for svc in AUTH IDENTITY PROMOTION FORM GATEWAY; do export "E2E_${svc}_URL=http://127.0.0.1:${REMOTE_PORT[$svc]}"; done
   # Origen http://localhost:8080 (permitido por CORS) = puerto publicado del web-client local.
   export E2E_WEB_URL="http://localhost:${REMOTE_PORT[WEB]}"

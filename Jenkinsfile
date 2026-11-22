@@ -52,6 +52,11 @@
 //   guardado en dev (antes de desplegar dev), en stage (tras E2E de dev) y en prod solo después de
 //   la aprobación manual de US-31. Credencial 'aws-terraform' (usuario/clave de acceso).
 //
+// US-38 — Trivy bloqueante: 'Trivy IaC Scan' (trivy config sobre infra/terraform y deploy/k8s) en
+//   todo build pesado y 'Trivy Image Scan' sobre las 9 imágenes entre 'Build Images' y
+//   'Publish Images to Nexus'. HIGH/CRITICAL con --exit-code 1; excepciones en .trivyignore.
+//   Reportes en reports/trivy/ (tabla, JSON y JUnit). Desactivable con ENABLE_TRIVY_GATE=false.
+//
 // Requisitos del agente: JDK 21, Node.js 20+, librerías de sistema de Chromium (imagen
 // infra/bootstrap/jenkins), plugins htmlpublisher y sonar, git, openssh-client y permisos de
 // ejecución sobre ./gradlew. Credenciales: 'nexus-credentials', 'circleguard-env-ssh',
@@ -81,7 +86,7 @@ import groovy.transform.Field
 @Field def prodResults = [deployProd: 'NOT_RUN', verifyProd: 'NOT_RUN']
 // US-14: última etapa iniciada; si el build falla, es la etapa que se reporta en Discord.
 @Field def pipelineTrack = [stage: '']
-// US-22: paso platformFlow (cargado del workspace) y su plan de etapas.
+// US-22 / US-38: paso platformFlow (cargado del workspace) y su plan de etapas.
 @Field def platformFlow = null
 @Field def platform = [:]
 // US-22: resultado del apply de Terraform por ambiente (SUCCESS | FAILURE | SKIPPED | NOT_RUN).
@@ -219,6 +224,11 @@ pipeline {
             name: 'FORCE_TERRAFORM',
             defaultValue: false,
             description: 'US-22: corre terraform plan (y apply en main) aunque el commit no toque infra/terraform.'
+        )
+        booleanParam(
+            name: 'ENABLE_TRIVY_GATE',
+            defaultValue: true,
+            description: 'US-38: escaneo bloqueante con Trivy (IaC y las 9 imágenes) con severidad HIGH,CRITICAL.'
         )
         booleanParam(
             name: 'PUBLISH_GITHUB_STATUS',
@@ -417,7 +427,7 @@ pipeline {
                     sh 'IMAGE_TAG="' + (versionMap.APP_VERSION ?: '0.1.0') + '" ./deploy/compose/validate-compose.sh'
                     // US-13: los scripts de despliegue/promoción se prueban también en los PR (sin Docker ni credenciales).
                     sh 'chmod +x deploy/scripts/*.sh && ./deploy/scripts/test-deploy-scripts.sh'
-                    // US-22: scripts de plataforma con binarios simulados.
+                    // US-22 / US-38: scripts de plataforma con binarios simulados.
                     sh 'chmod +x infra/scripts/*.sh infra/terraform/scripts/*.sh && ./infra/scripts/test-platform-scripts.sh'
                 }
             }
@@ -457,6 +467,53 @@ pipeline {
             }
         }
 
+        // US-38 CA1: misconfiguraciones HIGH/CRITICAL en el IaC rompen el build.
+        stage('Trivy IaC Scan') {
+            when {
+                expression { platform?.runTrivyConfig == true }
+            }
+            steps {
+                script {
+                    runTrivyIaCScanStage()
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'reports/trivy/junit/config-*.xml'
+                    archiveArtifacts artifacts: 'reports/trivy/config-*,reports/trivy/summary-config.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // US-38: las imágenes se construyen, se escanean y solo entonces se publican.
+        stage('Build Images') {
+            when {
+                expression { flow?.isMainBranch == true && plan?.runHeavyBuild == true }
+            }
+            steps {
+                script {
+                    runBuildImagesStage()
+                }
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            when {
+                expression { flow?.isMainBranch == true && plan?.runHeavyBuild == true && platform?.runTrivyImages == true }
+            }
+            steps {
+                script {
+                    runTrivyImageScanStage()
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'reports/trivy/junit/image-*.xml'
+                    archiveArtifacts artifacts: 'reports/trivy/image-*,reports/trivy/summary-image.json', allowEmptyArchive: true
+                }
+            }
+        }
+
         stage('Publish Images to Nexus') {
             when {
                 expression { flow?.isMainBranch == true && plan?.runHeavyBuild == true }
@@ -465,18 +522,18 @@ pipeline {
                 script {
                     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     String semver = versionMap.APP_VERSION ?: '0.1.0'
-                    echo "Construyendo y publicando imagenes en Nexus con version semantica: ${semver} (US-11)..."
+                    echo "Publicando en Nexus las imágenes ya escaneadas con versión semántica: ${semver} (US-11 / US-38)..."
                     withCredentials([usernamePassword(
                         credentialsId: 'nexus-credentials',
                         usernameVariable: 'NEXUS_USER',
                         passwordVariable: 'NEXUS_PASSWORD'
                     )]) {
-                        sh 'chmod +x infra/scripts/publish-docker-images.sh'
                         sh """
                             REGISTRY_URL="18.117.90.15:5000" \
                             REGISTRY_USER="\${NEXUS_USER}" \
                             REGISTRY_PASSWORD="\${NEXUS_PASSWORD}" \
                             VERSION="${semver}" \
+                            PUSH_ONLY=true \
                             ./infra/scripts/publish-docker-images.sh
                         """
                     }
@@ -770,8 +827,8 @@ pipeline {
                 }
             }
             // reports/ci/** incluye promotion-stage.json y health-<env>.json (US-13).
-            // reports/terraform: planes de US-22 (sin los .tfplan binarios).
-            archiveArtifacts artifacts: 'reports/ci/**,reports/terraform/*.txt,reports/terraform/*.json,docs/release-notes/**,services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
+            // reports/terraform y reports/trivy: planes de US-22 y escaneos de US-38 (sin los .tfplan binarios).
+            archiveArtifacts artifacts: 'reports/ci/**,reports/trivy/**,reports/terraform/*.txt,reports/terraform/*.json,docs/release-notes/**,services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
         }
         // US-14 / SCRUM-70 (CA1): `cleanup` corre al final, con el resultado definitivo del build
         // (incluida la descripción de US-13 / US-31), y nunca cambia ese resultado.
@@ -815,10 +872,11 @@ void runDetectChangedComponentsStage() {
         multibranchFlow.requireDeploymentAllowed(flow, params.TARGET_ENV)
     }
 
-    // US-22: etapas de plataforma (Terraform).
+    // US-22 / US-38: etapas de plataforma (Terraform y Trivy).
     platformFlow = load 'jenkins/vars/platformFlow.groovy'
     platform = platformFlow.planPlatform(plan, detection, [
-        forceTerraform: params.FORCE_TERRAFORM as boolean
+        forceTerraform    : params.FORCE_TERRAFORM as boolean,
+        enableTrivy       : params.ENABLE_TRIVY_GATE as boolean
     ])
     echo platformFlow.formatPlatformSummary(platform)
 
@@ -904,6 +962,30 @@ void runTerraformPlanStage() {
             sh "./infra/terraform/scripts/tf-pipeline.sh plan --env '${tfEnv}'"
         }
     }
+}
+
+void runTrivyIaCScanStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    sh 'chmod +x infra/scripts/trivy-scan.sh && ./infra/scripts/trivy-scan.sh config --target infra/terraform --target deploy/k8s'
+}
+
+void runBuildImagesStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    String semver = versionMap.APP_VERSION ?: '0.1.0'
+    echo "Construyendo las 9 imágenes con versión semántica ${semver} (US-11), sin publicar todavía (US-38)..."
+    sh 'chmod +x infra/scripts/publish-docker-images.sh'
+    sh """
+        REGISTRY_URL="${env.DEPLOY_REGISTRY_URL}" \
+        VERSION="${semver}" \
+        DO_PUSH=false SKIP_LOGIN=true \
+        ./infra/scripts/publish-docker-images.sh
+    """
+}
+
+void runTrivyImageScanStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    String semver = versionMap.APP_VERSION ?: '0.1.0'
+    sh "./infra/scripts/trivy-scan.sh image --version '${semver}' --registry '${env.DEPLOY_REGISTRY_URL}'"
 }
 
 void runTerraformApplyDevStage() {

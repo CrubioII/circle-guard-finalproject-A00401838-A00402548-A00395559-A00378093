@@ -11,6 +11,10 @@
 # Reglas obligatorias:
 #   - NUNCA usar la etiqueta 'latest'.
 #   - Autenticación segura mediante credenciales (withCredentials en Jenkins).
+#
+# US-38: el Jenkinsfile lo llama en dos pasos para escanear con Trivy antes de publicar:
+#   DO_PUSH=false    solo construye y etiqueta (etapa 'Build Images')
+#   PUSH_ONLY=true   solo publica las etiquetas ya construidas (etapa 'Publish Images to Nexus')
 # =============================================================================
 set -euo pipefail
 
@@ -23,6 +27,12 @@ REGISTRY_USER="${REGISTRY_USER:-${NEXUS_USER:-}}"
 REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-${NEXUS_PASSWORD:-}}"
 VERSION="${VERSION:-${APP_VERSION:-}}"
 DO_PUSH="${DO_PUSH:-true}"
+PUSH_ONLY="${PUSH_ONLY:-false}"
+DO_BUILD=true
+if [[ "${PUSH_ONLY}" == "true" ]]; then
+  DO_BUILD=false
+  DO_PUSH=true
+fi
 SKIP_LOGIN="${SKIP_LOGIN:-false}"
 
 # Si la versión no fue especificada, se calcula dinámicamente con US-12
@@ -62,8 +72,13 @@ for svc in "${BACKEND_SERVICES[@]}"; do
   target_image="${REGISTRY_URL}/${REGISTRY_NAMESPACE}/${svc}:${VERSION}"
   alias_image="${REGISTRY_URL}/${REGISTRY_NAMESPACE}/${svc}-service:${VERSION}"
 
-  echo "==> Construyendo ${target_image}..."
-  docker build -f "${dockerfile}" -t "${target_image}" -t "${alias_image}" .
+  if [[ "${DO_BUILD}" == "true" ]]; then
+    echo "==> Construyendo ${target_image}..."
+    docker build -f "${dockerfile}" -t "${target_image}" -t "${alias_image}" .
+  else
+    docker image inspect "${target_image}" >/dev/null 2>&1 \
+      || { echo "ERROR: ${target_image} no está construida; PUSH_ONLY exige la etapa 'Build Images' previa." >&2; exit 1; }
+  fi
 
   if [[ "${DO_PUSH}" == "true" ]]; then
     echo "==> Publicando ${target_image}..."
@@ -78,8 +93,10 @@ if [[ -f "${web_dockerfile}" ]]; then
   web_target="${REGISTRY_URL}/${REGISTRY_NAMESPACE}/mobile:${VERSION}"
   # Nombre que consumen deploy/compose/docker-compose.<env>.yml (US-08) y el despliegue de US-13.
   web_compose_target="${REGISTRY_URL}/${REGISTRY_NAMESPACE}/web-client:${VERSION}"
-  echo "==> Construyendo cliente web ${web_target}..."
-  docker build -f "${web_dockerfile}" -t "${web_target}" -t "${web_compose_target}" mobile/
+  if [[ "${DO_BUILD}" == "true" ]]; then
+    echo "==> Construyendo cliente web ${web_target}..."
+    docker build -f "${web_dockerfile}" -t "${web_target}" -t "${web_compose_target}" mobile/
+  fi
 
   if [[ "${DO_PUSH}" == "true" ]]; then
     echo "==> Publicando cliente web ${web_target}..."
