@@ -47,6 +47,11 @@
 //        >= 60% de líneas en los servicios núcleo. Corre ANTES de publicar imágenes y desplegar.
 //   Desactivable con ENABLE_SONARQUBE_GATE=false (p. ej. si SonarQube no está disponible).
 //
+// US-22 — Terraform en Jenkins: 'Terraform Plan' de dev, stage y prod en cada PR o build de
+//   main que toque infra/terraform (plan archivado en reports/terraform/). En main, apply del plan
+//   guardado en dev (antes de desplegar dev), en stage (tras E2E de dev) y en prod solo después de
+//   la aprobación manual de US-31. Credencial 'aws-terraform' (usuario/clave de acceso).
+//
 // Requisitos del agente: JDK 21, Node.js 20+, librerías de sistema de Chromium (imagen
 // infra/bootstrap/jenkins), plugins htmlpublisher y sonar, git, openssh-client y permisos de
 // ejecución sobre ./gradlew. Credenciales: 'nexus-credentials', 'circleguard-env-ssh',
@@ -76,6 +81,11 @@ import groovy.transform.Field
 @Field def prodResults = [deployProd: 'NOT_RUN', verifyProd: 'NOT_RUN']
 // US-14: última etapa iniciada; si el build falla, es la etapa que se reporta en Discord.
 @Field def pipelineTrack = [stage: '']
+// US-22: paso platformFlow (cargado del workspace) y su plan de etapas.
+@Field def platformFlow = null
+@Field def platform = [:]
+// US-22: resultado del apply de Terraform por ambiente (SUCCESS | FAILURE | SKIPPED | NOT_RUN).
+@Field def terraformResults = [dev: 'NOT_RUN', stage: 'NOT_RUN', prod: 'NOT_RUN']
 
 // US-31: distingue timeout de abort en la compuerta manual.
 // - TIMEOUT se detecta por el tiempo esperado (no requiere aprobaciones de sandbox).
@@ -121,6 +131,17 @@ void withEnvironmentCredentials(Closure body) {
         usernamePassword(credentialsId: env.NEXUS_CREDENTIALS_ID, usernameVariable: 'REGISTRY_USER', passwordVariable: 'REGISTRY_PASSWORD')
     ]) {
         withEnv(["REGISTRY_URL=${env.DEPLOY_REGISTRY_URL}"]) {
+            body()
+        }
+    }
+}
+
+// US-22: credencial AWS de Terraform. Nunca se imprime; tf-pipeline.sh usa la cadena estándar de AWS.
+void withTerraformCredentials(Closure body) {
+    withCredentials([usernamePassword(credentialsId: env.AWS_TERRAFORM_CREDENTIALS_ID,
+                                      usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+        withEnv(["AWS_DEFAULT_REGION=${env.TF_STATE_REGION}", "TF_STATE_REGION=${env.TF_STATE_REGION}",
+                 "TF_STATE_BUCKET=${env.TF_STATE_BUCKET}", "TF_LOCK_TABLE=${env.TF_LOCK_TABLE}"]) {
             body()
         }
     }
@@ -195,6 +216,11 @@ pipeline {
             description: 'US-10: ejecuta el análisis estático con SonarQube y el bloqueo waitForQualityGate(abortPipeline: true).'
         )
         booleanParam(
+            name: 'FORCE_TERRAFORM',
+            defaultValue: false,
+            description: 'US-22: corre terraform plan (y apply en main) aunque el commit no toque infra/terraform.'
+        )
+        booleanParam(
             name: 'PUBLISH_GITHUB_STATUS',
             defaultValue: true,
             description: 'Publica los estados PENDING/SUCCESS/FAILURE como Commit Status en GitHub.'
@@ -217,6 +243,12 @@ pipeline {
         PROD_HOST = "${env.CG_PROD_HOST ?: '77.113.211.62'}"
         PROD_APPROVERS = "${env.CG_PROD_APPROVERS ?: ''}"
         PROD_APPROVAL_TIMEOUT_MIN = "${env.CG_PROD_APPROVAL_TIMEOUT_MIN ?: '60'}"
+        // US-22: backend remoto de US-20. Si CG_TF_STATE_BUCKET está vacío, tf-pipeline.sh usa
+        // circleguard-terraform-state-<ID_CUENTA>. La Región es la del proyecto AWS.
+        AWS_TERRAFORM_CREDENTIALS_ID = 'aws-terraform'
+        TF_STATE_BUCKET = "${env.CG_TF_STATE_BUCKET ?: ''}"
+        TF_LOCK_TABLE = "${env.CG_TF_LOCK_TABLE ?: 'circleguard-terraform-locks'}"
+        TF_STATE_REGION = "${env.CG_AWS_REGION ?: 'us-east-2'}"
     }
 
     stages {
@@ -385,6 +417,25 @@ pipeline {
                     sh 'IMAGE_TAG="' + (versionMap.APP_VERSION ?: '0.1.0') + '" ./deploy/compose/validate-compose.sh'
                     // US-13: los scripts de despliegue/promoción se prueban también en los PR (sin Docker ni credenciales).
                     sh 'chmod +x deploy/scripts/*.sh && ./deploy/scripts/test-deploy-scripts.sh'
+                    // US-22: scripts de plataforma con binarios simulados.
+                    sh 'chmod +x infra/scripts/*.sh infra/terraform/scripts/*.sh && ./infra/scripts/test-platform-scripts.sh'
+                }
+            }
+        }
+
+        // US-22 CA1: plan de los tres ambientes, archivado como artefacto (también en los PR).
+        stage('Terraform Plan') {
+            when {
+                expression { platform?.runTerraformPlan == true }
+            }
+            steps {
+                script {
+                    runTerraformPlanStage()
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/terraform/*-plan.txt,reports/terraform/*-summary.json,reports/terraform/*-plan.json', allowEmptyArchive: true
                 }
             }
         }
@@ -437,6 +488,18 @@ pipeline {
         // FAILURE antes de empezar y en SUCCESS solo al terminar bien; si una falla,
         // las siguientes se omiten y stage nunca recibe la versión.
         // ---------------------------------------------------------------------
+        // US-22 CA2: la infraestructura de dev se aplica antes de desplegar la aplicación en dev.
+        stage('Terraform Apply dev') {
+            when {
+                expression { plan?.autoDeployDev == true && platform?.terraformApply == true }
+            }
+            steps {
+                script {
+                    runTerraformApplyDevStage()
+                }
+            }
+        }
+
         stage('Deploy to dev') {
             when {
                 expression { plan?.autoDeployDev == true }
@@ -484,6 +547,18 @@ pipeline {
             }
         }
 
+        // US-22 CA2: apply automático en stage, con la misma compuerta que la aplicación (dev + E2E).
+        stage('Terraform Apply stage') {
+            when {
+                expression { plan?.promoteToStage == true && platform?.terraformApply == true }
+            }
+            steps {
+                script {
+                    runTerraformApplyStageStage()
+                }
+            }
+        }
+
         stage('Promote to stage') {
             when {
                 expression { plan?.promoteToStage == true }
@@ -517,6 +592,18 @@ pipeline {
             steps {
                 script {
                     runApproveProdReleaseStage()
+                }
+            }
+        }
+
+        // US-22 CA2: en prod, Terraform solo se aplica con la aprobación manual de US-31.
+        stage('Terraform Apply prod') {
+            when {
+                expression { plan?.prodRelease == true && platform?.terraformApply == true && prodApproval?.deploy == true }
+            }
+            steps {
+                script {
+                    runTerraformApplyProdStage()
                 }
             }
         }
@@ -657,8 +744,17 @@ pipeline {
                     )
                 }
             }
+            script {
+                if (platform?.terraformApply == true) {
+                    // US-22: qué ambientes recibieron el apply de Terraform en este build.
+                    sh 'mkdir -p reports/ci'
+                    writeFile file: 'reports/ci/terraform-apply.json',
+                              text: JsonOutput.prettyPrint(JsonOutput.toJson(terraformResults + [files: platform.terraformFiles]))
+                }
+            }
             // reports/ci/** incluye promotion-stage.json y health-<env>.json (US-13).
-            archiveArtifacts artifacts: 'reports/ci/**,docs/release-notes/**,services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
+            // reports/terraform: planes de US-22 (sin los .tfplan binarios).
+            archiveArtifacts artifacts: 'reports/ci/**,reports/terraform/*.txt,reports/terraform/*.json,docs/release-notes/**,services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
         }
         // US-14 / SCRUM-70 (CA1): `cleanup` corre al final, con el resultado definitivo del build
         // (incluida la descripción de US-13 / US-31), y nunca cambia ese resultado.
@@ -702,9 +798,18 @@ void runDetectChangedComponentsStage() {
         multibranchFlow.requireDeploymentAllowed(flow, params.TARGET_ENV)
     }
 
+    // US-22: etapas de plataforma (Terraform).
+    platformFlow = load 'jenkins/vars/platformFlow.groovy'
+    platform = platformFlow.planPlatform(plan, detection, [
+        forceTerraform: params.FORCE_TERRAFORM as boolean
+    ])
+    echo platformFlow.formatPlatformSummary(platform)
+
+
     sh 'mkdir -p reports/ci'
     writeFile file: 'reports/ci/change-detection.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(detection))
     writeFile file: 'reports/ci/pipeline-plan.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(plan))
+    writeFile file: 'reports/ci/platform-plan.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(platform))
 }
 
 void runCalculateSemVerStage() {
@@ -774,6 +879,27 @@ void runE2EPlaywrightStage() {
     }
 }
 
+void runTerraformPlanStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    sh 'chmod +x infra/terraform/scripts/*.sh'
+    withTerraformCredentials {
+        for (String tfEnv in platform.terraformEnvs) {
+            sh "./infra/terraform/scripts/tf-pipeline.sh plan --env '${tfEnv}'"
+        }
+    }
+}
+
+void runTerraformApplyDevStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    Map tfDecision = platformFlow.terraformApplyDecision(platform, 'dev')
+    echo "[US-22] ${tfDecision.reason}"
+    terraformResults.dev = 'FAILURE'
+    withTerraformCredentials {
+        sh "./infra/terraform/scripts/tf-pipeline.sh apply --env 'dev'"
+    }
+    terraformResults.dev = 'SUCCESS'
+}
+
 void runDeployToDevStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     deployResults.deployDev = 'FAILURE'
@@ -804,6 +930,21 @@ void runE2EAgainstDevStage() {
         sh "./deploy/scripts/run-e2e.sh --env dev --host '${env.DEV_HOST}'"
     }
     deployResults.e2eDev = 'SUCCESS'
+}
+
+void runTerraformApplyStageStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    Map tfDecision = platformFlow.terraformApplyDecision(platform, 'stage', [deployResults: deployResults])
+    echo "[US-22] ${tfDecision.reason}"
+    if (!tfDecision.apply) {
+        terraformResults.stage = 'SKIPPED'
+        error(tfDecision.reason)
+    }
+    terraformResults.stage = 'FAILURE'
+    withTerraformCredentials {
+        sh "./infra/terraform/scripts/tf-pipeline.sh apply --env 'stage'"
+    }
+    terraformResults.stage = 'SUCCESS'
 }
 
 void runPromoteToStageStage() {
@@ -881,6 +1022,21 @@ void runApproveProdReleaseStage() {
     } else if (prodApproval.status == 'INVALID') {
         error(prodApproval.reason)
     }
+}
+
+void runTerraformApplyProdStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    Map tfDecision = platformFlow.terraformApplyDecision(platform, 'prod', [prodApproval: prodApproval])
+    echo "[US-22] ${tfDecision.reason}"
+    if (!tfDecision.apply) {
+        terraformResults.prod = 'SKIPPED'
+        error(tfDecision.reason)
+    }
+    terraformResults.prod = 'FAILURE'
+    withTerraformCredentials {
+        sh "./infra/terraform/scripts/tf-pipeline.sh apply --env 'prod'"
+    }
+    terraformResults.prod = 'SUCCESS'
 }
 
 void runDeployToProdStage() {
