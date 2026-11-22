@@ -11,12 +11,13 @@ La decisión de qué etapas corren vive en [`jenkins/vars/platformFlow.groovy`](
 ```
 Detect -> Compile/Test -> Sonar -> Validate Compose (+ pruebas de scripts de plataforma)
        -> Terraform Plan (dev, stage, prod)        solo si cambia infra/terraform
-       -> Publish Images to Nexus
+       -> Trivy IaC Scan (infra/terraform, deploy/k8s)
+       -> Build Images -> Trivy Image Scan (9 imágenes) -> Publish Images to Nexus
        -> Terraform Apply dev -> Deploy to dev -> Verify dev -> E2E against dev
        -> Terraform Apply stage -> Promote to stage -> Verify stage
        -> Approve prod release (US-31) -> Terraform Apply prod -> Deploy to prod -> Verify prod
 ```
-En un Pull Request solo corre `Terraform Plan`, si el PR toca Terraform. Un PR nunca aplica Terraform ni despliega.
+En un Pull Request solo corren `Terraform Plan` (si el PR toca Terraform) y `Trivy IaC Scan`. Un PR nunca aplica Terraform ni despliega.
 
 ## US-22: Terraform en Jenkins
 
@@ -31,6 +32,16 @@ El backend es el de US-20 (S3 + DynamoDB en la Región del proyecto). `tf-pipeli
 
 `FORCE_TERRAFORM=true` corre plan (y apply en main) aunque el commit no toque Terraform, por ejemplo para detectar drift.
 
+## US-38: Trivy bloqueante
+
+| Criterio | Cómo se cumple |
+| :--- | :--- |
+| CA1: `trivy image` sobre las 9 imágenes y `trivy config` sobre `infra/terraform` y `deploy/k8s` | [`trivy-scan.sh`](../../infra/scripts/trivy-scan.sh) en dos etapas. `Trivy IaC Scan` corre en todo build pesado (PR y main). `Trivy Image Scan` corre en main entre `Build Images` y `Publish Images to Nexus`, así una imagen vulnerable nunca llega al registro |
+| CA2: `HIGH,CRITICAL` con `--exit-code 1`; excepciones en `.trivyignore` | La tabla de cada objetivo usa `--severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore`. En imágenes se agrega `--ignore-unfixed`. El script escanea todos los objetivos y al final falla si alguno tuvo hallazgos, para que el reporte quede completo. [`.trivyignore`](../../.trivyignore) explica qué se exige para aceptar una excepción |
+| CA3: reportes publicados en Jenkins | `reports/trivy/<objetivo>.txt` y `.json`, `summary-config.json`, `summary-image.json` como artefactos, y `reports/trivy/junit/*.xml` en el reporte de pruebas del build |
+
+Para separar construcción y publicación, [`publish-docker-images.sh`](../../infra/scripts/publish-docker-images.sh) acepta `DO_PUSH=false` (solo construye) y `PUSH_ONLY=true` (solo publica lo ya construido y escaneado). `ENABLE_TRIVY_GATE=false` desactiva el escaneo en una ejecución manual.
+
 ## Configuración en Jenkins
 
 | Elemento | Tipo | Uso |
@@ -38,7 +49,7 @@ El backend es el de US-20 (S3 + DynamoDB en la Región del proyecto). `tf-pipeli
 | `aws-terraform` | Credencial usuario/contraseña (Access Key ID / Secret) | Terraform plan y apply. Debe ser una identidad con permisos solo sobre los recursos de CircleGuard |
 | `CG_TF_STATE_BUCKET`, `CG_TF_LOCK_TABLE`, `CG_AWS_REGION` | Variables globales (opcionales) | Backend de Terraform. Por defecto `circleguard-terraform-state-<cuenta>`, `circleguard-terraform-locks` y `us-east-2` |
 
-La imagen de Jenkins ([`infra/bootstrap/jenkins/Dockerfile`](../../infra/bootstrap/jenkins/Dockerfile)) instala Terraform 1.11.4, comparado contra el checksum del proveedor. Hay que reconstruirla en el servidor de CI para que las etapas nuevas funcionen:
+La imagen de Jenkins ([`infra/bootstrap/jenkins/Dockerfile`](../../infra/bootstrap/jenkins/Dockerfile)) instala Terraform 1.11.4 y Trivy 0.69.3 (con las plantillas JUnit y HTML), cada uno comparado contra el checksum del proveedor. Hay que reconstruirla en el servidor de CI para que las etapas nuevas funcionen:
 
 ```bash
 sudo bash /opt/circleguard-ci/infra/bootstrap/bootstrap-ci.sh --mode jenkins --public-host 18.117.90.15
@@ -48,8 +59,8 @@ sudo bash /opt/circleguard-ci/infra/bootstrap/bootstrap-ci.sh --mode jenkins --p
 
 | Comando | Qué cubre |
 | :--- | :--- |
-| `bash jenkins/test/run-platform-validation.sh` | Plan de etapas, compuerta de apply por ambiente, cableado y orden del Jenkinsfile, Terraform en la imagen |
-| `bash infra/scripts/test-platform-scripts.sh` | `tf-pipeline.sh` con un terraform simulado |
+| `bash jenkins/test/run-platform-validation.sh` | Plan de etapas, compuerta de apply por ambiente, Trivy, cableado y orden del Jenkinsfile, herramientas de la imagen |
+| `bash infra/scripts/test-platform-scripts.sh` | `tf-pipeline.sh` y `trivy-scan.sh` con binarios simulados |
 | `bash jenkins/test/run-multibranch-validation.sh` | Las 22 validaciones previas de US-13, US-30 y US-31 siguen pasando |
 
 `test-platform-scripts.sh` también corre en la etapa `Validate Compose Environments`, así que un PR que rompa estos scripts falla en CI.
@@ -58,3 +69,4 @@ sudo bash /opt/circleguard-ci/infra/bootstrap/bootstrap-ci.sh --mode jenkins --p
 
 - Reconstruir la imagen de Jenkins y crear la credencial `aws-terraform`.
 - Primera ejecución real: plan archivado de un PR de Terraform y un apply en prod con aprobación. Las capturas van en `docs/informe/capturas/`.
+- Triage del primer escaneo real de Trivy. Las excepciones que se acepten se agregan a `.trivyignore` con su justificación.
