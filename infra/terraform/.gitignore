@@ -20,3 +20,6 @@ modules/**/.terraform.lock.hcl
 
 # Copias locales de proveedores y módulos para validar sin conexión
 **/.terraform-offline/
+
+# La configuración de la prueba de bloqueo se inicializa en carpetas temporales
+tests/**/.terraform.lock.hcl

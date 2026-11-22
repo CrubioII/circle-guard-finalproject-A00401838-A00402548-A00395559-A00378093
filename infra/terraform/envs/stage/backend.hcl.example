@@ -1,8 +1,8 @@
-# Copia este archivo como backend.hcl (ignorado por Git) y reemplaza <ID_CUENTA>.
-# El bucket de estado y la tabla de bloqueo los crea la historia del backend remoto.
+# init-backend.sh genera backend.hcl (ignorado por Git) con el ID de la cuenta.
+# A mano: copia este archivo como backend.hcl y reemplaza <ID_CUENTA>.
 #   terraform init -backend-config=backend.hcl
-bucket         = "circleguard-terraform-state-<ID_CUENTA>"
-key            = "envs/stage/platform.tfstate"
-region         = "us-east-2"
-dynamodb_table = "circleguard-terraform-locks"
-encrypt        = true
+bucket       = "circleguard-terraform-state-<ID_CUENTA>"
+key          = "envs/stage/platform.tfstate"
+region       = "us-east-2"
+use_lockfile = true
+encrypt      = true
