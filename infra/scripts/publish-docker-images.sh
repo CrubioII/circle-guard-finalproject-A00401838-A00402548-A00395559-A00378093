@@ -6,7 +6,7 @@
 # las etiqueta con la versión semántica calculada (US-12) y las publica en el
 # registro privado Nexus:
 #   <REGISTRY_URL>/circleguard/<servicio>:<semver>
-#   (ej. 52.14.6.11:5000/circleguard/auth:0.1.0)
+#   (ej. 18.117.90.15:5000/circleguard/auth:0.1.0)
 #
 # Reglas obligatorias:
 #   - NUNCA usar la etiqueta 'latest'.
@@ -17,7 +17,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-REGISTRY_URL="${REGISTRY_URL:-52.14.6.11:5000}"
+REGISTRY_URL="${REGISTRY_URL:-18.117.90.15:5000}"
 REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-circleguard}"
 REGISTRY_USER="${REGISTRY_USER:-${NEXUS_USER:-}}"
 REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-${NEXUS_PASSWORD:-}}"

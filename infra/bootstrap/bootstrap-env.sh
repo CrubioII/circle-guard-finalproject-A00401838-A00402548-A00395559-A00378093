@@ -25,7 +25,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 TARGET_ENV=""
-REGISTRY_URL="${REGISTRY_URL:-52.14.6.11:5000}"
+REGISTRY_URL="${REGISTRY_URL:-18.117.90.15:5000}"
 REGISTRY_INSECURE="${REGISTRY_INSECURE:-true}"
 REGISTRY_USER="${REGISTRY_USER:-}"
 REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-}"
@@ -59,7 +59,7 @@ Uso: infra/bootstrap/bootstrap-env.sh <dev|stage|prod|all> [opciones]
 Argumentos y opciones:
   <dev|stage|prod|all>         Ambiente objetivo (o --env <dev|stage|prod|all>)
   --env <dev|stage|prod|all>   Ambiente objetivo
-  --registry-url <host:port>   URL del registro privado de imágenes (por defecto: 52.14.6.11:5000)
+  --registry-url <host:port>   URL del registro privado de imágenes (por defecto: 18.117.90.15:5000)
   --registry-user <usuario>    Usuario para docker login en el registro privado
   --registry-password <pass>   Contraseña para docker login en el registro privado
   --deploy-base-dir <ruta>     Directorio base de despliegue (por defecto: /opt/circleguard)

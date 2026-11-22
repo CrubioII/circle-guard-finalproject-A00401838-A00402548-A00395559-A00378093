@@ -16,7 +16,7 @@
 # Reportes: e2e/reports/<env>/{junit/results.xml,html}. Exit != 0 si falla cualquier flujo.
 #
 # Uso:
-#   deploy/scripts/run-e2e.sh --env dev --host 52.15.213.209   # SSH_KEY / SSH_USER del entorno
+#   deploy/scripts/run-e2e.sh --env dev --host 52.15.165.116   # SSH_KEY / SSH_USER del entorno
 #   deploy/scripts/run-e2e.sh --env dev --local                 # pila local (smoke-up.sh KEEP_UP=1)
 # Opcionales: SSH_PORT, SSH_KNOWN_HOSTS, E2E_TUNNEL_TARGET (127.0.0.1), E2E_WEB_LOCAL_PORT (8081),
 #   E2E_SKIP_BROWSER_INSTALL=1.
