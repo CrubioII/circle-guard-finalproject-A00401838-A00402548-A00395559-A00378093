@@ -1,0 +1,23 @@
+# Observabilidad del ambiente stage (US-24 / SCRUM-93).
+#   kubectl apply -k observability/overlays/stage
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../..
+
+patches:
+  # La política de scrape vive en el namespace de la aplicación del ambiente.
+  - target:
+      kind: NetworkPolicy
+      name: allow-prometheus-scrape
+    patch: |-
+      - op: replace
+        path: /metadata/namespace
+        value: circleguard-stage
+
+labels:
+  - pairs:
+      circleguard.io/environment: stage
+    includeSelectors: false
+    includeTemplates: true

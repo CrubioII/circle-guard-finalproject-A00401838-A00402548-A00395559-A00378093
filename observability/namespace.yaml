@@ -1,0 +1,10 @@
+# Namespace de observabilidad (US-24 / SCRUM-93). Uno por clúster: cada
+# ambiente tiene su propio clúster k3s (US-20), así que Prometheus y Grafana
+# viven junto a los servicios del ambiente.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: circleguard-observability
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted

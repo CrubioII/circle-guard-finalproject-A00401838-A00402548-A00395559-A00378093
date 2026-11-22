@@ -1,0 +1,30 @@
+# Prometheus para los ambientes en Docker Compose (US-24 / SCRUM-93).
+#
+# Mientras los servicios corren con deploy/compose en cada nodo, este archivo
+# recoge las métricas por nombre de servicio dentro de la red del compose.
+# Lo usa observability/docker-compose.observability.yml.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: circleguard-compose
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: circleguard-services
+    honor_labels: true
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["identity-service:8083"]
+        labels: { application: circleguard-identity-service }
+      - targets: ["auth-service:8180"]
+        labels: { application: circleguard-auth-service }
+      - targets: ["promotion-service:8088"]
+        labels: { application: circleguard-promotion-service }
+      - targets: ["form-service:8086"]
+        labels: { application: circleguard-form-service }
+      - targets: ["gateway-service:8087"]
+        labels: { application: circleguard-gateway-service }
