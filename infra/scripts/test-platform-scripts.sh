@@ -3,7 +3,7 @@
 # Pruebas sin AWS, clúster ni Docker de los scripts de plataforma:
 #   infra/terraform/scripts/tf-pipeline.sh (US-22)
 #   infra/scripts/trivy-scan.sh            (US-38)
-#   deploy/scripts/k8s-deploy.sh           (US-39)
+#   deploy/scripts/k8s-deploy.sh           (US-39 / US-28)
 # Usa binarios simulados (terraform, trivy, kubectl) que registran sus argumentos.
 # =============================================================================
 set -euo pipefail
@@ -95,7 +95,7 @@ set +e; bash "${ROOT}/infra/scripts/trivy-scan.sh" image --version latest >/dev/
 [[ ${rc} -ne 0 ]] || die "'latest' debería rechazarse"
 pass "image: rechaza 'latest'"
 
-echo "== k8s-deploy.sh (US-39)"
+echo "== k8s-deploy.sh (US-39 / US-28)"
 OV="${WORK}/overlay"; mkdir -p "${OV}"
 cat > "${OV}/kustomization.yaml" <<'EOF'
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -133,7 +133,9 @@ pass "deploy: kustomization de release con la versión SemVer, apply -k y change
 
 out="$(bash "${ROOT}/deploy/scripts/k8s-deploy.sh" verify --env stage --version 1.4.0 --dry-run)"
 [[ "${out}" == *"-n circleguard-stage rollout status"* ]] || die "verify no usa rollout status en circleguard-stage"
-pass "verify usa rollout status en el namespace del ambiente"
+out="$(bash "${ROOT}/deploy/scripts/k8s-deploy.sh" rollback --env prod --dry-run)"
+[[ "${out}" == *"-n circleguard-prod rollout undo"* ]] || die "rollback no usa rollout undo"
+pass "verify usa rollout status y rollback usa rollout undo en el namespace del ambiente (US-28)"
 
 set +e; bash "${ROOT}/deploy/scripts/k8s-deploy.sh" deploy --env dev --version latest --dry-run >/dev/null 2>&1; rc=$?; set -e
 [[ ${rc} -eq 1 ]] || die "'latest' debería rechazarse"

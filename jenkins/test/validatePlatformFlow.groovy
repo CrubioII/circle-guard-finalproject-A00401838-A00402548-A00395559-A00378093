@@ -1,6 +1,6 @@
 // jenkins/test/validatePlatformFlow.groovy
-// Historias de Usuario: US-22 (Terraform en Jenkins), US-38 (Trivy bloqueante) y
-// US-39 (despliegue y promoción en Kubernetes).
+// Historias de Usuario: US-22 (Terraform en Jenkins), US-38 (Trivy bloqueante),
+// US-39 (despliegue y promoción en Kubernetes) y US-28 (rollback en Kubernetes).
 // Propósito: validar sin Jenkins el plan de etapas de plataforma, la compuerta de apply
 // por ambiente, el cableado del Jenkinsfile y los scripts de plataforma.
 
@@ -9,9 +9,10 @@ import groovy.lang.GroovyShell
 
 File repoRoot = new File(System.getProperty('circleguard.repoRoot') ?: '.').canonicalFile
 File platformScript = new File(repoRoot, 'jenkins/vars/platformFlow.groovy')
+File rollbackScript = new File(repoRoot, 'jenkins/vars/rollbackDeployment.groovy')
 File jenkinsfile = new File(repoRoot, 'Jenkinsfile')
 File dockerfile = new File(repoRoot, 'infra/bootstrap/jenkins/Dockerfile')
-[platformScript, jenkinsfile, dockerfile].each { assert it.exists() : "Falta ${it.path}" }
+[platformScript, rollbackScript, jenkinsfile, dockerfile].each { assert it.exists() : "Falta ${it.path}" }
 
 boolean isWindowsHost = System.getProperty('os.name').toLowerCase().contains('windows')
 String bashExecutable = System.getenv('BASH_EXE') ?:
@@ -26,8 +27,9 @@ binding.setVariable('sh', { String cmd -> shCalls << cmd })
 binding.setVariable('withEnv', { List vars, Closure body -> body() })
 GroovyShell shell = new GroovyShell(binding)
 def platformFlow = shell.parse(platformScript)
+def rollbackDeployment = shell.parse(rollbackScript)
 
-println('=== Validación de plataforma: Terraform, Trivy y Kubernetes (US-22/38/39) ===')
+println('=== Validación de plataforma: Terraform, Trivy, Kubernetes y rollback (US-22/38/39/28) ===')
 
 Map mainPlan = [runHeavyBuild: true, isMainBranch: true, autoDeployDev: true]
 Map prPlan = [runHeavyBuild: true, isMainBranch: false, autoDeployDev: false]
@@ -111,6 +113,47 @@ assert platformFlow.planPlatform(mainPlan, appDetection, [deployPlatform: 'k8s',
 println('[OK] Caso 6: compose por defecto, k8s por parámetro o CG_DEPLOY_PLATFORM y solo con overlays de US-21.')
 
 // -----------------------------------------------------------------------------
+// Caso 7 (US-28): rollbackDeployment admite la plataforma k8s.
+// -----------------------------------------------------------------------------
+shCalls.clear()
+Map rb = rollbackDeployment.call(env: 'stage', platform: 'k8s', host: '10.0.0.5')
+assert rb.platform == 'k8s' && rb.targetVersion == 'previous_revision'
+assert shCalls[0].contains("rollback 'stage' --platform k8s") && !shCalls[0].contains('--host')
+shCalls.clear()
+rollbackDeployment.call(env: 'prod', platform: 'k8s', targetVersion: '1.3.0')
+assert shCalls[0].contains("rollback 'prod' --to '1.3.0' --platform k8s")
+shCalls.clear()
+rollbackDeployment.call(env: 'dev', host: '10.0.0.9')
+assert shCalls[0].contains("--host '10.0.0.9'") && !shCalls[0].contains('--platform')
+try {
+    rollbackDeployment.call(env: 'dev', platform: 'swarm')
+    assert false
+} catch (IllegalStateException expected) { }
+println('[OK] Caso 7: rollbackDeployment hace rollout undo o redeploy de etiqueta en k8s sin romper el modo compose.')
+
+// -----------------------------------------------------------------------------
+// Caso 7b (US-28): rollback manual solo desde main, versión SemVer y flujo apagado.
+// -----------------------------------------------------------------------------
+Map mainCtx = [isMainBranch: true, isPullRequest: false, branchName: 'main']
+Map prCtx = [isMainBranch: false, isPullRequest: true, branchName: 'PR-9']
+assert !platformFlow.rollbackRequest(mainCtx, 'none', '').requested
+Map rbStage = platformFlow.rollbackRequest(mainCtx, 'stage', '1.3.0')
+assert rbStage.allowed && rbStage.version == '1.3.0' && !rbStage.requiresApproval
+assert platformFlow.rollbackRequest(mainCtx, 'prod', '').requiresApproval
+assert !platformFlow.rollbackRequest(prCtx, 'dev', '').allowed : 'Un PR no puede hacer rollback'
+[['qa', ''], ['dev', 'latest'], ['dev', '1.3']].each { List a ->
+    try {
+        platformFlow.rollbackRequest(mainCtx, a[0], a[1])
+        assert false : "Debería rechazar ${a}"
+    } catch (IllegalArgumentException expected) { }
+}
+Map rbPlans = platformFlow.rollbackOnlyPlans(mainPlan + [prodRelease: true, promoteToStage: true], mainTf)
+assert rbPlans.plan.rollbackOnly && !rbPlans.plan.runHeavyBuild && !rbPlans.plan.autoDeployDev && !rbPlans.plan.prodRelease
+assert !rbPlans.platform.terraformApply && !rbPlans.platform.runTrivyImages && rbPlans.platform.stages == ['Manual Rollback']
+assert mainTf.terraformApply : 'rollbackOnlyPlans no modifica el plan original'
+println('[OK] Caso 7b: rollback manual solo en main, SemVer, prod con aprobación y sin build ni despliegue nuevo.')
+
+// -----------------------------------------------------------------------------
 // Caso 8: el Jenkinsfile cablea las etapas de plataforma en el orden correcto.
 // -----------------------------------------------------------------------------
 String jf = jenkinsfile.getText('UTF-8')
@@ -134,7 +177,13 @@ String jf = jenkinsfile.getText('UTF-8')
     "./deploy/scripts/k8s-deploy.sh deploy --env dev --version '\${version}'",
     "./deploy/scripts/k8s-deploy.sh deploy --env stage --version '\${version}'",
     "./deploy/scripts/k8s-deploy.sh deploy --env prod --version '\${prodApproval.version}'",
-    './deploy/scripts/k8s-deploy.sh verify --env', "sh './deploy/scripts/run-e2e.sh --env dev --k8s'"
+    './deploy/scripts/k8s-deploy.sh verify --env', "sh './deploy/scripts/run-e2e.sh --env dev --k8s'",
+    // US-28
+    "./infra/scripts/rollback.sh rollback '\${envName}' --platform k8s",
+    "stage('Manual Rollback')", "name: 'ROLLBACK_ENV'", "name: 'ROLLBACK_TARGET_VERSION'",
+    'platformFlow.rollbackRequest(flow, params.ROLLBACK_ENV, params.ROLLBACK_TARGET_VERSION)',
+    'platformFlow.rollbackOnlyPlans(plan, platform)', "input(id: 'ProdRollback'",
+    'flow?.isMainBranch == true && plan?.rollbackOnly != true'
 ].each { String required ->
     assert jf.contains(required) : "El Jenkinsfile no contiene: ${required}"
 }
@@ -161,12 +210,12 @@ println('[OK] Caso 9: imagen de Jenkins con terraform, trivy (plantillas) y kube
 // -----------------------------------------------------------------------------
 // Caso 10: scripts de plataforma (binarios simulados, sin AWS ni clúster).
 // -----------------------------------------------------------------------------
-[['infra/scripts/test-platform-scripts.sh', 'RESULTADO: OK']].each { List t ->
+[['infra/scripts/test-platform-scripts.sh', 'RESULTADO: OK'], ['infra/scripts/test-rollback.sh', 'Todas las pruebas']].each { List t ->
     Process p = new ProcessBuilder(bashExecutable, t[0]).directory(repoRoot).redirectErrorStream(true).start()
     String output = p.inputStream.getText('UTF-8')
     int code = p.waitFor()
     assert code == 0 && output.contains(t[1]) : "${t[0]} falló:\n${output}"
 }
-println('[OK] Caso 10: tf-pipeline.sh, trivy-scan.sh y k8s-deploy.sh validados.')
+println('[OK] Caso 10: tf-pipeline.sh, trivy-scan.sh, k8s-deploy.sh y rollback.sh validados.')
 
-println('=== TODAS LAS PRUEBAS DE PLATAFORMA (US-22/38/39) PASARON EXITOSAMENTE ===')
+println('=== TODAS LAS PRUEBAS DE PLATAFORMA (US-22/38/39/28) PASARON EXITOSAMENTE ===')
