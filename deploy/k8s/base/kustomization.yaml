@@ -23,6 +23,8 @@ resources:
   - namespace/network-policies.yaml
   - middleware/postgres.yaml
   - middleware/neo4j.yaml
+  - middleware/zookeeper.yaml
+  - middleware/kafka.yaml
   - middleware/redis.yaml
 
 configMapGenerator:
