@@ -1,5 +1,5 @@
 // jenkins/test/validatePlatformFlow.groovy
-// Historia de Usuario: US-22 (Terraform en Jenkins).
+// Historias de Usuario: US-22 (Terraform en Jenkins) y US-38 (Trivy bloqueante).
 // Propósito: validar sin Jenkins el plan de etapas de plataforma, la compuerta de apply
 // por ambiente, el cableado del Jenkinsfile y los scripts de plataforma.
 
@@ -26,7 +26,7 @@ binding.setVariable('withEnv', { List vars, Closure body -> body() })
 GroovyShell shell = new GroovyShell(binding)
 def platformFlow = shell.parse(platformScript)
 
-println('=== Validación de plataforma: Terraform en Jenkins (US-22) ===')
+println('=== Validación de plataforma: Terraform y Trivy (US-22/38) ===')
 
 Map mainPlan = [runHeavyBuild: true, isMainBranch: true, autoDeployDev: true]
 Map prPlan = [runHeavyBuild: true, isMainBranch: false, autoDeployDev: false]
@@ -81,6 +81,19 @@ try {
 println('[OK] Caso 4: dev aplica directo, stage tras dev+E2E y prod solo con la aprobación de US-31.')
 
 // -----------------------------------------------------------------------------
+// Caso 5 (US-38 CA1/CA2): Trivy config en todo build pesado; trivy image solo en main.
+// -----------------------------------------------------------------------------
+assert prTf.runTrivyConfig && !prTf.runTrivyImages
+assert mainTf.runTrivyConfig && mainTf.runTrivyImages && mainTf.trivySeverity == 'HIGH,CRITICAL'
+assert mainTf.releaseImages.size() == 9 && mainTf.releaseImages.contains('mobile')
+assert mainTf.stages.indexOf('Build Images') < mainTf.stages.indexOf('Trivy Image Scan')
+assert mainTf.stages.indexOf('Trivy Image Scan') < mainTf.stages.indexOf('Publish Images to Nexus')
+Map noTrivy = platformFlow.planPlatform(mainPlan, appDetection, [enableTrivy: false])
+assert !noTrivy.runTrivyConfig && !noTrivy.runTrivyImages && !noTrivy.stages.contains('Trivy Image Scan')
+assert !platformFlow.planPlatform(docsPlan, [changedFiles: ['docs/a.md']]).runTrivyConfig
+println('[OK] Caso 5: Trivy IaC en PR y main, imágenes escaneadas entre build y publicación, HIGH/CRITICAL.')
+
+// -----------------------------------------------------------------------------
 // Caso 8: el Jenkinsfile cablea las etapas de plataforma en el orden correcto.
 // -----------------------------------------------------------------------------
 String jf = jenkinsfile.getText('UTF-8')
@@ -94,12 +107,17 @@ String jf = jenkinsfile.getText('UTF-8')
     "stage('Terraform Apply dev')", "stage('Terraform Apply stage')", "stage('Terraform Apply prod')",
     "platformFlow.terraformApplyDecision(platform, 'stage', [deployResults: deployResults])",
     "platformFlow.terraformApplyDecision(platform, 'prod', [prodApproval: prodApproval])",
-    "AWS_TERRAFORM_CREDENTIALS_ID = 'aws-terraform'", "name: 'FORCE_TERRAFORM'"
+    "AWS_TERRAFORM_CREDENTIALS_ID = 'aws-terraform'", "name: 'FORCE_TERRAFORM'",
+    // US-38
+    "stage('Trivy IaC Scan')", './infra/scripts/trivy-scan.sh config --target infra/terraform --target deploy/k8s',
+    "stage('Build Images')", "stage('Trivy Image Scan')", './infra/scripts/trivy-scan.sh image --version',
+    'DO_PUSH=false', 'PUSH_ONLY=true', "testResults: 'reports/trivy/junit/image-*.xml'", "name: 'ENABLE_TRIVY_GATE'"
 ].each { String required ->
     assert jf.contains(required) : "El Jenkinsfile no contiene: ${required}"
 }
 List<Integer> order = [
-    "stage('Terraform Plan')", "stage('Publish Images to Nexus')", "stage('Terraform Apply dev')", "stage('Deploy to dev')",
+    "stage('Terraform Plan')", "stage('Trivy IaC Scan')", "stage('Build Images')", "stage('Trivy Image Scan')",
+    "stage('Publish Images to Nexus')", "stage('Terraform Apply dev')", "stage('Deploy to dev')",
     "stage('E2E against dev')", "stage('Terraform Apply stage')", "stage('Promote to stage')",
     "stage('Approve prod release')", "stage('Terraform Apply prod')", "stage('Deploy to prod')"
 ].collect { jf.indexOf(it) }
@@ -112,10 +130,10 @@ println('[OK] Caso 8: Jenkinsfile con las etapas de plataforma cableadas y en or
 // Caso 9: la imagen de Jenkins trae las herramientas con versión fija y checksum.
 // -----------------------------------------------------------------------------
 String df = dockerfile.getText('UTF-8')
-['ARG TERRAFORM_VERSION=', 'sha256sum'].each {
+['ARG TERRAFORM_VERSION=', 'ARG TRIVY_VERSION=', 'sha256sum', '/usr/local/share/trivy/templates'].each {
     assert df.contains(it) : "El Dockerfile de Jenkins no contiene: ${it}"
 }
-println('[OK] Caso 9: imagen de Jenkins con terraform verificados por SHA-256.')
+println('[OK] Caso 9: imagen de Jenkins con terraform y trivy (plantillas) verificados por SHA-256.')
 
 // -----------------------------------------------------------------------------
 // Caso 10: scripts de plataforma (binarios simulados, sin AWS ni clúster).
@@ -126,6 +144,6 @@ println('[OK] Caso 9: imagen de Jenkins con terraform verificados por SHA-256.')
     int code = p.waitFor()
     assert code == 0 && output.contains(t[1]) : "${t[0]} falló:\n${output}"
 }
-println('[OK] Caso 10: tf-pipeline.sh validado.')
+println('[OK] Caso 10: tf-pipeline.sh y trivy-scan.sh validados.')
 
-println('=== TODAS LAS PRUEBAS DE PLATAFORMA (US-22) PASARON EXITOSAMENTE ===')
+println('=== TODAS LAS PRUEBAS DE PLATAFORMA (US-22/38) PASARON EXITOSAMENTE ===')
