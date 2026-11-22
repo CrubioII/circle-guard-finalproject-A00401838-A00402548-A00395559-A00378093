@@ -1,0 +1,47 @@
+# Reglas de tamaño y trazabilidad de los Pull Requests (BRANCHING_STRATEGY.md, sección 7).
+# Corre en todo PR (también en PR apilados sobre otra rama) y falla si el PR mezcla
+# historias, pasa del límite de código o deja la plantilla vacía.
+name: pr-rules
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Pruebas de las reglas
+        run: node --test .github/scripts/pr-rules.test.js
+      - name: Evaluar el PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { evaluate } = require('./.github/scripts/pr-rules.js');
+            const pr = context.payload.pull_request;
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number, per_page: 100,
+            });
+            const result = evaluate({
+              title: pr.title, branch: pr.head.ref, body: pr.body || '', labels: pr.labels, files,
+            });
+            const s = result.summary;
+            core.summary
+              .addHeading('Reglas del PR')
+              .addTable([
+                [{ data: 'Historias', header: true }, { data: 'Archivos', header: true },
+                 { data: 'Líneas de código', header: true }, { data: 'Líneas totales', header: true }],
+                [s.stories.join(', ') || '-', String(s.files), String(s.codeLines), String(s.totalLines)],
+              ])
+              .addList(result.errors.length ? result.errors : ['Cumple R1 a R4.'])
+              .write();
+            if (!result.ok) {
+              core.setFailed(result.errors.join('\n'));
+            }
