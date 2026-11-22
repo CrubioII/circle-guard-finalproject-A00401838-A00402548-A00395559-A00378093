@@ -17,6 +17,7 @@ Detect -> Compile/Test -> Sonar -> Validate Compose (+ pruebas de scripts de pla
        -> Terraform Apply stage -> Promote to stage -> Verify stage
        -> Approve prod release (US-31) -> Terraform Apply prod -> Deploy to prod -> Verify prod
 ```
+
 En un Pull Request solo corren `Terraform Plan` (si el PR toca Terraform) y `Trivy IaC Scan`. Un PR nunca aplica Terraform ni despliega.
 
 ## US-22: Terraform en Jenkins
@@ -42,14 +43,29 @@ El backend es el de US-20 (S3 + DynamoDB en la Región del proyecto). `tf-pipeli
 
 Para separar construcción y publicación, [`publish-docker-images.sh`](../../infra/scripts/publish-docker-images.sh) acepta `DO_PUSH=false` (solo construye) y `PUSH_ONLY=true` (solo publica lo ya construido y escaneado). `ENABLE_TRIVY_GATE=false` desactiva el escaneo en una ejecución manual.
 
+## US-39: despliegue y promoción en Kubernetes
+
+| Criterio | Cómo se cumple |
+| :--- | :--- |
+| CA1: `kubectl apply -k` por overlay con la etiqueta SemVer de US-12 | [`k8s-deploy.sh deploy`](../../deploy/scripts/k8s-deploy.sh) genera `build/k8s-release/<env>/kustomization.yaml`, que toma `deploy/k8s/overlays/<env>` (US-21) como base y fija las 9 imágenes en `<registro>/circleguard/<img>:X.Y.Z`. Rechaza `latest` |
+| CA2: `kubectl rollout status` como verificación | `k8s-deploy.sh verify` espera el rollout de cada Deployment y StatefulSet de `circleguard-<env>` y comprueba que las imágenes de CircleGuard tengan la versión pedida. Si algo falla, el Jenkinsfile hace `rollout undo` (US-28) y la etapa falla |
+| CA3: promoción automática a stage tras E2E y aprobación manual a prod | Son las mismas etapas de US-13 y US-31. Con k8s, los E2E de dev corren con `run-e2e.sh --k8s`, que abre `kubectl port-forward` a los Services en vez del túnel SSH |
+| CA4: notificación de éxito y fallo | La de US-14 en Discord (`notifyPipeline`), que ya incluye versión, etapa fallida y enlace al log |
+
+La plataforma se elige con el parámetro `DEPLOY_PLATFORM` (`default`, `compose`, `k8s`). `default` usa la variable global `CG_DEPLOY_PLATFORM` y, si no existe, `compose`. Elegir `k8s` sin los overlays de US-21 en el commit falla en la etapa de detección. Cuando los manifiestos de servicios estén en main, basta con definir `CG_DEPLOY_PLATFORM=k8s` en Jenkins.
+
+Cada despliegue anota los Deployments con `kubernetes.io/change-cause` (versión y número de build) y guarda la versión en el ConfigMap `circleguard-release` del namespace. `k8s-deploy.sh status --env <env>` muestra ambas cosas y el historial de revisiones.
+
 ## Configuración en Jenkins
 
 | Elemento | Tipo | Uso |
 | :--- | :--- | :--- |
 | `aws-terraform` | Credencial usuario/contraseña (Access Key ID / Secret) | Terraform plan y apply. Debe ser una identidad con permisos solo sobre los recursos de CircleGuard |
+| `kubeconfig-dev`, `kubeconfig-stage`, `kubeconfig-prod` | Credencial de archivo | kubeconfig de cada clúster k3s, descargado con `deploy/k8s/scripts/get-kubeconfig.sh` (parámetro SSM de US-20) |
 | `CG_TF_STATE_BUCKET`, `CG_TF_LOCK_TABLE`, `CG_AWS_REGION` | Variables globales (opcionales) | Backend de Terraform. Por defecto `circleguard-terraform-state-<cuenta>`, `circleguard-terraform-locks` y `us-east-2` |
+| `CG_DEPLOY_PLATFORM` | Variable global (opcional) | `compose` o `k8s` |
 
-La imagen de Jenkins ([`infra/bootstrap/jenkins/Dockerfile`](../../infra/bootstrap/jenkins/Dockerfile)) instala Terraform 1.11.4 y Trivy 0.58.1 (con las plantillas JUnit y HTML), cada uno comparado contra el checksum del proveedor. Hay que reconstruirla en el servidor de CI para que las etapas nuevas funcionen:
+La imagen de Jenkins ([`infra/bootstrap/jenkins/Dockerfile`](../../infra/bootstrap/jenkins/Dockerfile)) instala Terraform 1.11.4, Trivy 0.58.1 (con las plantillas JUnit y HTML) y kubectl v1.32.2, cada uno comparado contra el checksum del proveedor. Hay que reconstruirla en el servidor de CI para que las etapas nuevas funcionen:
 
 ```bash
 sudo bash /opt/circleguard-ci/infra/bootstrap/bootstrap-ci.sh --mode jenkins --public-host 18.117.90.15
@@ -59,14 +75,15 @@ sudo bash /opt/circleguard-ci/infra/bootstrap/bootstrap-ci.sh --mode jenkins --p
 
 | Comando | Qué cubre |
 | :--- | :--- |
-| `bash jenkins/test/run-platform-validation.sh` | Plan de etapas, compuerta de apply por ambiente, Trivy, cableado y orden del Jenkinsfile, herramientas de la imagen |
-| `bash infra/scripts/test-platform-scripts.sh` | `tf-pipeline.sh` y `trivy-scan.sh` con binarios simulados |
+| `bash jenkins/test/run-platform-validation.sh` | Plan de etapas, compuerta de apply por ambiente, plataforma de despliegue, rollback, cableado y orden del Jenkinsfile, herramientas de la imagen |
+| `bash infra/scripts/test-platform-scripts.sh` | `tf-pipeline.sh`, `trivy-scan.sh` y `k8s-deploy.sh` con binarios simulados (incluye un render real con `kubectl kustomize` si está instalado) |
 | `bash jenkins/test/run-multibranch-validation.sh` | Las 22 validaciones previas de US-13, US-30 y US-31 siguen pasando |
 
-`test-platform-scripts.sh` también corre en la etapa `Validate Compose Environments`, así que un PR que rompa estos scripts falla en CI.
+`test-platform-scripts.sh` y `test-rollback.sh` también corren en la etapa `Validate Compose Environments`, así que un PR que rompa estos scripts falla en CI.
 
 ## Pendiente para cerrar las historias
 
-- Reconstruir la imagen de Jenkins y crear la credencial `aws-terraform`.
-- Primera ejecución real: plan archivado de un PR de Terraform y un apply en prod con aprobación. Las capturas van en `docs/informe/capturas/`.
+- Reconstruir la imagen de Jenkins y crear las credenciales `aws-terraform` y `kubeconfig-<env>`.
+- Primera ejecución real: plan archivado de un PR de Terraform, un apply en prod con aprobación y un despliegue k8s de dev a stage. Las capturas van en `docs/informe/capturas/`.
 - Triage del primer escaneo real de Trivy. Las excepciones que se acepten se agregan a `.trivyignore` con su justificación.
+- US-39 depende de los manifiestos de los 8 servicios en `deploy/k8s` (US-21 / US-37). La rama de US-21 tiene hoy el namespace y el middleware.
