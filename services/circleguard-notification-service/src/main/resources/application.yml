@@ -33,11 +33,19 @@ qr:
 server:
   port: 8082
 
+# Feature toggles (US-41). Defaults keep every channel on; turn one off per environment
+# with its environment variable, e.g. FEATURE_SMS_NOTIFICATIONS=false.
+circleguard:
+  features:
+    email-notifications: ${FEATURE_EMAIL_NOTIFICATIONS:true}
+    sms-notifications: ${FEATURE_SMS_NOTIFICATIONS:true}
+    push-notifications: ${FEATURE_PUSH_NOTIFICATIONS:true}
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,features
   endpoint:
     health:
       probes:
