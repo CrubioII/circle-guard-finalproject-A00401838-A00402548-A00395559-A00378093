@@ -11,7 +11,7 @@
 //   cd e2e && npm ci && cd ..
 //   read -rsp "API token de Jenkins: " JENKINS_API_TOKEN; export JENKINS_API_TOKEN
 //   JENKINS_USER=docente MAIN_BUILD=18 node docs/informe/scripts/capture-evidence.mjs
-//   (opcionales: JENKINS_URL=http://52.14.6.11:8080 NEXUS_URL=http://52.14.6.11:8081)
+//   (opcionales: JENKINS_URL=http://18.117.90.15:8080 NEXUS_URL=http://18.117.90.15:8081)
 //
 // El token se crea en Jenkins: <usuario> -> Security -> API Token. Nunca se escribe en el repo.
 // Nunca captura páginas de credenciales ni de configuración.
@@ -26,8 +26,8 @@ const root = resolve(here, '../../..');
 const require = createRequire(join(root, 'e2e', 'package.json'));
 const { chromium } = require('@playwright/test');
 
-const JENKINS = (process.env.JENKINS_URL || 'http://52.14.6.11:8080').replace(/\/$/, '');
-const NEXUS = (process.env.NEXUS_URL || 'http://52.14.6.11:8081').replace(/\/$/, '');
+const JENKINS = (process.env.JENKINS_URL || 'http://18.117.90.15:8080').replace(/\/$/, '');
+const NEXUS = (process.env.NEXUS_URL || 'http://18.117.90.15:8081').replace(/\/$/, '');
 const JOB = `${JENKINS}/job/circleguard-monorepo`;
 const MAIN_BUILD = process.env.MAIN_BUILD || 'lastSuccessfulBuild';
 const OUT = join(root, 'docs', 'informe', 'capturas');

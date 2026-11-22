@@ -33,7 +33,7 @@
 | 9 | `E2E Playwright` | Flujos de login, cuestionario y validación QR, con las APIs simuladas | JUnit y reporte HTML |
 | 10 | `Validate Compose Environments` | `deploy/compose/validate-compose.sh` revisa SemVer, que no haya `latest` y los healthchecks de dev, stage y prod | Log |
 | 11 | `Validate Kubernetes Manifests` | `deploy/k8s/scripts/validate.sh` genera los overlays de Kustomize de dev, stage y prod y revisa namespaces, middleware, imágenes, probes, recursos, Secrets y esquema con kubeconform (US-21). Corre en todo build, también en los PR | `reports/k8s/<env>.yaml` y `<env>-summary.txt` |
-| 12 | `Publish Images to Nexus` | `infra/scripts/publish-docker-images.sh` publica 8 servicios y el cliente web en `52.14.6.11:5000/circleguard/<svc>:X.Y.Z` | Imágenes en Nexus |
+| 12 | `Publish Images to Nexus` | `infra/scripts/publish-docker-images.sh` publica 8 servicios y el cliente web en `18.117.90.15:5000/circleguard/<svc>:X.Y.Z` | Imágenes en Nexus |
 | 13 | `Generate Release Notes & Tag` | `generate-release-notes.sh` (CHANGELOG y `docs/release-notes/`) y `git-tag-release.sh` (`vX.Y.Z`) | Tag en Git |
 | 14 | `Deploy to dev` | `deploy/scripts/environment.sh deploy --env dev`: SCP y SSH, luego `docker compose pull` y `up -d --wait` | — |
 | 15 | `Verify dev health` | Los 12 contenedores `healthy`, la imagen exacta `X.Y.Z` y readiness `UP` | `reports/ci/health-dev.json` |

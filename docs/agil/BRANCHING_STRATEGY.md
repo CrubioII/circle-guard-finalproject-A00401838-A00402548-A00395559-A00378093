@@ -207,3 +207,22 @@ git push -u origin feature/US-XX-descripcion-corta
 8. **Integración (*Squash and Merge*) y Cierre:**
    - Una vez aprobado y con los *checks* en verde, se realiza **Squash and Merge** (o *Merge Commit*) asegurando que el mensaje final siga el formato `tipo(alcance): descripción (US-XX)`.
    - Se elimina la rama temporal en GitHub y la historia en Jira pasa a `Done`.
+
+## 7. Tamaño de los Pull Requests y una historia por PR
+
+Un PR tiene que poder revisarse completo en una sentada. Desde el Sprint 2 el check `pr-rules` ([`.github/workflows/pr-rules.yml`](../../.github/workflows/pr-rules.yml)) corre en cada PR y falla si no se cumplen estas reglas:
+
+| Regla | Qué exige |
+| :--- | :--- |
+| R1 | Título en Conventional Commits: `tipo(alcance): descripción` |
+| R2 | Una sola historia: el título o la rama nombra exactamente un `US-XX`. Solo `chore`, `ci` y `build` pueden no tener historia |
+| R3 | Máximo 400 líneas cambiadas de código y 25 archivos. Las pruebas, la documentación y los archivos generados no cuentan |
+| R4 | La plantilla tiene llenos Resumen, Cómo probarlo y Criterios de aceptación |
+
+La lógica está en [`.github/scripts/pr-rules.js`](../../.github/scripts/pr-rules.js) y sus pruebas en `pr-rules.test.js` (`node --test .github/scripts/pr-rules.test.js`).
+
+Cuando una historia no cabe en un PR, se divide en PR apilados: el segundo PR apunta a la rama del primero, así cada uno muestra solo su parte. Se fusionan en orden; al fusionar uno, GitHub cambia la base del siguiente a `main`.
+
+Excepción: un cambio mecánico que toca muchos archivos (por ejemplo, reemplazar las IP tras una migración de cuenta) puede usar la etiqueta `size-exception`, siempre con la sección "Justificación de tamaño" del PR llena. El check sigue exigiendo R1, R2 y R4.
+
+Para que la regla bloquee el merge, `pr-rules` debe estar en la lista de *status checks* obligatorios de la protección de `main` (sección 5.2).

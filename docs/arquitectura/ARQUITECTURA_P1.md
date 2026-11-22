@@ -32,10 +32,10 @@ El cliente web llama por HTTP a los cinco servicios núcleo. Las URLs de cada am
 
 | Rol | Instancia (tag `Name`) | IP pública | Security group (puertos de entrada) | Aprovisionado con |
 |---|---|---|---|---|
-| Plano de control CI/CD: Jenkins, SonarQube y Nexus | `circleguard-ci-server` (`i-0f933271f06cf571d`) | `52.14.6.11` | `circleguard-ci-control-plane-sg`: 22, 8080, 9000, 8081, 5000 | `infra/bootstrap/bootstrap-ci.sh` + `docker-compose.ci.yml` |
-| Ambiente `dev` | `i-0afac282e0fa495ce` | `52.15.213.209` | `circleguard-dev-sg`: 22, 8080, 8180, 8087 | `infra/bootstrap/bootstrap-env.sh dev` |
-| Ambiente `stage` | `i-0856938aef6905ddc` | `3.17.163.44` | `circleguard-stage-sg`: 22, 8080, 8180, 8087 | `infra/bootstrap/bootstrap-env.sh stage` |
-| Ambiente `prod` | `i-087a647cdd67fb57a` | `3.19.74.9` | `circleguard-prod-sg`: 22, 8080, 8180, 8087 | `infra/bootstrap/bootstrap-env.sh prod` |
+| Plano de control CI/CD: Jenkins, SonarQube y Nexus | `circleguard-ci-server` (`i-061a73505a3aa1baa`) | `18.117.90.15` | `circleguard-ci-control-plane-sg`: 22, 8080, 9000, 8081, 5000 | `infra/bootstrap/bootstrap-ci.sh` + `docker-compose.ci.yml` |
+| Ambiente `dev` | `i-018eeb2ef96a6d94d` | `52.15.165.116` | `circleguard-dev-sg`: 22, 8080, 8180, 8087 | `infra/bootstrap/bootstrap-env.sh dev` |
+| Ambiente `stage` | `i-05022e77d42dfafe5` | `52.14.89.125` | `circleguard-stage-sg`: 22, 8080, 8180, 8087 | `infra/bootstrap/bootstrap-env.sh stage` |
+| Ambiente `prod` | `i-00e21144a1c89b8a5` | `77.113.211.62` | `circleguard-prod-sg`: 22, 8080, 8180, 8087 | `infra/bootstrap/bootstrap-env.sh prod` |
 
 Decisiones y *trade-offs*:
 
@@ -44,7 +44,7 @@ Decisiones y *trade-offs*:
 - **Jenkins despliega por SSH, no por agentes en cada nodo.** El agente copia el compose y los scripts por SCP y ejecuta `docker compose` en el nodo (`deploy/scripts/environment.sh`).
   - Con esto no hay que instalar ni mantener un agente por ambiente, y el único puerto que necesita Jenkins es el 22.
   - La verificación de salud se ejecuta dentro del nodo, y los E2E contra dev usan túneles `ssh -L`.
-- **El registro Docker vive en Nexus, en el mismo nodo de CI** (`52.14.6.11:5000`, HTTP con `insecure-registries` en cada nodo). Es más barato que un servicio administrado y basta para la Parte 1. En la Parte 2 se reemplaza por la IaC de Terraform (E2.1).
+- **El registro Docker vive en Nexus, en el mismo nodo de CI** (`18.117.90.15:5000`, HTTP con `insecure-registries` en cada nodo). Es más barato que un servicio administrado y basta para la Parte 1. En la Parte 2 se reemplaza por la IaC de Terraform (E2.1).
 - **Las imágenes son inmutables.** Un build de `main` publica `circleguard/<svc>:X.Y.Z` una sola vez y esa etiqueta se promueve sin recompilar. Ningún compose acepta `latest`: `${IMAGE_TAG:?}` falla si la etiqueta falta.
 - **El plano de control exige sesión.** Jenkins usa cuentas locales y una matriz de permisos declaradas en JCasC (US-31): solo `admin` administra y el usuario anónimo no tiene permisos. Es importante porque Jenkins monta el socket de Docker del nodo, así que administrarlo equivale a administrar el servidor. SonarQube recibe el análisis de cada build y avisa el veredicto del Quality Gate a Jenkins por la red interna `ci-network` (`http://jenkins:8080/sonarqube-webhook/`).
 - **Los secretos nunca están en el repositorio.** `inject-jenkins-secrets.sh` los recibe de las credenciales de Jenkins, o los genera con `openssl rand` en el primer aprovisionamiento. La contraseña del registro viaja por stdin hasta `docker login --password-stdin`.

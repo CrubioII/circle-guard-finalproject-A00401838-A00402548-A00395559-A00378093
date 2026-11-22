@@ -124,7 +124,7 @@
     <rect x="40" y="368" width="250" height="90" rx="8" fill="#FFFFFF" stroke="#4CB978" stroke-width="1.6"/>
     <text x="165" y="390" font-size="13" font-weight="bold" fill="#1A1A1A">Publish Images to Nexus</text>
     <text x="165" y="410">8 servicios + web-client, multi-stage, no root</text>
-    <text x="165" y="426">52.14.6.11:5000/circleguard/&lt;svc&gt;:X.Y.Z</text>
+    <text x="165" y="426">18.117.90.15:5000/circleguard/&lt;svc&gt;:X.Y.Z</text>
     <text x="165" y="442">(US-06, US-07, US-11)</text>
 
     <rect x="310" y="368" width="250" height="90" rx="8" fill="#FFFFFF" stroke="#4CB978" stroke-width="1.6"/>

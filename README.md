@@ -9,7 +9,7 @@ CircleGuard es un sistema universitario de rastreo de contactos y cercos sanitar
 |---|---|
 | Repositorio | <https://github.com/CrubioII/circle-guard-finalproject-A00401838-A00402548-A00395559-A00378093> |
 | Tablero ágil (Jira) | Proyecto **SuperPoderosos** (clave `SCRUM`) en <https://circleguard777.atlassian.net> |
-| Jenkins | <http://52.14.6.11:8080/job/circleguard-monorepo/> |
+| Jenkins | <http://18.117.90.15:8080/job/circleguard-monorepo/> |
 | Informe de la Parte 1 | [`docs/informe/INFORME_PARTE1.md`](docs/informe/INFORME_PARTE1.md) |
 | Declaración de uso de IA generativa | [`docs/BITACORA_IAG_EQUIPO.md`](docs/BITACORA_IAG_EQUIPO.md) (Nivel 3) |
 
@@ -35,7 +35,8 @@ e2e/                            pruebas E2E con Playwright (flujos, smoke y cont
 Jenkinsfile                     pipeline Multibranch (raíz)
 jenkins/vars/                   Shared Library: detectChangedServices, multibranchFlow, pipelineUtils,
                                 publishBuildStatus, rollbackDeployment, notifyPipeline (Discord),
-                                sonarQualityGate (SonarQube)
+                                sonarQualityGate (SonarQube), platformFlow (etapas de plataforma
+                                de la Parte 2: Terraform, Trivy y Kubernetes)
 jenkins/ci/                     JCasC (jenkins.yaml: cuentas, permisos, job y SonarQube) y scripts
                                 idempotentes del webhook de GitHub y del Quality Gate de SonarQube
 jenkins/test/                   validadores del pipeline, la Shared Library, SonarQube y la seguridad
@@ -55,24 +56,24 @@ Las instancias EC2 están en AWS `us-east-2`. Los datos de la tabla salen de `do
 
 | Componente | URL | Healthcheck | Acceso |
 |---|---|---|---|
-| Jenkins 2.580.2 | <http://52.14.6.11:8080/> | `GET /login` → 200 | Requiere sesión (cuentas de US-31; ver §4.3) |
-| SonarQube 10.6 | <http://52.14.6.11:9000/> | `GET /api/system/status` → `{"status":"UP"}` | Requiere sesión. Proyecto `circleguard-monorepo` |
-| Nexus 3.70.1 (interfaz web) | <http://52.14.6.11:8081/> | `GET /service/rest/v1/status` → 200 | Público |
-| Registro Docker (Nexus) | `52.14.6.11:5000` (`/v2/`) | `GET /v2/` → 401 sin credenciales | `docker login` con `nexus-credentials` |
-| **dev**, cliente web | <http://52.15.213.209:8080/> | `GET /healthz` | Público |
-| **dev**, auth / gateway | <http://52.15.213.209:8180/> y <http://52.15.213.209:8087/> | `/actuator/health/readiness` | Público |
-| **stage** (`3.17.163.44`) | web `9080` · auth `9180` · identity `9083` · promotion `9088` · form `9086` · gateway `9087` | igual | Túnel SSH (ver abajo) |
-| **prod** (`3.19.74.9`) | web `10080` · auth `10180` · identity `10083` · promotion `10088` · form `10086` · gateway `10087` | igual | Túnel SSH (ver abajo) |
+| Jenkins 2.580.2 | <http://18.117.90.15:8080/> | `GET /login` → 200 | Requiere sesión (cuentas de US-31; ver §4.3) |
+| SonarQube 10.6 | <http://18.117.90.15:9000/> | `GET /api/system/status` → `{"status":"UP"}` | Requiere sesión. Proyecto `circleguard-monorepo` |
+| Nexus 3.70.1 (interfaz web) | <http://18.117.90.15:8081/> | `GET /service/rest/v1/status` → 200 | Público |
+| Registro Docker (Nexus) | `18.117.90.15:5000` (`/v2/`) | `GET /v2/` → 401 sin credenciales | `docker login` con `nexus-credentials` |
+| **dev**, cliente web | <http://52.15.165.116:8080/> | `GET /healthz` | Público |
+| **dev**, auth / gateway | <http://52.15.165.116:8180/> y <http://52.15.165.116:8087/> | `/actuator/health/readiness` | Público |
+| **stage** (`52.14.89.125`) | web `9080` · auth `9180` · identity `9083` · promotion `9088` · form `9086` · gateway `9087` | igual | Túnel SSH (ver abajo) |
+| **prod** (`77.113.211.62`) | web `10080` · auth `10180` · identity `10083` · promotion `10088` · form `10086` · gateway `10087` | igual | Túnel SSH (ver abajo) |
 
 Los security groups de los ambientes solo abren los puertos 22, 8080, 8180 y 8087. Por eso stage y prod, que usan puertos desplazados +1000 y +2000, y los demás servicios de dev se consultan con un túnel SSH. Usa la llave de los nodos, que nunca se versiona:
 
 ```bash
 # stage: cliente web en http://localhost:9080 y auth en http://localhost:9180
-ssh -i ~/.ssh/proyectoIngeClave.pem -N -L 9080:127.0.0.1:9080 -L 9180:127.0.0.1:9180 ec2-user@3.17.163.44
+ssh -i ~/.ssh/proyectoIngeClave.pem -N -L 9080:127.0.0.1:9080 -L 9180:127.0.0.1:9180 ec2-user@52.14.89.125
 # prod: cliente web en http://localhost:10080
-ssh -i ~/.ssh/proyectoIngeClave.pem -N -L 10080:127.0.0.1:10080 ec2-user@3.19.74.9
+ssh -i ~/.ssh/proyectoIngeClave.pem -N -L 10080:127.0.0.1:10080 ec2-user@77.113.211.62
 # estado de un ambiente sin túnel (mismo script que usa el pipeline)
-SSH_KEY=~/.ssh/proyectoIngeClave.pem bash deploy/scripts/environment.sh verify --env stage --version <X.Y.Z> --host 3.17.163.44
+SSH_KEY=~/.ssh/proyectoIngeClave.pem bash deploy/scripts/environment.sh verify --env stage --version <X.Y.Z> --host 52.14.89.125
 ```
 
 > Las instancias se apagan fuera de las ventanas de evaluación para ahorrar costos. Si una URL no responde, revisa en la consola de EC2 que la instancia esté *running*. Las IP públicas se conservan solo si la instancia no se destruye.
@@ -94,7 +95,7 @@ SSH_KEY=~/.ssh/proyectoIngeClave.pem bash deploy/scripts/environment.sh verify -
 | `openldap` | `osixia/openldap:1.5.0` | 389 / 636 | interno | interno | `ldapwhoami` |
 | `notification` · `file` · `dashboard` | `circleguard/<svc>:X.Y.Z` | 8082 · 8085 · 8084 (solo locales) | — | — | Se publican en Nexus; se despliegan en la Parte 2 |
 
-Plano de control (`52.14.6.11`): Jenkins `8080`/`50000`, SonarQube `9000` con su PostgreSQL interno, Nexus `8081` y registro `5000`. Los diagramas están en [`docs/arquitectura/ARQUITECTURA_P1.md`](docs/arquitectura/ARQUITECTURA_P1.md).
+Plano de control (`18.117.90.15`): Jenkins `8080`/`50000`, SonarQube `9000` con su PostgreSQL interno, Nexus `8081` y registro `5000`. Los diagramas están en [`docs/arquitectura/ARQUITECTURA_P1.md`](docs/arquitectura/ARQUITECTURA_P1.md).
 
 ## 4. Reproducir la solución desde cero
 
@@ -117,7 +118,7 @@ Los ambientes se construyen con los mismos comandos, en este orden. Todos los sc
 bash infra/bootstrap/bootstrap-ci.sh --provision-aws --aws-profile personal --aws-region us-east-2 \
      --ssh-key-path ~/.ssh/proyectoIngeClave.pem
 # O directamente dentro de la instancia
-sudo bash infra/bootstrap/bootstrap-ci.sh --public-host 52.14.6.11
+sudo bash infra/bootstrap/bootstrap-ci.sh --public-host 18.117.90.15
 ```
 
 El script:
@@ -173,15 +174,15 @@ El script no levanta la aplicación: la primera versión la despliega el pipelin
 
    | Variable | Valor en la plantilla | Uso |
    |---|---|---|
-   | `CG_DEV_HOST` / `CG_STAGE_HOST` / `CG_PROD_HOST` | `52.15.213.209` / `3.17.163.44` / `3.19.74.9` | Nodos de cada ambiente |
-   | `CG_REGISTRY_URL` | `52.14.6.11:5000` | Registro Docker |
+   | `CG_DEV_HOST` / `CG_STAGE_HOST` / `CG_PROD_HOST` | `52.15.165.116` / `52.14.89.125` / `77.113.211.62` | Nodos de cada ambiente |
+   | `CG_REGISTRY_URL` | `18.117.90.15:5000` | Registro Docker |
    | `CG_PROD_APPROVERS` | `jrubio,jpordonez` | IDs de las cuentas de Jenkins que pueden aprobar prod. Vacío = no hay release a prod |
    | `CG_PROD_APPROVAL_TIMEOUT_MIN` | `60` | Minutos que el build espera la aprobación |
 
 4. **Webhook de GitHub** (idempotente):
 
    ```bash
-   GITHUB_TOKEN=<pat> JENKINS_URL=http://52.14.6.11:8080 ./jenkins/ci/setup-github-webhook.sh
+   GITHUB_TOKEN=<pat> JENKINS_URL=http://18.117.90.15:8080 ./jenkins/ci/setup-github-webhook.sh
    ```
 
 5. **SonarQube** (idempotente; crea el proyecto, el Quality Gate `CircleGuard-Quality-Gate` con cobertura ≥ 60 % y el webhook de retorno a Jenkins). Ejecútalo con un token de administración de SonarQube y luego guarda un token de análisis del proyecto como `sonar-token`:
@@ -274,11 +275,11 @@ El script vuelve a desplegar imágenes que ya están en Nexus con el mismo compo
 |---|---|
 | Pruebas unitarias e integración | Pestaña **Tests** del build (JUnit) |
 | Cobertura | **Coverage Report** (JaCoCo) del build y `services/<svc>/build/reports/jacoco/` |
-| Análisis estático y Quality Gate | <http://52.14.6.11:9000/dashboard?id=circleguard-monorepo>, y en el build `reports/ci/sonarqube-analysis.json` y `reports/ci/quality-gate.json` |
+| Análisis estático y Quality Gate | <http://18.117.90.15:9000/dashboard?id=circleguard-monorepo>, y en el build `reports/ci/sonarqube-analysis.json` y `reports/ci/quality-gate.json` |
 | E2E | Artefactos `e2e/reports/` (JUnit y HTML) y `e2e/reports/dev/` para la corrida contra dev |
 | Decisiones de entrega | `reports/ci/promotion-stage.json`, `reports/ci/prod-approval.json` y la descripción del build |
 | Salud por ambiente | `reports/ci/health-<env>.json`; prod también como JUnit |
-| Imágenes publicadas | <http://52.14.6.11:8081/service/rest/repository/browse/circleguard-docker/v2/circleguard/> |
+| Imágenes publicadas | <http://18.117.90.15:8081/service/rest/repository/browse/circleguard-docker/v2/circleguard/> |
 | Estado en GitHub | Checks del commit o del PR |
 | Avisos del equipo | Canal `#pipeline` del servidor de Discord **CircleGuard CI**: fallos, abortos, inestables y recuperaciones de cualquier rama, y éxitos de `main`. Ver [`NOTIFICACIONES_US14.md`](docs/operaciones/NOTIFICACIONES_US14.md) |
 
@@ -295,7 +296,7 @@ Para levantar la pila completa de un ambiente (12 contenedores con `up --wait`):
 
 ```bash
 IMAGE_TAG=1.0.0 KEEP_UP=1 bash deploy/compose/smoke-up.sh dev        # dev construye las 6 imágenes en local
-REGISTRY_URL=52.14.6.11:5000 IMAGE_TAG=<X.Y.Z> PUBLIC_HOST=localhost KEEP_UP=1 \
+REGISTRY_URL=18.117.90.15:5000 IMAGE_TAG=<X.Y.Z> PUBLIC_HOST=localhost KEEP_UP=1 \
   bash deploy/compose/smoke-up.sh stage                               # stage/prod descargan las publicadas
 ```
 

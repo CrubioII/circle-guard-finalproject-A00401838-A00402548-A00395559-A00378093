@@ -47,6 +47,11 @@
 //        >= 60% de líneas en los servicios núcleo. Corre ANTES de publicar imágenes y desplegar.
 //   Desactivable con ENABLE_SONARQUBE_GATE=false (p. ej. si SonarQube no está disponible).
 //
+// US-22 — Terraform en Jenkins: 'Terraform Plan' de dev, stage y prod en cada PR o build de
+//   main que toque infra/terraform (plan archivado en reports/terraform/). En main, apply del plan
+//   guardado en dev (antes de desplegar dev), en stage (tras E2E de dev) y en prod solo después de
+//   la aprobación manual de US-31. Credencial 'aws-terraform' (usuario/clave de acceso).
+//
 // Requisitos del agente: JDK 21, Node.js 20+, librerías de sistema de Chromium (imagen
 // infra/bootstrap/jenkins), plugins htmlpublisher y sonar, git, openssh-client y permisos de
 // ejecución sobre ./gradlew. Credenciales: 'nexus-credentials', 'circleguard-env-ssh',
@@ -54,27 +59,33 @@
 // advertencia).
 // =============================================================================
 import groovy.json.JsonOutput
+import groovy.transform.Field
 
 @Library('circleguard-shared-lib') _
 
 // Contexto, detección y plan se calculan en las primeras etapas y quedan
 // disponibles para los bloques `when` y `post` de las etapas posteriores.
-def flow = [:]
-def detection = [:]
-def plan = [:]
+@Field def flow = [:]
+@Field def detection = [:]
+@Field def plan = [:]
 // US-10: cobertura de líneas por servicio (JaCoCo XML), usada por la etapa 'Quality Gate'.
-def coverageByService = [:]
+@Field def coverageByService = [:]
 // US-10: paso sonarQualityGate cargado desde el workspace (como notifyPipeline de US-14): la
 // librería global usa la versión de main, así cada rama o PR valida su propia versión del paso.
-def sonarQualityGate = null
-def versionMap = [:]
+@Field def sonarQualityGate = null
+@Field def versionMap = [:]
 // US-13: resultado de cada compuerta de entrega continua (SUCCESS | FAILURE | NOT_RUN).
-def deployResults = [deployDev: 'NOT_RUN', verifyDev: 'NOT_RUN', e2eDev: 'NOT_RUN', promoteStage: 'NOT_RUN', verifyStage: 'NOT_RUN']
+@Field def deployResults = [deployDev: 'NOT_RUN', verifyDev: 'NOT_RUN', e2eDev: 'NOT_RUN', promoteStage: 'NOT_RUN', verifyStage: 'NOT_RUN']
 // US-31: decisión de la compuerta manual a prod (multibranchFlow.prodApprovalDecision) y resultado del release.
-def prodApproval = [:]
-def prodResults = [deployProd: 'NOT_RUN', verifyProd: 'NOT_RUN']
+@Field def prodApproval = [:]
+@Field def prodResults = [deployProd: 'NOT_RUN', verifyProd: 'NOT_RUN']
 // US-14: última etapa iniciada; si el build falla, es la etapa que se reporta en Discord.
-def pipelineTrack = [stage: '']
+@Field def pipelineTrack = [stage: '']
+// US-22: paso platformFlow (cargado del workspace) y su plan de etapas.
+@Field def platformFlow = null
+@Field def platform = [:]
+// US-22: resultado del apply de Terraform por ambiente (SUCCESS | FAILURE | SKIPPED | NOT_RUN).
+@Field def terraformResults = [dev: 'NOT_RUN', stage: 'NOT_RUN', prod: 'NOT_RUN']
 
 // US-31: distingue timeout de abort en la compuerta manual.
 // - TIMEOUT se detecta por el tiempo esperado (no requiere aprobaciones de sandbox).
@@ -120,6 +131,17 @@ void withEnvironmentCredentials(Closure body) {
         usernamePassword(credentialsId: env.NEXUS_CREDENTIALS_ID, usernameVariable: 'REGISTRY_USER', passwordVariable: 'REGISTRY_PASSWORD')
     ]) {
         withEnv(["REGISTRY_URL=${env.DEPLOY_REGISTRY_URL}"]) {
+            body()
+        }
+    }
+}
+
+// US-22: credencial AWS de Terraform. Nunca se imprime; tf-pipeline.sh usa la cadena estándar de AWS.
+void withTerraformCredentials(Closure body) {
+    withCredentials([usernamePassword(credentialsId: env.AWS_TERRAFORM_CREDENTIALS_ID,
+                                      usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+        withEnv(["AWS_DEFAULT_REGION=${env.TF_STATE_REGION}", "TF_STATE_REGION=${env.TF_STATE_REGION}",
+                 "TF_STATE_BUCKET=${env.TF_STATE_BUCKET}", "TF_LOCK_TABLE=${env.TF_LOCK_TABLE}"]) {
             body()
         }
     }
@@ -194,6 +216,11 @@ pipeline {
             description: 'US-10: ejecuta el análisis estático con SonarQube y el bloqueo waitForQualityGate(abortPipeline: true).'
         )
         booleanParam(
+            name: 'FORCE_TERRAFORM',
+            defaultValue: false,
+            description: 'US-22: corre terraform plan (y apply en main) aunque el commit no toque infra/terraform.'
+        )
+        booleanParam(
             name: 'PUBLISH_GITHUB_STATUS',
             defaultValue: true,
             description: 'Publica los estados PENDING/SUCCESS/FAILURE como Commit Status en GitHub.'
@@ -206,16 +233,22 @@ pipeline {
         SONAR_PROJECT_KEY = 'circleguard-monorepo'   // US-10
         // US-13: nodos de ambiente (US-05) y registro (US-11). Sobrescribibles con variables
         // globales de Jenkins (CG_DEV_HOST, CG_STAGE_HOST, CG_REGISTRY_URL) sin tocar el repo.
-        DEV_HOST = "${env.CG_DEV_HOST ?: '52.15.213.209'}"
-        STAGE_HOST = "${env.CG_STAGE_HOST ?: '3.17.163.44'}"
-        DEPLOY_REGISTRY_URL = "${env.CG_REGISTRY_URL ?: '52.14.6.11:5000'}"
+        DEV_HOST = "${env.CG_DEV_HOST ?: '52.15.165.116'}"
+        STAGE_HOST = "${env.CG_STAGE_HOST ?: '52.14.89.125'}"
+        DEPLOY_REGISTRY_URL = "${env.CG_REGISTRY_URL ?: '18.117.90.15:5000'}"
         ENV_SSH_CREDENTIALS_ID = 'circleguard-env-ssh'
         NEXUS_CREDENTIALS_ID = 'nexus-credentials'
         // US-31: nodo de prod (US-05) y compuerta manual. CG_PROD_APPROVERS = IDs de usuario o
         // grupos de Jenkins separados por comas; vacío => el release a prod se omite (no aprueba cualquiera).
-        PROD_HOST = "${env.CG_PROD_HOST ?: '3.19.74.9'}"
+        PROD_HOST = "${env.CG_PROD_HOST ?: '77.113.211.62'}"
         PROD_APPROVERS = "${env.CG_PROD_APPROVERS ?: ''}"
         PROD_APPROVAL_TIMEOUT_MIN = "${env.CG_PROD_APPROVAL_TIMEOUT_MIN ?: '60'}"
+        // US-22: backend remoto de US-20. Si CG_TF_STATE_BUCKET está vacío, tf-pipeline.sh usa
+        // circleguard-terraform-state-<ID_CUENTA>. La Región es la del proyecto AWS.
+        AWS_TERRAFORM_CREDENTIALS_ID = 'aws-terraform'
+        TF_STATE_BUCKET = "${env.CG_TF_STATE_BUCKET ?: ''}"
+        TF_LOCK_TABLE = "${env.CG_TF_LOCK_TABLE ?: 'circleguard-terraform-locks'}"
+        TF_STATE_REGION = "${env.CG_AWS_REGION ?: 'us-east-2'}"
     }
 
     stages {
@@ -236,26 +269,7 @@ pipeline {
         stage('Detect Changed Components') {
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    detection = detectChangedServices(forceAll: params.FORCE_FULL_BUILD as boolean)
-                    plan = multibranchFlow.planPipeline(flow, detection, [
-                        targetEnv: params.TARGET_ENV,
-                        forceFullBuild: params.FORCE_FULL_BUILD as boolean,
-                        enableSonar: params.ENABLE_SONARQUBE_GATE as boolean   // US-10
-                    ])
-
-                    echo pipelineUtils.formatDetectionSummary(detection)
-                    echo multibranchFlow.formatPlanSummary(plan)
-
-                    // Guarda dura CA2: si alguien solicita un despliegue no permitido
-                    // (por ejemplo TARGET_ENV=prod en un PR), el build falla de inmediato.
-                    if (plan.deploymentRequested && !plan.deploymentAllowed) {
-                        multibranchFlow.requireDeploymentAllowed(flow, params.TARGET_ENV)
-                    }
-
-                    sh 'mkdir -p reports/ci'
-                    writeFile file: 'reports/ci/change-detection.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(detection))
-                    writeFile file: 'reports/ci/pipeline-plan.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(plan))
+                    runDetectChangedComponentsStage()
                 }
             }
         }
@@ -266,20 +280,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    echo 'Calculando version semantica dinamica a partir de commits (US-12)...'
-                    sh 'chmod +x infra/scripts/calculate-semver.sh'
-                    sh './infra/scripts/calculate-semver.sh --export reports/ci/version.env --format env'
-
-                    def lines = readFile('reports/ci/version.env').split('\n')
-                    for (int i = 0; i < lines.length; i++) {
-                        def entry = lines[i].trim()
-                        if (entry && entry.contains('=')) {
-                            def parts = entry.split('=', 2)
-                            versionMap[parts[0].trim()] = parts[1].trim()
-                        }
-                    }
-                    echo "Version SemVer resultante: ${versionMap.APP_VERSION} (Tag: ${versionMap.GIT_TAG}, Incremento: ${versionMap.SEMVER_BUMP})"
+                    runCalculateSemVerStage()
                 }
             }
         }
@@ -290,26 +291,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    // US-31: JaCoCo aplicado en build.gradle.kts; cada servicio genera su reporte XML/HTML.
-                    String gradleCommand = pipelineUtils.buildGradleCommandForServices(
-                        plan.backendServices,
-                        [includeTests: true, includeJacoco: true, daemon: false]
-                    )
-                    echo "Servicios backend afectados (${plan.backendServices.size()}): ${plan.backendServices.join(', ')}"
-                    sh "${gradleCommand}"
-
-                    // US-10 CA1: cobertura de líneas por servicio para el Quality Gate. La publicación
-                    // del reporte JaCoCo en Jenkins la hace post { always } (US-31 / US-32).
-                    sonarQualityGate = load 'jenkins/vars/sonarQualityGate.groovy'
-                    coverageByService = sonarQualityGate.collectServiceCoverage(plan.backendServices, '.')
-                    writeFile(
-                        file: 'reports/ci/jacoco-coverage.json',
-                        text: JsonOutput.prettyPrint(JsonOutput.toJson([
-                            xmlReportPaths   : sonarQualityGate.resolveJacocoXmlReportPaths(plan.backendServices),
-                            coverageByService: coverageByService
-                        ]))
-                    )
+                    runCompileTestBackendStage()
                 }
             }
         }
@@ -403,30 +385,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    // CA1: BASE_URL parametrizable; vacío => playwright.config.ts sirve mobile/dist en el agente.
-                    String e2eBaseUrl = (params.E2E_BASE_URL ?: '').trim()
-                    if (e2eBaseUrl) {
-                        echo "Ejecutando E2E contra BASE_URL=${e2eBaseUrl} (APIs reales, E2E_MOCK_API=false)."
-                    } else {
-                        echo 'E2E_BASE_URL vacío: exportando el cliente web de Expo para servirlo en el agente (APIs simuladas).'
-                        dir('mobile') {
-                            sh 'test -d node_modules || npm ci --no-audit --no-fund'
-                            sh 'npx expo export --platform web'
-                        }
-                    }
-                    withEnv([
-                        "BASE_URL=${e2eBaseUrl}",
-                        "E2E_MOCK_API=${e2eBaseUrl ? 'false' : 'true'}"
-                    ]) {
-                        dir('e2e') {
-                            sh 'npm ci --no-audit --no-fund'
-                            // Las librerías de sistema ya vienen en la imagen de Jenkins; solo se descarga Chromium.
-                            sh 'npx playwright install chromium'
-                            // CA2 + CA3: headless (CI=true) y sin '|| true': cualquier spec fallido rompe la etapa y el build.
-                            sh 'npx playwright test'
-                        }
-                    }
+                    runE2EPlaywrightStage()
                 }
             }
             post {
@@ -458,6 +417,25 @@ pipeline {
                     sh 'IMAGE_TAG="' + (versionMap.APP_VERSION ?: '0.1.0') + '" ./deploy/compose/validate-compose.sh'
                     // US-13: los scripts de despliegue/promoción se prueban también en los PR (sin Docker ni credenciales).
                     sh 'chmod +x deploy/scripts/*.sh && ./deploy/scripts/test-deploy-scripts.sh'
+                    // US-22: scripts de plataforma con binarios simulados.
+                    sh 'chmod +x infra/scripts/*.sh infra/terraform/scripts/*.sh && ./infra/scripts/test-platform-scripts.sh'
+                }
+            }
+        }
+
+        // US-22 CA1: plan de los tres ambientes, archivado como artefacto (también en los PR).
+        stage('Terraform Plan') {
+            when {
+                expression { platform?.runTerraformPlan == true }
+            }
+            steps {
+                script {
+                    runTerraformPlanStage()
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/terraform/*-plan.txt,reports/terraform/*-summary.json,reports/terraform/*-plan.json', allowEmptyArchive: true
                 }
             }
         }
@@ -495,7 +473,7 @@ pipeline {
                     )]) {
                         sh 'chmod +x infra/scripts/publish-docker-images.sh'
                         sh """
-                            REGISTRY_URL="52.14.6.11:5000" \
+                            REGISTRY_URL="18.117.90.15:5000" \
                             REGISTRY_USER="\${NEXUS_USER}" \
                             REGISTRY_PASSWORD="\${NEXUS_PASSWORD}" \
                             VERSION="${semver}" \
@@ -527,20 +505,25 @@ pipeline {
         // FAILURE antes de empezar y en SUCCESS solo al terminar bien; si una falla,
         // las siguientes se omiten y stage nunca recibe la versión.
         // ---------------------------------------------------------------------
+        // US-22 CA2: la infraestructura de dev se aplica antes de desplegar la aplicación en dev.
+        stage('Terraform Apply dev') {
+            when {
+                expression { plan?.autoDeployDev == true && platform?.terraformApply == true }
+            }
+            steps {
+                script {
+                    runTerraformApplyDevStage()
+                }
+            }
+        }
+
         stage('Deploy to dev') {
             when {
                 expression { plan?.autoDeployDev == true }
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    deployResults.deployDev = 'FAILURE'
-                    String version = requireReleaseVersion(versionMap)
-                    echo "Desplegando automáticamente ${version} en dev (${env.DEV_HOST}) (US-13 / CA1)..."
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/environment.sh deploy --env dev --version '${version}' --host '${env.DEV_HOST}'"
-                    }
-                    deployResults.deployDev = 'SUCCESS'
+                    runDeployToDevStage()
                 }
             }
         }
@@ -551,14 +534,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    deployResults.verifyDev = 'FAILURE'
-                    String version = requireReleaseVersion(versionMap)
-                    echo "Verificando healthchecks de los 12 contenedores de dev para ${version} (US-13 / CA1)..."
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/environment.sh verify --env dev --version '${version}' --host '${env.DEV_HOST}' --report reports/ci/health-dev.json"
-                    }
-                    deployResults.verifyDev = 'SUCCESS'
+                    runVerifyDevHealthStage()
                 }
             }
         }
@@ -569,13 +545,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    deployResults.e2eDev = 'FAILURE'
-                    echo 'Ejecutando contra los servicios REALES de dev los flujos E2E de US-17 (@us17, @smoke) y los contratos @deployed (US-13 / CA2)...'
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/run-e2e.sh --env dev --host '${env.DEV_HOST}'"
-                    }
-                    deployResults.e2eDev = 'SUCCESS'
+                    runE2EAgainstDevStage()
                 }
             }
             post {
@@ -594,24 +564,25 @@ pipeline {
             }
         }
 
+        // US-22 CA2: apply automático en stage, con la misma compuerta que la aplicación (dev + E2E).
+        stage('Terraform Apply stage') {
+            when {
+                expression { plan?.promoteToStage == true && platform?.terraformApply == true }
+            }
+            steps {
+                script {
+                    runTerraformApplyStageStage()
+                }
+            }
+        }
+
         stage('Promote to stage') {
             when {
                 expression { plan?.promoteToStage == true }
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    String version = requireReleaseVersion(versionMap)
-                    Map promotion = multibranchFlow.promotionDecision(deployResults, [version: version])
-                    if (!promotion.promote) {
-                        error(promotion.reason)
-                    }
-                    deployResults.promoteStage = 'FAILURE'
-                    echo "${promotion.reason} Desplegando en stage (${env.STAGE_HOST})..."
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/environment.sh deploy --env stage --version '${version}' --host '${env.STAGE_HOST}'"
-                    }
-                    deployResults.promoteStage = 'SUCCESS'
+                    runPromoteToStageStage()
                 }
             }
         }
@@ -622,13 +593,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    deployResults.verifyStage = 'FAILURE'
-                    String version = requireReleaseVersion(versionMap)
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/environment.sh verify --env stage --version '${version}' --host '${env.STAGE_HOST}' --report reports/ci/health-stage.json"
-                    }
-                    deployResults.verifyStage = 'SUCCESS'
+                    runVerifyStageHealthStage()
                 }
             }
         }
@@ -643,55 +608,19 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    String version = requireReleaseVersion(versionMap)
-                    List<String> approvers = multibranchFlow.parseProdApprovers(env.PROD_APPROVERS)
-                    int timeoutMinutes = Integer.parseInt(env.PROD_APPROVAL_TIMEOUT_MIN ?: '60')
-                    Map approvalConfig = [validatedVersion: version, approvers: approvers]
-                    int attempts = 0
-                    if (approvers.isEmpty()) {
-                        prodApproval = multibranchFlow.prodApprovalDecision([:], approvalConfig + [outcome: 'NOT_CONFIGURED'])
-                    } else {
-                        // CA1: el pipeline se detiene hasta que un aprobador autorizado decide (o vence el plazo).
-                        while (attempts < 3) {
-                            attempts++
-                            long waitStartedMs = System.currentTimeMillis()
-                            try {
-                                timeout(time: timeoutMinutes, unit: 'MINUTES') {
-                                    Map response = input(
-                                        id: 'ProdRelease',
-                                        message: "¿Aprobar el release ${version} a PRODUCCIÓN? (validado en dev + E2E y stage)",
-                                        ok: 'Enviar decisión',
-                                        submitter: approvers.join(','),
-                                        submitterParameter: 'APPROVER',
-                                        parameters: [
-                                            choice(name: 'DECISION', choices: ['RECHAZAR', 'APROBAR'],
-                                                   description: 'APROBAR despliega en prod; RECHAZAR deja prod intacto. Ambas quedan registradas.'),
-                                            choice(name: 'VERSION', choices: [version],
-                                                   description: 'Versión validada en dev (E2E) y stage en esta ejecución.'),
-                                            string(name: 'COMMENT', defaultValue: '', trim: true,
-                                                   description: 'Justificación o ID de RFC (obligatorio para aprobar).')
-                                        ]
-                                    )
-                                    prodApproval = multibranchFlow.prodApprovalDecision(response, approvalConfig + [outcome: 'SUBMITTED'])
-                                }
-                            } catch (Exception interruption) {
-                                prodApproval = multibranchFlow.prodApprovalDecision([:], approvalConfig +
-                                    classifyApprovalInterruption(interruption, System.currentTimeMillis() - waitStartedMs, timeoutMinutes))
-                            }
-                            if (prodApproval.status != 'INVALID') {
-                                break
-                            }
-                            echo "[US-31] Respuesta inválida (${attempts}/3): ${prodApproval.reason}"
-                        }
-                    }
-                    prodApproval = prodApproval + [attempts: attempts, timeoutMinutes: timeoutMinutes]
-                    echo "[US-31] ${prodApproval.status}: ${prodApproval.reason}"
-                    if (prodApproval.status == 'ABORTED') {
-                        currentBuild.result = 'ABORTED'
-                    } else if (prodApproval.status == 'INVALID') {
-                        error(prodApproval.reason)
-                    }
+                    runApproveProdReleaseStage()
+                }
+            }
+        }
+
+        // US-22 CA2: en prod, Terraform solo se aplica con la aprobación manual de US-31.
+        stage('Terraform Apply prod') {
+            when {
+                expression { plan?.prodRelease == true && platform?.terraformApply == true && prodApproval?.deploy == true }
+            }
+            steps {
+                script {
+                    runTerraformApplyProdStage()
                 }
             }
         }
@@ -702,13 +631,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    prodResults.deployProd = 'FAILURE'
-                    echo "Desplegando ${prodApproval.version} en PRODUCCIÓN (${env.PROD_HOST}), aprobado por ${prodApproval.approver} (US-31)..."
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/environment.sh deploy --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}'"
-                    }
-                    prodResults.deployProd = 'SUCCESS'
+                    runDeployToProdStage()
                 }
             }
         }
@@ -719,17 +642,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    prodResults.verifyProd = 'FAILURE'
-                    try {
-                        withEnvironmentCredentials {
-                            sh "./deploy/scripts/environment.sh verify --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}' --report reports/ci/health-prod.json"
-                        }
-                    } finally {
-                        // CA3: el resultado (sano o no) se publica como pruebas JUnit, un caso por contenedor.
-                        sh 'if [ -s reports/ci/health-prod.json ]; then ./deploy/scripts/health-report-to-junit.sh reports/ci/health-prod.json reports/ci/junit/health-prod.xml; fi'
-                    }
-                    prodResults.verifyProd = 'SUCCESS'
+                    runVerifyProdHealthStage()
                 }
             }
             post {
@@ -848,8 +761,17 @@ pipeline {
                     )
                 }
             }
+            script {
+                if (platform?.terraformApply == true) {
+                    // US-22: qué ambientes recibieron el apply de Terraform en este build.
+                    sh 'mkdir -p reports/ci'
+                    writeFile file: 'reports/ci/terraform-apply.json',
+                              text: JsonOutput.prettyPrint(JsonOutput.toJson(terraformResults + [files: platform.terraformFiles]))
+                }
+            }
             // reports/ci/** incluye promotion-stage.json y health-<env>.json (US-13).
-            archiveArtifacts artifacts: 'reports/ci/**,docs/release-notes/**,services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
+            // reports/terraform: planes de US-22 (sin los .tfplan binarios).
+            archiveArtifacts artifacts: 'reports/ci/**,reports/terraform/*.txt,reports/terraform/*.json,docs/release-notes/**,services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
         }
         // US-14 / SCRUM-70 (CA1): `cleanup` corre al final, con el resultado definitivo del build
         // (incluida la descripción de US-13 / US-31), y nunca cambia ese resultado.
@@ -867,4 +789,293 @@ pipeline {
             }
         }
     }
+}
+
+// =============================================================================
+// Cuerpos de las etapas. Viven fuera del bloque pipeline porque Groovy CPS compila todo ese
+// bloque en un solo método de la JVM, que no puede pasar de 64 KB. Cada método de aquí se
+// compila aparte. Usan las variables @Field de arriba; nada más cambia respecto a tenerlos inline.
+// =============================================================================
+
+void runDetectChangedComponentsStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    detection = detectChangedServices(forceAll: params.FORCE_FULL_BUILD as boolean)
+    plan = multibranchFlow.planPipeline(flow, detection, [
+        targetEnv: params.TARGET_ENV,
+        forceFullBuild: params.FORCE_FULL_BUILD as boolean,
+        enableSonar: params.ENABLE_SONARQUBE_GATE as boolean   // US-10
+    ])
+
+    echo pipelineUtils.formatDetectionSummary(detection)
+    echo multibranchFlow.formatPlanSummary(plan)
+
+    // Guarda dura CA2: si alguien solicita un despliegue no permitido
+    // (por ejemplo TARGET_ENV=prod en un PR), el build falla de inmediato.
+    if (plan.deploymentRequested && !plan.deploymentAllowed) {
+        multibranchFlow.requireDeploymentAllowed(flow, params.TARGET_ENV)
+    }
+
+    // US-22: etapas de plataforma (Terraform).
+    platformFlow = load 'jenkins/vars/platformFlow.groovy'
+    platform = platformFlow.planPlatform(plan, detection, [
+        forceTerraform: params.FORCE_TERRAFORM as boolean
+    ])
+    echo platformFlow.formatPlatformSummary(platform)
+
+
+    sh 'mkdir -p reports/ci'
+    writeFile file: 'reports/ci/change-detection.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(detection))
+    writeFile file: 'reports/ci/pipeline-plan.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(plan))
+    writeFile file: 'reports/ci/platform-plan.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(platform))
+}
+
+void runCalculateSemVerStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    echo 'Calculando version semantica dinamica a partir de commits (US-12)...'
+    sh 'chmod +x infra/scripts/calculate-semver.sh'
+    sh './infra/scripts/calculate-semver.sh --export reports/ci/version.env --format env'
+
+    def lines = readFile('reports/ci/version.env').split('\n')
+    for (int i = 0; i < lines.length; i++) {
+        def entry = lines[i].trim()
+        if (entry && entry.contains('=')) {
+            def parts = entry.split('=', 2)
+            versionMap[parts[0].trim()] = parts[1].trim()
+        }
+    }
+    echo "Version SemVer resultante: ${versionMap.APP_VERSION} (Tag: ${versionMap.GIT_TAG}, Incremento: ${versionMap.SEMVER_BUMP})"
+}
+
+void runCompileTestBackendStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    // US-31: JaCoCo aplicado en build.gradle.kts; cada servicio genera su reporte XML/HTML.
+    String gradleCommand = pipelineUtils.buildGradleCommandForServices(
+        plan.backendServices,
+        [includeTests: true, includeJacoco: true, daemon: false]
+    )
+    echo "Servicios backend afectados (${plan.backendServices.size()}): ${plan.backendServices.join(', ')}"
+    sh "${gradleCommand}"
+
+    // US-10 CA1: cobertura de líneas por servicio para el Quality Gate. La publicación
+    // del reporte JaCoCo en Jenkins la hace post { always } (US-31 / US-32).
+    sonarQualityGate = load 'jenkins/vars/sonarQualityGate.groovy'
+    coverageByService = sonarQualityGate.collectServiceCoverage(plan.backendServices, '.')
+    writeFile(
+        file: 'reports/ci/jacoco-coverage.json',
+        text: JsonOutput.prettyPrint(JsonOutput.toJson([
+            xmlReportPaths   : sonarQualityGate.resolveJacocoXmlReportPaths(plan.backendServices),
+            coverageByService: coverageByService
+        ]))
+    )
+}
+
+void runE2EPlaywrightStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    // CA1: BASE_URL parametrizable; vacío => playwright.config.ts sirve mobile/dist en el agente.
+    String e2eBaseUrl = (params.E2E_BASE_URL ?: '').trim()
+    if (e2eBaseUrl) {
+        echo "Ejecutando E2E contra BASE_URL=${e2eBaseUrl} (APIs reales, E2E_MOCK_API=false)."
+    } else {
+        echo 'E2E_BASE_URL vacío: exportando el cliente web de Expo para servirlo en el agente (APIs simuladas).'
+        dir('mobile') {
+            sh 'test -d node_modules || npm ci --no-audit --no-fund'
+            sh 'npx expo export --platform web'
+        }
+    }
+    withEnv([
+        "BASE_URL=${e2eBaseUrl}",
+        "E2E_MOCK_API=${e2eBaseUrl ? 'false' : 'true'}"
+    ]) {
+        dir('e2e') {
+            sh 'npm ci --no-audit --no-fund'
+            // Las librerías de sistema ya vienen en la imagen de Jenkins; solo se descarga Chromium.
+            sh 'npx playwright install chromium'
+            // CA2 + CA3: headless (CI=true) y sin '|| true': cualquier spec fallido rompe la etapa y el build.
+            sh 'npx playwright test'
+        }
+    }
+}
+
+void runTerraformPlanStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    sh 'chmod +x infra/terraform/scripts/*.sh'
+    withTerraformCredentials {
+        for (String tfEnv in platform.terraformEnvs) {
+            sh "./infra/terraform/scripts/tf-pipeline.sh plan --env '${tfEnv}'"
+        }
+    }
+}
+
+void runTerraformApplyDevStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    Map tfDecision = platformFlow.terraformApplyDecision(platform, 'dev')
+    echo "[US-22] ${tfDecision.reason}"
+    terraformResults.dev = 'FAILURE'
+    withTerraformCredentials {
+        sh "./infra/terraform/scripts/tf-pipeline.sh apply --env 'dev'"
+    }
+    terraformResults.dev = 'SUCCESS'
+}
+
+void runDeployToDevStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    deployResults.deployDev = 'FAILURE'
+    String version = requireReleaseVersion(versionMap)
+    echo "Desplegando automáticamente ${version} en dev (${env.DEV_HOST}) (US-13 / CA1)..."
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/environment.sh deploy --env dev --version '${version}' --host '${env.DEV_HOST}'"
+    }
+    deployResults.deployDev = 'SUCCESS'
+}
+
+void runVerifyDevHealthStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    deployResults.verifyDev = 'FAILURE'
+    String version = requireReleaseVersion(versionMap)
+    echo "Verificando healthchecks de los 12 contenedores de dev para ${version} (US-13 / CA1)..."
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/environment.sh verify --env dev --version '${version}' --host '${env.DEV_HOST}' --report reports/ci/health-dev.json"
+    }
+    deployResults.verifyDev = 'SUCCESS'
+}
+
+void runE2EAgainstDevStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    deployResults.e2eDev = 'FAILURE'
+    echo 'Ejecutando contra los servicios REALES de dev los flujos E2E de US-17 (@us17, @smoke) y los contratos @deployed (US-13 / CA2)...'
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/run-e2e.sh --env dev --host '${env.DEV_HOST}'"
+    }
+    deployResults.e2eDev = 'SUCCESS'
+}
+
+void runTerraformApplyStageStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    Map tfDecision = platformFlow.terraformApplyDecision(platform, 'stage', [deployResults: deployResults])
+    echo "[US-22] ${tfDecision.reason}"
+    if (!tfDecision.apply) {
+        terraformResults.stage = 'SKIPPED'
+        error(tfDecision.reason)
+    }
+    terraformResults.stage = 'FAILURE'
+    withTerraformCredentials {
+        sh "./infra/terraform/scripts/tf-pipeline.sh apply --env 'stage'"
+    }
+    terraformResults.stage = 'SUCCESS'
+}
+
+void runPromoteToStageStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    String version = requireReleaseVersion(versionMap)
+    Map promotion = multibranchFlow.promotionDecision(deployResults, [version: version])
+    if (!promotion.promote) {
+        error(promotion.reason)
+    }
+    deployResults.promoteStage = 'FAILURE'
+    echo "${promotion.reason} Desplegando en stage (${env.STAGE_HOST})..."
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/environment.sh deploy --env stage --version '${version}' --host '${env.STAGE_HOST}'"
+    }
+    deployResults.promoteStage = 'SUCCESS'
+}
+
+void runVerifyStageHealthStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    deployResults.verifyStage = 'FAILURE'
+    String version = requireReleaseVersion(versionMap)
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/environment.sh verify --env stage --version '${version}' --host '${env.STAGE_HOST}' --report reports/ci/health-stage.json"
+    }
+    deployResults.verifyStage = 'SUCCESS'
+}
+
+void runApproveProdReleaseStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    String version = requireReleaseVersion(versionMap)
+    List<String> approvers = multibranchFlow.parseProdApprovers(env.PROD_APPROVERS)
+    int timeoutMinutes = Integer.parseInt(env.PROD_APPROVAL_TIMEOUT_MIN ?: '60')
+    Map approvalConfig = [validatedVersion: version, approvers: approvers]
+    int attempts = 0
+    if (approvers.isEmpty()) {
+        prodApproval = multibranchFlow.prodApprovalDecision([:], approvalConfig + [outcome: 'NOT_CONFIGURED'])
+    } else {
+        // CA1: el pipeline se detiene hasta que un aprobador autorizado decide (o vence el plazo).
+        while (attempts < 3) {
+            attempts++
+            long waitStartedMs = System.currentTimeMillis()
+            try {
+                timeout(time: timeoutMinutes, unit: 'MINUTES') {
+                    Map response = input(
+                        id: 'ProdRelease',
+                        message: "¿Aprobar el release ${version} a PRODUCCIÓN? (validado en dev + E2E y stage)",
+                        ok: 'Enviar decisión',
+                        submitter: approvers.join(','),
+                        submitterParameter: 'APPROVER',
+                        parameters: [
+                            choice(name: 'DECISION', choices: ['RECHAZAR', 'APROBAR'],
+                                   description: 'APROBAR despliega en prod; RECHAZAR deja prod intacto. Ambas quedan registradas.'),
+                            choice(name: 'VERSION', choices: [version],
+                                   description: 'Versión validada en dev (E2E) y stage en esta ejecución.'),
+                            string(name: 'COMMENT', defaultValue: '', trim: true,
+                                   description: 'Justificación o ID de RFC (obligatorio para aprobar).')
+                        ]
+                    )
+                    prodApproval = multibranchFlow.prodApprovalDecision(response, approvalConfig + [outcome: 'SUBMITTED'])
+                }
+            } catch (Exception interruption) {
+                prodApproval = multibranchFlow.prodApprovalDecision([:], approvalConfig +
+                    classifyApprovalInterruption(interruption, System.currentTimeMillis() - waitStartedMs, timeoutMinutes))
+            }
+            if (prodApproval.status != 'INVALID') {
+                break
+            }
+            echo "[US-31] Respuesta inválida (${attempts}/3): ${prodApproval.reason}"
+        }
+    }
+    prodApproval = prodApproval + [attempts: attempts, timeoutMinutes: timeoutMinutes]
+    echo "[US-31] ${prodApproval.status}: ${prodApproval.reason}"
+    if (prodApproval.status == 'ABORTED') {
+        currentBuild.result = 'ABORTED'
+    } else if (prodApproval.status == 'INVALID') {
+        error(prodApproval.reason)
+    }
+}
+
+void runTerraformApplyProdStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    Map tfDecision = platformFlow.terraformApplyDecision(platform, 'prod', [prodApproval: prodApproval])
+    echo "[US-22] ${tfDecision.reason}"
+    if (!tfDecision.apply) {
+        terraformResults.prod = 'SKIPPED'
+        error(tfDecision.reason)
+    }
+    terraformResults.prod = 'FAILURE'
+    withTerraformCredentials {
+        sh "./infra/terraform/scripts/tf-pipeline.sh apply --env 'prod'"
+    }
+    terraformResults.prod = 'SUCCESS'
+}
+
+void runDeployToProdStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    prodResults.deployProd = 'FAILURE'
+    echo "Desplegando ${prodApproval.version} en PRODUCCIÓN (${env.PROD_HOST}), aprobado por ${prodApproval.approver} (US-31)..."
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/environment.sh deploy --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}'"
+    }
+    prodResults.deployProd = 'SUCCESS'
+}
+
+void runVerifyProdHealthStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    prodResults.verifyProd = 'FAILURE'
+    try {
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh verify --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}' --report reports/ci/health-prod.json"
+        }
+    } finally {
+        // CA3: el resultado (sano o no) se publica como pruebas JUnit, un caso por contenedor.
+        sh 'if [ -s reports/ci/health-prod.json ]; then ./deploy/scripts/health-report-to-junit.sh reports/ci/health-prod.json reports/ci/junit/health-prod.xml; fi'
+    }
+    prodResults.verifyProd = 'SUCCESS'
 }
