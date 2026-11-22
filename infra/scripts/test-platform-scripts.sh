@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Pruebas sin AWS de los scripts de plataforma:
+# Pruebas sin AWS, clúster ni Docker de los scripts de plataforma:
 #   infra/terraform/scripts/tf-pipeline.sh (US-22)
-# Usa un terraform simulado que registra sus argumentos.
+#   infra/scripts/trivy-scan.sh            (US-38)
+# Usa binarios simulados (terraform, trivy) que registran sus argumentos.
 # =============================================================================
 set -euo pipefail
 
@@ -25,6 +26,17 @@ case " $* " in
   *" show -json "*) echo '{"resource_changes":[{"address":"module.storage.aws_s3_bucket.this","change":{"actions":["create"]}}]}' ;;
   *" show "*) echo "# module.storage.aws_s3_bucket.this will be created" ;;
 esac
+exit 0
+STUB
+# trivy simulado: falla (exit 1) en la tabla si TRIVY_STUB_FAIL coincide con el objetivo.
+cat > "${WORK}/bin/trivy" <<'STUB'
+#!/usr/bin/env bash
+echo "trivy $*" >> "${STUB_LOG}"
+out=""; prev=""; code=0
+for a in "$@"; do [[ "$prev" == "--output" ]] && out="$a"; [[ "$prev" == "--exit-code" ]] && code="$a"; prev="$a"; done
+[[ -n "$out" ]] && echo "{}" > "$out"
+target="${*: -1}"
+if [[ "$code" == "1" && -n "${TRIVY_STUB_FAIL:-}" && "$target" == *"${TRIVY_STUB_FAIL}"* ]]; then exit 1; fi
 exit 0
 STUB
 chmod +x "${WORK}/bin/"*
@@ -53,5 +65,33 @@ set +e; bash "${ROOT}/infra/terraform/scripts/tf-pipeline.sh" apply --env prod >
 set +e; bash "${ROOT}/infra/terraform/scripts/tf-pipeline.sh" plan --env qa >/dev/null 2>&1; rc=$?; set -e
 [[ ${rc} -eq 1 ]] || die "ambiente inválido debería salir con 1"
 pass "apply sin plan revisado se rechaza (3) y un ambiente inválido también (1)"
+
+echo "== trivy-scan.sh (US-38)"
+export REPORT_DIR="${WORK}/trivy" TRIVY_TEMPLATES_DIR="${WORK}/tpl"
+mkdir -p "${TRIVY_TEMPLATES_DIR}" && : > "${TRIVY_TEMPLATES_DIR}/junit.tpl"
+: > "${STUB_LOG}"
+bash "${ROOT}/infra/scripts/trivy-scan.sh" config --target infra/terraform --target no/existe >/dev/null
+grep -q "trivy config --severity HIGH,CRITICAL --exit-code 1 --ignorefile ${ROOT}/.trivyignore --format table" "${STUB_LOG}" \
+  || die "trivy config no usa HIGH,CRITICAL + exit-code 1 + .trivyignore"
+[[ -f "${WORK}/trivy/junit/config-infra-terraform.xml" ]] || die "falta el JUnit del escaneo de IaC"
+grep -q '"target":"no/existe","kind":"config","result":"SKIPPED"' "${WORK}/trivy/summary-config.json" || die "un directorio inexistente debería omitirse"
+pass "config: severidad HIGH,CRITICAL bloqueante, .trivyignore, JUnit y directorios ausentes omitidos"
+
+: > "${STUB_LOG}"
+set +e
+TRIVY_STUB_FAIL="gateway" REGISTRY_USER=u REGISTRY_PASSWORD=p \
+  bash "${ROOT}/infra/scripts/trivy-scan.sh" image --version 1.4.0 --registry reg:5000 >/dev/null 2>&1
+rc=$?
+set -e
+[[ ${rc} -eq 1 ]] || die "una imagen con HIGH/CRITICAL debería romper el build (obtuvo ${rc})"
+[[ "$(grep -c -- '--format table' "${STUB_LOG}")" -eq 9 ]] || die "deben escanearse las 9 imágenes aunque una falle"
+grep -q -- "--image-src docker,remote --ignore-unfixed --insecure" "${STUB_LOG}" || die "faltan las opciones de imagen local/registro HTTP"
+grep -q "reg:5000/circleguard/mobile:1.4.0" "${STUB_LOG}" || die "no escaneó el cliente web"
+grep -q '"target":"image-gateway","kind":"image","result":"FAIL"' "${WORK}/trivy/summary-image.json" || die "el resumen no marca gateway como FAIL"
+pass "image: escanea las 9 imágenes, termina el reporte y sale con 1 si una tiene HIGH/CRITICAL"
+
+set +e; bash "${ROOT}/infra/scripts/trivy-scan.sh" image --version latest >/dev/null 2>&1; rc=$?; set -e
+[[ ${rc} -ne 0 ]] || die "'latest' debería rechazarse"
+pass "image: rechaza 'latest'"
 
 echo "=== RESULTADO: OK — ${PASS} pruebas de plataforma superadas ==="
