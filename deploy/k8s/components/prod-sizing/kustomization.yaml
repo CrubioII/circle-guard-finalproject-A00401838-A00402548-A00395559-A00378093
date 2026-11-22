@@ -13,5 +13,36 @@ configMapGenerator:
       - KAFKA_HEAP_OPTS=-Xms512m -Xmx640m
       - ZOOKEEPER_HEAP_OPTS=-Xms256m -Xmx320m
 
+# Límites iguales a deploy.resources.limits de docker-compose.prod.yml. Van como parches
+# JSON6902 y no como StatefulSets parciales: Trivy revisa cada YAML como un manifiesto completo.
 patches:
-  - path: resources.yaml
+  - target: {kind: StatefulSet, name: postgres}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: "1", memory: 1Gi}}
+  - target: {kind: StatefulSet, name: neo4j}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 250m, memory: 1Gi}, limits: {cpu: "1", memory: 1536Mi}}
+  - target: {kind: StatefulSet, name: zookeeper}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 50m, memory: 320Mi}, limits: {cpu: 500m, memory: 512Mi}}
+  - target: {kind: StatefulSet, name: kafka}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 150m, memory: 768Mi}, limits: {cpu: "1", memory: 1Gi}}
+  - target: {kind: StatefulSet, name: redis}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 256Mi}}
+  - target: {kind: StatefulSet, name: openldap}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 256Mi}}
