@@ -1,0 +1,44 @@
+# CircleGuard — Base de Kubernetes (US-21)
+#
+# Namespace, políticas y middleware comunes a dev, stage y prod. No se aplica
+# directamente: cada overlay (overlays/<env>) le pone su namespace, tamaños y
+# parámetros. Los valores de la base son los de dev.
+#
+# Las contraseñas no están aquí: los pods leen el Secret circleguard-middleware,
+# que crea scripts/create-secrets.sh fuera de Git.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: circleguard
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
+    includeTemplates: true
+
+resources:
+  - namespace/namespace.yaml
+  - namespace/limit-range.yaml
+  - namespace/resource-quota.yaml
+  - namespace/network-policies.yaml
+  - middleware/postgres.yaml
+  - middleware/redis.yaml
+
+configMapGenerator:
+  # Crea circleguard_auth, _identity, _promotion, _form y _dashboard en el primer
+  # arranque. Es copia de /init-db.sql; scripts/validate.sh exige que sean iguales.
+  - name: postgres-init
+    files:
+      - middleware/init-db.sql
+  # Parámetros no secretos. Cada overlay los reemplaza con behavior: merge.
+  - name: middleware-config
+    literals:
+      - POSTGRES_DB=circleguard
+      - LDAP_ORGANISATION=CircleGuard
+      - LDAP_DOMAIN=dev.circleguard.edu
+      - LDAP_BASE_DN=dc=dev,dc=circleguard,dc=edu
+      - NEO4J_HEAP_SIZE=512m
+      - NEO4J_PAGECACHE_SIZE=256m
+      - KAFKA_HEAP_OPTS=-Xms256m -Xmx384m
+      - ZOOKEEPER_HEAP_OPTS=-Xms128m -Xmx192m
+      - KAFKA_LOG_RETENTION_HOURS=72
