@@ -7,7 +7,8 @@
 #   - Docker CLI + Docker Compose v2 plugin (para construir y publicar imágenes)
 #   - Node.js 20 LTS + npm + dependencias del sistema para Playwright (Chromium headless)
 #   - Plugins de Jenkins preinstalados vía jenkins-plugin-cli (JCasC, Multibranch, JaCoCo, SonarQube)
-#   - Terraform (US-22), con versión fija y verificación SHA-256 del binario descargado
+#   - Terraform (US-22) y Trivy con sus plantillas JUnit/HTML (US-38), con versión fija y
+#     verificación SHA-256 del binario descargado
 # =============================================================================
 FROM jenkins/jenkins:2.580.2-jdk21
 
@@ -17,8 +18,9 @@ LABEL org.opencontainers.image.title="CircleGuard Jenkins CI Controller & Agent"
 
 ARG GRADLE_VERSION=8.5
 ARG NODE_MAJOR=20
-# US-22: Terraform con versión fija.
+# US-22 / US-38: herramientas de plataforma con versión fija.
 ARG TERRAFORM_VERSION=1.11.4
+ARG TRIVY_VERSION=0.58.1
 
 USER root
 
@@ -81,17 +83,25 @@ RUN set -eux; \
     rm -f /tmp/gradle.zip; \
     gradle --version
 
-# 2b. US-22: terraform. La descarga se compara con el
+# 2b. US-22 / US-38: terraform y trivy. Cada descarga se compara con el
 #     archivo de checksums publicado por el proveedor antes de instalarse.
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
+    case "${arch}" in amd64) trivy_arch=64bit ;; arm64) trivy_arch=ARM64 ;; *) echo "arquitectura no soportada: ${arch}"; exit 1 ;; esac; \
     cd /tmp; \
     curl -fsSLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${arch}.zip"; \
     curl -fsSLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_SHA256SUMS"; \
     grep " terraform_${TERRAFORM_VERSION}_linux_${arch}.zip$" "terraform_${TERRAFORM_VERSION}_SHA256SUMS" | sha256sum -c -; \
     unzip -q "terraform_${TERRAFORM_VERSION}_linux_${arch}.zip" terraform -d /usr/local/bin; \
-    rm -rf /tmp/terraform_*; \
-    terraform version
+    curl -fsSLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${trivy_arch}.tar.gz"; \
+    curl -fsSLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt"; \
+    grep " trivy_${TRIVY_VERSION}_Linux-${trivy_arch}.tar.gz$" "trivy_${TRIVY_VERSION}_checksums.txt" | sha256sum -c -; \
+    mkdir -p /tmp/trivy /usr/local/share/trivy/templates; \
+    tar -xzf "trivy_${TRIVY_VERSION}_Linux-${trivy_arch}.tar.gz" -C /tmp/trivy; \
+    install -m 0755 /tmp/trivy/trivy /usr/local/bin/trivy; \
+    cp /tmp/trivy/contrib/*.tpl /usr/local/share/trivy/templates/; \
+    rm -rf /tmp/terraform_* /tmp/trivy*; \
+    terraform version; trivy --version
 
 # 3. Preinstalar los plugins requeridos por el pipeline y JCasC
 COPY --chown=jenkins:jenkins plugins.txt /usr/share/jenkins/ref/plugins.txt
@@ -106,7 +116,9 @@ ENTRYPOINT ["/usr/local/bin/cg-entrypoint.sh"]
 
 ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false" \
     CASC_JENKINS_CONFIG="/var/jenkins_home/casc_configs/jenkins.yaml" \
-    PLAYWRIGHT_BROWSERS_PATH="/var/jenkins_home/.cache/ms-playwright"
+    PLAYWRIGHT_BROWSERS_PATH="/var/jenkins_home/.cache/ms-playwright" \
+    TRIVY_CACHE_DIR="/var/jenkins_home/.cache/trivy" \
+    TRIVY_TEMPLATES_DIR="/usr/local/share/trivy/templates"
 
 USER jenkins
 
