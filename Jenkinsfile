@@ -54,27 +54,28 @@
 // advertencia).
 // =============================================================================
 import groovy.json.JsonOutput
+import groovy.transform.Field
 
 @Library('circleguard-shared-lib') _
 
 // Contexto, detección y plan se calculan en las primeras etapas y quedan
 // disponibles para los bloques `when` y `post` de las etapas posteriores.
-def flow = [:]
-def detection = [:]
-def plan = [:]
+@Field def flow = [:]
+@Field def detection = [:]
+@Field def plan = [:]
 // US-10: cobertura de líneas por servicio (JaCoCo XML), usada por la etapa 'Quality Gate'.
-def coverageByService = [:]
+@Field def coverageByService = [:]
 // US-10: paso sonarQualityGate cargado desde el workspace (como notifyPipeline de US-14): la
 // librería global usa la versión de main, así cada rama o PR valida su propia versión del paso.
-def sonarQualityGate = null
-def versionMap = [:]
+@Field def sonarQualityGate = null
+@Field def versionMap = [:]
 // US-13: resultado de cada compuerta de entrega continua (SUCCESS | FAILURE | NOT_RUN).
-def deployResults = [deployDev: 'NOT_RUN', verifyDev: 'NOT_RUN', e2eDev: 'NOT_RUN', promoteStage: 'NOT_RUN', verifyStage: 'NOT_RUN']
+@Field def deployResults = [deployDev: 'NOT_RUN', verifyDev: 'NOT_RUN', e2eDev: 'NOT_RUN', promoteStage: 'NOT_RUN', verifyStage: 'NOT_RUN']
 // US-31: decisión de la compuerta manual a prod (multibranchFlow.prodApprovalDecision) y resultado del release.
-def prodApproval = [:]
-def prodResults = [deployProd: 'NOT_RUN', verifyProd: 'NOT_RUN']
+@Field def prodApproval = [:]
+@Field def prodResults = [deployProd: 'NOT_RUN', verifyProd: 'NOT_RUN']
 // US-14: última etapa iniciada; si el build falla, es la etapa que se reporta en Discord.
-def pipelineTrack = [stage: '']
+@Field def pipelineTrack = [stage: '']
 
 // US-31: distingue timeout de abort en la compuerta manual.
 // - TIMEOUT se detecta por el tiempo esperado (no requiere aprobaciones de sandbox).
@@ -236,26 +237,7 @@ pipeline {
         stage('Detect Changed Components') {
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    detection = detectChangedServices(forceAll: params.FORCE_FULL_BUILD as boolean)
-                    plan = multibranchFlow.planPipeline(flow, detection, [
-                        targetEnv: params.TARGET_ENV,
-                        forceFullBuild: params.FORCE_FULL_BUILD as boolean,
-                        enableSonar: params.ENABLE_SONARQUBE_GATE as boolean   // US-10
-                    ])
-
-                    echo pipelineUtils.formatDetectionSummary(detection)
-                    echo multibranchFlow.formatPlanSummary(plan)
-
-                    // Guarda dura CA2: si alguien solicita un despliegue no permitido
-                    // (por ejemplo TARGET_ENV=prod en un PR), el build falla de inmediato.
-                    if (plan.deploymentRequested && !plan.deploymentAllowed) {
-                        multibranchFlow.requireDeploymentAllowed(flow, params.TARGET_ENV)
-                    }
-
-                    sh 'mkdir -p reports/ci'
-                    writeFile file: 'reports/ci/change-detection.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(detection))
-                    writeFile file: 'reports/ci/pipeline-plan.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(plan))
+                    runDetectChangedComponentsStage()
                 }
             }
         }
@@ -266,20 +248,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    echo 'Calculando version semantica dinamica a partir de commits (US-12)...'
-                    sh 'chmod +x infra/scripts/calculate-semver.sh'
-                    sh './infra/scripts/calculate-semver.sh --export reports/ci/version.env --format env'
-
-                    def lines = readFile('reports/ci/version.env').split('\n')
-                    for (int i = 0; i < lines.length; i++) {
-                        def entry = lines[i].trim()
-                        if (entry && entry.contains('=')) {
-                            def parts = entry.split('=', 2)
-                            versionMap[parts[0].trim()] = parts[1].trim()
-                        }
-                    }
-                    echo "Version SemVer resultante: ${versionMap.APP_VERSION} (Tag: ${versionMap.GIT_TAG}, Incremento: ${versionMap.SEMVER_BUMP})"
+                    runCalculateSemVerStage()
                 }
             }
         }
@@ -290,26 +259,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    // US-31: JaCoCo aplicado en build.gradle.kts; cada servicio genera su reporte XML/HTML.
-                    String gradleCommand = pipelineUtils.buildGradleCommandForServices(
-                        plan.backendServices,
-                        [includeTests: true, includeJacoco: true, daemon: false]
-                    )
-                    echo "Servicios backend afectados (${plan.backendServices.size()}): ${plan.backendServices.join(', ')}"
-                    sh "${gradleCommand}"
-
-                    // US-10 CA1: cobertura de líneas por servicio para el Quality Gate. La publicación
-                    // del reporte JaCoCo en Jenkins la hace post { always } (US-31 / US-32).
-                    sonarQualityGate = load 'jenkins/vars/sonarQualityGate.groovy'
-                    coverageByService = sonarQualityGate.collectServiceCoverage(plan.backendServices, '.')
-                    writeFile(
-                        file: 'reports/ci/jacoco-coverage.json',
-                        text: JsonOutput.prettyPrint(JsonOutput.toJson([
-                            xmlReportPaths   : sonarQualityGate.resolveJacocoXmlReportPaths(plan.backendServices),
-                            coverageByService: coverageByService
-                        ]))
-                    )
+                    runCompileTestBackendStage()
                 }
             }
         }
@@ -403,30 +353,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    // CA1: BASE_URL parametrizable; vacío => playwright.config.ts sirve mobile/dist en el agente.
-                    String e2eBaseUrl = (params.E2E_BASE_URL ?: '').trim()
-                    if (e2eBaseUrl) {
-                        echo "Ejecutando E2E contra BASE_URL=${e2eBaseUrl} (APIs reales, E2E_MOCK_API=false)."
-                    } else {
-                        echo 'E2E_BASE_URL vacío: exportando el cliente web de Expo para servirlo en el agente (APIs simuladas).'
-                        dir('mobile') {
-                            sh 'test -d node_modules || npm ci --no-audit --no-fund'
-                            sh 'npx expo export --platform web'
-                        }
-                    }
-                    withEnv([
-                        "BASE_URL=${e2eBaseUrl}",
-                        "E2E_MOCK_API=${e2eBaseUrl ? 'false' : 'true'}"
-                    ]) {
-                        dir('e2e') {
-                            sh 'npm ci --no-audit --no-fund'
-                            // Las librerías de sistema ya vienen en la imagen de Jenkins; solo se descarga Chromium.
-                            sh 'npx playwright install chromium'
-                            // CA2 + CA3: headless (CI=true) y sin '|| true': cualquier spec fallido rompe la etapa y el build.
-                            sh 'npx playwright test'
-                        }
-                    }
+                    runE2EPlaywrightStage()
                 }
             }
             post {
@@ -516,14 +443,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    deployResults.deployDev = 'FAILURE'
-                    String version = requireReleaseVersion(versionMap)
-                    echo "Desplegando automáticamente ${version} en dev (${env.DEV_HOST}) (US-13 / CA1)..."
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/environment.sh deploy --env dev --version '${version}' --host '${env.DEV_HOST}'"
-                    }
-                    deployResults.deployDev = 'SUCCESS'
+                    runDeployToDevStage()
                 }
             }
         }
@@ -534,14 +454,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    deployResults.verifyDev = 'FAILURE'
-                    String version = requireReleaseVersion(versionMap)
-                    echo "Verificando healthchecks de los 12 contenedores de dev para ${version} (US-13 / CA1)..."
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/environment.sh verify --env dev --version '${version}' --host '${env.DEV_HOST}' --report reports/ci/health-dev.json"
-                    }
-                    deployResults.verifyDev = 'SUCCESS'
+                    runVerifyDevHealthStage()
                 }
             }
         }
@@ -552,13 +465,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    deployResults.e2eDev = 'FAILURE'
-                    echo 'Ejecutando contra los servicios REALES de dev los flujos E2E de US-17 (@us17, @smoke) y los contratos @deployed (US-13 / CA2)...'
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/run-e2e.sh --env dev --host '${env.DEV_HOST}'"
-                    }
-                    deployResults.e2eDev = 'SUCCESS'
+                    runE2EAgainstDevStage()
                 }
             }
             post {
@@ -583,18 +490,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    String version = requireReleaseVersion(versionMap)
-                    Map promotion = multibranchFlow.promotionDecision(deployResults, [version: version])
-                    if (!promotion.promote) {
-                        error(promotion.reason)
-                    }
-                    deployResults.promoteStage = 'FAILURE'
-                    echo "${promotion.reason} Desplegando en stage (${env.STAGE_HOST})..."
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/environment.sh deploy --env stage --version '${version}' --host '${env.STAGE_HOST}'"
-                    }
-                    deployResults.promoteStage = 'SUCCESS'
+                    runPromoteToStageStage()
                 }
             }
         }
@@ -605,13 +501,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    deployResults.verifyStage = 'FAILURE'
-                    String version = requireReleaseVersion(versionMap)
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/environment.sh verify --env stage --version '${version}' --host '${env.STAGE_HOST}' --report reports/ci/health-stage.json"
-                    }
-                    deployResults.verifyStage = 'SUCCESS'
+                    runVerifyStageHealthStage()
                 }
             }
         }
@@ -626,55 +516,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    String version = requireReleaseVersion(versionMap)
-                    List<String> approvers = multibranchFlow.parseProdApprovers(env.PROD_APPROVERS)
-                    int timeoutMinutes = Integer.parseInt(env.PROD_APPROVAL_TIMEOUT_MIN ?: '60')
-                    Map approvalConfig = [validatedVersion: version, approvers: approvers]
-                    int attempts = 0
-                    if (approvers.isEmpty()) {
-                        prodApproval = multibranchFlow.prodApprovalDecision([:], approvalConfig + [outcome: 'NOT_CONFIGURED'])
-                    } else {
-                        // CA1: el pipeline se detiene hasta que un aprobador autorizado decide (o vence el plazo).
-                        while (attempts < 3) {
-                            attempts++
-                            long waitStartedMs = System.currentTimeMillis()
-                            try {
-                                timeout(time: timeoutMinutes, unit: 'MINUTES') {
-                                    Map response = input(
-                                        id: 'ProdRelease',
-                                        message: "¿Aprobar el release ${version} a PRODUCCIÓN? (validado en dev + E2E y stage)",
-                                        ok: 'Enviar decisión',
-                                        submitter: approvers.join(','),
-                                        submitterParameter: 'APPROVER',
-                                        parameters: [
-                                            choice(name: 'DECISION', choices: ['RECHAZAR', 'APROBAR'],
-                                                   description: 'APROBAR despliega en prod; RECHAZAR deja prod intacto. Ambas quedan registradas.'),
-                                            choice(name: 'VERSION', choices: [version],
-                                                   description: 'Versión validada en dev (E2E) y stage en esta ejecución.'),
-                                            string(name: 'COMMENT', defaultValue: '', trim: true,
-                                                   description: 'Justificación o ID de RFC (obligatorio para aprobar).')
-                                        ]
-                                    )
-                                    prodApproval = multibranchFlow.prodApprovalDecision(response, approvalConfig + [outcome: 'SUBMITTED'])
-                                }
-                            } catch (Exception interruption) {
-                                prodApproval = multibranchFlow.prodApprovalDecision([:], approvalConfig +
-                                    classifyApprovalInterruption(interruption, System.currentTimeMillis() - waitStartedMs, timeoutMinutes))
-                            }
-                            if (prodApproval.status != 'INVALID') {
-                                break
-                            }
-                            echo "[US-31] Respuesta inválida (${attempts}/3): ${prodApproval.reason}"
-                        }
-                    }
-                    prodApproval = prodApproval + [attempts: attempts, timeoutMinutes: timeoutMinutes]
-                    echo "[US-31] ${prodApproval.status}: ${prodApproval.reason}"
-                    if (prodApproval.status == 'ABORTED') {
-                        currentBuild.result = 'ABORTED'
-                    } else if (prodApproval.status == 'INVALID') {
-                        error(prodApproval.reason)
-                    }
+                    runApproveProdReleaseStage()
                 }
             }
         }
@@ -685,13 +527,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    prodResults.deployProd = 'FAILURE'
-                    echo "Desplegando ${prodApproval.version} en PRODUCCIÓN (${env.PROD_HOST}), aprobado por ${prodApproval.approver} (US-31)..."
-                    withEnvironmentCredentials {
-                        sh "./deploy/scripts/environment.sh deploy --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}'"
-                    }
-                    prodResults.deployProd = 'SUCCESS'
+                    runDeployToProdStage()
                 }
             }
         }
@@ -702,17 +538,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    prodResults.verifyProd = 'FAILURE'
-                    try {
-                        withEnvironmentCredentials {
-                            sh "./deploy/scripts/environment.sh verify --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}' --report reports/ci/health-prod.json"
-                        }
-                    } finally {
-                        // CA3: el resultado (sano o no) se publica como pruebas JUnit, un caso por contenedor.
-                        sh 'if [ -s reports/ci/health-prod.json ]; then ./deploy/scripts/health-report-to-junit.sh reports/ci/health-prod.json reports/ci/junit/health-prod.xml; fi'
-                    }
-                    prodResults.verifyProd = 'SUCCESS'
+                    runVerifyProdHealthStage()
                 }
             }
             post {
@@ -850,4 +676,233 @@ pipeline {
             }
         }
     }
+}
+
+// =============================================================================
+// Cuerpos de las etapas. Viven fuera del bloque pipeline porque Groovy CPS compila todo ese
+// bloque en un solo método de la JVM, que no puede pasar de 64 KB. Cada método de aquí se
+// compila aparte. Usan las variables @Field de arriba; nada más cambia respecto a tenerlos inline.
+// =============================================================================
+
+void runDetectChangedComponentsStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    detection = detectChangedServices(forceAll: params.FORCE_FULL_BUILD as boolean)
+    plan = multibranchFlow.planPipeline(flow, detection, [
+        targetEnv: params.TARGET_ENV,
+        forceFullBuild: params.FORCE_FULL_BUILD as boolean,
+        enableSonar: params.ENABLE_SONARQUBE_GATE as boolean   // US-10
+    ])
+
+    echo pipelineUtils.formatDetectionSummary(detection)
+    echo multibranchFlow.formatPlanSummary(plan)
+
+    // Guarda dura CA2: si alguien solicita un despliegue no permitido
+    // (por ejemplo TARGET_ENV=prod en un PR), el build falla de inmediato.
+    if (plan.deploymentRequested && !plan.deploymentAllowed) {
+        multibranchFlow.requireDeploymentAllowed(flow, params.TARGET_ENV)
+    }
+
+    sh 'mkdir -p reports/ci'
+    writeFile file: 'reports/ci/change-detection.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(detection))
+    writeFile file: 'reports/ci/pipeline-plan.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(plan))
+}
+
+void runCalculateSemVerStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    echo 'Calculando version semantica dinamica a partir de commits (US-12)...'
+    sh 'chmod +x infra/scripts/calculate-semver.sh'
+    sh './infra/scripts/calculate-semver.sh --export reports/ci/version.env --format env'
+
+    def lines = readFile('reports/ci/version.env').split('\n')
+    for (int i = 0; i < lines.length; i++) {
+        def entry = lines[i].trim()
+        if (entry && entry.contains('=')) {
+            def parts = entry.split('=', 2)
+            versionMap[parts[0].trim()] = parts[1].trim()
+        }
+    }
+    echo "Version SemVer resultante: ${versionMap.APP_VERSION} (Tag: ${versionMap.GIT_TAG}, Incremento: ${versionMap.SEMVER_BUMP})"
+}
+
+void runCompileTestBackendStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    // US-31: JaCoCo aplicado en build.gradle.kts; cada servicio genera su reporte XML/HTML.
+    String gradleCommand = pipelineUtils.buildGradleCommandForServices(
+        plan.backendServices,
+        [includeTests: true, includeJacoco: true, daemon: false]
+    )
+    echo "Servicios backend afectados (${plan.backendServices.size()}): ${plan.backendServices.join(', ')}"
+    sh "${gradleCommand}"
+
+    // US-10 CA1: cobertura de líneas por servicio para el Quality Gate. La publicación
+    // del reporte JaCoCo en Jenkins la hace post { always } (US-31 / US-32).
+    sonarQualityGate = load 'jenkins/vars/sonarQualityGate.groovy'
+    coverageByService = sonarQualityGate.collectServiceCoverage(plan.backendServices, '.')
+    writeFile(
+        file: 'reports/ci/jacoco-coverage.json',
+        text: JsonOutput.prettyPrint(JsonOutput.toJson([
+            xmlReportPaths   : sonarQualityGate.resolveJacocoXmlReportPaths(plan.backendServices),
+            coverageByService: coverageByService
+        ]))
+    )
+}
+
+void runE2EPlaywrightStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    // CA1: BASE_URL parametrizable; vacío => playwright.config.ts sirve mobile/dist en el agente.
+    String e2eBaseUrl = (params.E2E_BASE_URL ?: '').trim()
+    if (e2eBaseUrl) {
+        echo "Ejecutando E2E contra BASE_URL=${e2eBaseUrl} (APIs reales, E2E_MOCK_API=false)."
+    } else {
+        echo 'E2E_BASE_URL vacío: exportando el cliente web de Expo para servirlo en el agente (APIs simuladas).'
+        dir('mobile') {
+            sh 'test -d node_modules || npm ci --no-audit --no-fund'
+            sh 'npx expo export --platform web'
+        }
+    }
+    withEnv([
+        "BASE_URL=${e2eBaseUrl}",
+        "E2E_MOCK_API=${e2eBaseUrl ? 'false' : 'true'}"
+    ]) {
+        dir('e2e') {
+            sh 'npm ci --no-audit --no-fund'
+            // Las librerías de sistema ya vienen en la imagen de Jenkins; solo se descarga Chromium.
+            sh 'npx playwright install chromium'
+            // CA2 + CA3: headless (CI=true) y sin '|| true': cualquier spec fallido rompe la etapa y el build.
+            sh 'npx playwright test'
+        }
+    }
+}
+
+void runDeployToDevStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    deployResults.deployDev = 'FAILURE'
+    String version = requireReleaseVersion(versionMap)
+    echo "Desplegando automáticamente ${version} en dev (${env.DEV_HOST}) (US-13 / CA1)..."
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/environment.sh deploy --env dev --version '${version}' --host '${env.DEV_HOST}'"
+    }
+    deployResults.deployDev = 'SUCCESS'
+}
+
+void runVerifyDevHealthStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    deployResults.verifyDev = 'FAILURE'
+    String version = requireReleaseVersion(versionMap)
+    echo "Verificando healthchecks de los 12 contenedores de dev para ${version} (US-13 / CA1)..."
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/environment.sh verify --env dev --version '${version}' --host '${env.DEV_HOST}' --report reports/ci/health-dev.json"
+    }
+    deployResults.verifyDev = 'SUCCESS'
+}
+
+void runE2EAgainstDevStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    deployResults.e2eDev = 'FAILURE'
+    echo 'Ejecutando contra los servicios REALES de dev los flujos E2E de US-17 (@us17, @smoke) y los contratos @deployed (US-13 / CA2)...'
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/run-e2e.sh --env dev --host '${env.DEV_HOST}'"
+    }
+    deployResults.e2eDev = 'SUCCESS'
+}
+
+void runPromoteToStageStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    String version = requireReleaseVersion(versionMap)
+    Map promotion = multibranchFlow.promotionDecision(deployResults, [version: version])
+    if (!promotion.promote) {
+        error(promotion.reason)
+    }
+    deployResults.promoteStage = 'FAILURE'
+    echo "${promotion.reason} Desplegando en stage (${env.STAGE_HOST})..."
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/environment.sh deploy --env stage --version '${version}' --host '${env.STAGE_HOST}'"
+    }
+    deployResults.promoteStage = 'SUCCESS'
+}
+
+void runVerifyStageHealthStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    deployResults.verifyStage = 'FAILURE'
+    String version = requireReleaseVersion(versionMap)
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/environment.sh verify --env stage --version '${version}' --host '${env.STAGE_HOST}' --report reports/ci/health-stage.json"
+    }
+    deployResults.verifyStage = 'SUCCESS'
+}
+
+void runApproveProdReleaseStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    String version = requireReleaseVersion(versionMap)
+    List<String> approvers = multibranchFlow.parseProdApprovers(env.PROD_APPROVERS)
+    int timeoutMinutes = Integer.parseInt(env.PROD_APPROVAL_TIMEOUT_MIN ?: '60')
+    Map approvalConfig = [validatedVersion: version, approvers: approvers]
+    int attempts = 0
+    if (approvers.isEmpty()) {
+        prodApproval = multibranchFlow.prodApprovalDecision([:], approvalConfig + [outcome: 'NOT_CONFIGURED'])
+    } else {
+        // CA1: el pipeline se detiene hasta que un aprobador autorizado decide (o vence el plazo).
+        while (attempts < 3) {
+            attempts++
+            long waitStartedMs = System.currentTimeMillis()
+            try {
+                timeout(time: timeoutMinutes, unit: 'MINUTES') {
+                    Map response = input(
+                        id: 'ProdRelease',
+                        message: "¿Aprobar el release ${version} a PRODUCCIÓN? (validado en dev + E2E y stage)",
+                        ok: 'Enviar decisión',
+                        submitter: approvers.join(','),
+                        submitterParameter: 'APPROVER',
+                        parameters: [
+                            choice(name: 'DECISION', choices: ['RECHAZAR', 'APROBAR'],
+                                   description: 'APROBAR despliega en prod; RECHAZAR deja prod intacto. Ambas quedan registradas.'),
+                            choice(name: 'VERSION', choices: [version],
+                                   description: 'Versión validada en dev (E2E) y stage en esta ejecución.'),
+                            string(name: 'COMMENT', defaultValue: '', trim: true,
+                                   description: 'Justificación o ID de RFC (obligatorio para aprobar).')
+                        ]
+                    )
+                    prodApproval = multibranchFlow.prodApprovalDecision(response, approvalConfig + [outcome: 'SUBMITTED'])
+                }
+            } catch (Exception interruption) {
+                prodApproval = multibranchFlow.prodApprovalDecision([:], approvalConfig +
+                    classifyApprovalInterruption(interruption, System.currentTimeMillis() - waitStartedMs, timeoutMinutes))
+            }
+            if (prodApproval.status != 'INVALID') {
+                break
+            }
+            echo "[US-31] Respuesta inválida (${attempts}/3): ${prodApproval.reason}"
+        }
+    }
+    prodApproval = prodApproval + [attempts: attempts, timeoutMinutes: timeoutMinutes]
+    echo "[US-31] ${prodApproval.status}: ${prodApproval.reason}"
+    if (prodApproval.status == 'ABORTED') {
+        currentBuild.result = 'ABORTED'
+    } else if (prodApproval.status == 'INVALID') {
+        error(prodApproval.reason)
+    }
+}
+
+void runDeployToProdStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    prodResults.deployProd = 'FAILURE'
+    echo "Desplegando ${prodApproval.version} en PRODUCCIÓN (${env.PROD_HOST}), aprobado por ${prodApproval.approver} (US-31)..."
+    withEnvironmentCredentials {
+        sh "./deploy/scripts/environment.sh deploy --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}'"
+    }
+    prodResults.deployProd = 'SUCCESS'
+}
+
+void runVerifyProdHealthStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    prodResults.verifyProd = 'FAILURE'
+    try {
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh verify --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}' --report reports/ci/health-prod.json"
+        }
+    } finally {
+        // CA3: el resultado (sano o no) se publica como pruebas JUnit, un caso por contenedor.
+        sh 'if [ -s reports/ci/health-prod.json ]; then ./deploy/scripts/health-report-to-junit.sh reports/ci/health-prod.json reports/ci/junit/health-prod.xml; fi'
+    }
+    prodResults.verifyProd = 'SUCCESS'
 }
