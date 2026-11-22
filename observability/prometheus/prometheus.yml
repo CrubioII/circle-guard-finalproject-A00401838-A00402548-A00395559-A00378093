@@ -1,0 +1,57 @@
+# Prometheus de CircleGuard en Kubernetes (US-24 / SCRUM-93).
+#
+# Descubre los pods de los servicios en el namespace del ambiente
+# (circleguard-dev, circleguard-stage o circleguard-prod) y solo recoge los que
+# declaran las anotaciones del contrato de métricas (ver
+# docs/operaciones/OBSERVABILIDAD_METRICAS_US24.md):
+#   prometheus.io/scrape: "true"
+#   prometheus.io/path:   /actuator/prometheus
+#   prometheus.io/port:   "<puerto HTTP del servicio>"
+#
+# Cada servicio ya etiqueta sus métricas con application y environment
+# (Micrometer, management.metrics.tags). honor_labels conserva esas etiquetas;
+# las de los relabel se usan para la serie "up" y como respaldo.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: circleguard
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: circleguard-services
+    honor_labels: true
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      # Solo namespaces de la aplicación.
+      - source_labels: [__meta_kubernetes_namespace]
+        regex: circleguard-(dev|stage|prod)
+        action: keep
+      # Solo pods que piden ser recogidos.
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        regex: "true"
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_phase]
+        regex: Running
+        action: keep
+      # Ruta y puerto de las anotaciones.
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        regex: (.+)
+        target_label: __metrics_path__
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      # Etiquetas para filtrar por ambiente y servicio en Grafana.
+      - source_labels: [__meta_kubernetes_pod_label_circleguard_io_environment]
+        target_label: environment
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+        target_label: application
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod

@@ -1,0 +1,31 @@
+# Base de observabilidad (US-24 / SCRUM-93): Prometheus + Grafana.
+#   kubectl apply -k observability/overlays/<dev|stage|prod>
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - prometheus.yaml
+  - grafana.yaml
+  - allow-prometheus-scrape.yaml
+
+generatorOptions:
+  disableNameSuffixHash: false
+
+configMapGenerator:
+  - name: prometheus-config
+    namespace: circleguard-observability
+    files:
+      - prometheus.yml=prometheus/prometheus.yml
+  - name: grafana-datasources
+    namespace: circleguard-observability
+    files:
+      - prometheus.yaml=grafana/provisioning/datasources/prometheus.yaml
+  - name: grafana-dashboard-providers
+    namespace: circleguard-observability
+    files:
+      - dashboards.yaml=grafana/provisioning/dashboards/dashboards.yaml
+  - name: grafana-dashboards
+    namespace: circleguard-observability
+    files:
+      - circleguard-servicios-tecnico.json=grafana/dashboards/circleguard-servicios-tecnico.json

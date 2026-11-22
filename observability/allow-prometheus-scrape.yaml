@@ -1,0 +1,23 @@
+# El namespace del ambiente niega toda entrada salvo la del mismo namespace
+# (deploy/k8s/base/namespace/network-policies.yaml, US-21). Esta política deja
+# entrar solo a Prometheus, y solo a los pods que exponen métricas.
+# El overlay de cada ambiente le pone el namespace circleguard-<env>.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: circleguard
+spec:
+  podSelector:
+    matchLabels:
+      circleguard.io/metrics: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: circleguard-observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
