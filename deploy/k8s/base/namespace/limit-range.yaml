@@ -1,0 +1,21 @@
+# Valores por defecto para contenedores que no declaren recursos (por ejemplo,
+# un pod de depuración). Sin esto, la ResourceQuota rechazaría esos pods.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: container-defaults
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 50m
+        memory: 64Mi
+      default:
+        cpu: 250m
+        memory: 256Mi
+      max:
+        cpu: "2"
+        memory: 2Gi
+    - type: PersistentVolumeClaim
+      max:
+        storage: 20Gi

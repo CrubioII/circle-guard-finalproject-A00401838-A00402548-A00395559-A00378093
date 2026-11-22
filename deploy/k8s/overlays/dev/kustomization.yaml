@@ -1,0 +1,27 @@
+# CircleGuard — Ambiente dev (US-21)
+# Namespace circleguard-dev en el clúster circleguard-dev-k3s (US-20).
+# Usa los tamaños de la base: nodo con disco de 30 GB.
+#   kubectl apply -k deploy/k8s/overlays/dev
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: circleguard-dev
+
+resources:
+  - ../../base
+
+labels:
+  - pairs:
+      circleguard.io/environment: dev
+    includeSelectors: false
+    includeTemplates: true
+
+configMapGenerator:
+  - name: middleware-config
+    behavior: merge
+    literals:
+      - POSTGRES_DB=circleguard_dev
+      - LDAP_ORGANISATION=CircleGuard-dev
+      - LDAP_DOMAIN=dev.circleguard.edu
+      - LDAP_BASE_DN=dc=dev,dc=circleguard,dc=edu
+      - KAFKA_LOG_RETENTION_HOURS=72

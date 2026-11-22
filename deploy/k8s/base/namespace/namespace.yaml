@@ -1,0 +1,16 @@
+# Namespace del ambiente (CA2). El overlay le pone el nombre circleguard-<env>
+# y la etiqueta circleguard.io/environment.
+#
+# Pod Security Admission: "baseline" bloquea pods privilegiados, hostPath,
+# hostNetwork y capacidades peligrosas. Las imágenes oficiales del middleware
+# arrancan como root para ajustar permisos y luego bajan a su usuario, así que
+# "restricted" solo se audita.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: circleguard
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/audit: restricted
