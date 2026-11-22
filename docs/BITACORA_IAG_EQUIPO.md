@@ -39,6 +39,17 @@ Prompt (instrucción):
 
 - "Dame un resumen de lo que falta para que el equipo sepa, resaltando al responsable de cada parte."
 
+### 2.4. Parte 2: pipeline de plataforma, migración de cuenta y documentación final
+
+En la Parte 2 usamos un asistente de código para revisar la migración a la cuenta AWS nueva (comparar las IP del repositorio con las instancias reales y correr las suites de validación), para implementar las etapas de Terraform, Trivy y Kubernetes del pipeline (US-22, US-38, US-39), el rollback en Kubernetes (US-28) y sus pruebas con binarios simulados, y para preparar el catálogo de patrones (US-23), el manual de operaciones, la estimación de costos y el guion de la sustentación. Al buscar la evidencia de los patrones apareció un defecto real: el gateway niega el acceso con estados (`CONTAGIED`, `POTENTIAL`) que promotion ya no escribe. Lo registramos para corregirlo en una historia aparte.
+
+Revisamos cada cambio antes de integrarlo y dejamos marcado como pendiente lo que exige una ejecución real (primer apply de Terraform, rollback en stage, métricas finales del sprint) en lugar de darlo por hecho.
+
+Prompts (instrucciones):
+
+- "Revisa el repo y confirma que la migración de cuenta quedó bien."
+- "Empieza a trabajar en mis historias del Sprint 2."
+
 ## 3. Organización y contribuciones del equipo
 
 El equipo distribuyó el trabajo por historias de usuario y comunicó qué historias abordaría cada integrante para evitar conflictos. Trabajamos en ramas independientes por historia, dividiendo cada una en varios commits con Conventional Commits, y cada integrante realizó personalmente sus commits, pushes y pull requests. Nos apoyamos en la IA generativa para encontrar mejores formas de resolver cada tarea, teniendo en cuenta los criterios de aceptación. Los pull requests fueron revisados por otros integrantes para coordinar el trabajo y evitar conflictos.
