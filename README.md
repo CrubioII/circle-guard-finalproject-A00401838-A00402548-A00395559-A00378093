@@ -35,7 +35,8 @@ e2e/                            pruebas E2E con Playwright (flujos, smoke y cont
 Jenkinsfile                     pipeline Multibranch (raíz)
 jenkins/vars/                   Shared Library: detectChangedServices, multibranchFlow, pipelineUtils,
                                 publishBuildStatus, rollbackDeployment, notifyPipeline (Discord),
-                                sonarQualityGate (SonarQube)
+                                sonarQualityGate (SonarQube), platformFlow (etapas de plataforma
+                                de la Parte 2: Terraform, Trivy y Kubernetes)
 jenkins/ci/                     JCasC (jenkins.yaml: cuentas, permisos, job y SonarQube) y scripts
                                 idempotentes del webhook de GitHub y del Quality Gate de SonarQube
 jenkins/test/                   validadores del pipeline, la Shared Library, SonarQube y la seguridad
