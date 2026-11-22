@@ -1,0 +1,16 @@
+# =============================================================================
+# Excepciones de Trivy (US-38 CA2)
+#
+# infra/scripts/trivy-scan.sh corta el pipeline con cualquier hallazgo HIGH o CRITICAL.
+# Solo se acepta una excepción aquí si cumple las tres condiciones:
+#   1. No hay versión corregida o el hallazgo no aplica a cómo se usa el componente.
+#   2. Tiene justificación, responsable y fecha de revisión en el comentario de arriba.
+#   3. Se aprueba en el PR por alguien distinto de quien la agrega.
+#
+# Formato de cada entrada:
+#   # <ID>: <por qué no aplica o qué lo mitiga>. Responsable: <nombre>. Revisar: AAAA-MM-DD.
+#   <ID>
+#
+# Las vulnerabilidades sin parche ya se omiten con --ignore-unfixed en el escaneo de
+# imágenes, así que no hace falta listarlas.
+# =============================================================================
