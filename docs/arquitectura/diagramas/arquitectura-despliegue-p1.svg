@@ -46,7 +46,7 @@
 
   <!-- Plano de control CI/CD -->
   <rect x="310" y="124" width="520" height="400" rx="10" fill="#FFFFFF" stroke="#5454E9" stroke-width="2"/>
-  <text x="326" y="150" font-size="15" font-weight="bold" fill="#1A1A1A">circleguard-ci-server · 52.14.6.11</text>
+  <text x="326" y="150" font-size="15" font-weight="bold" fill="#1A1A1A">circleguard-ci-server · 18.117.90.15</text>
   <text x="326" y="169" font-size="12" fill="#374151">SG circleguard-ci-control-plane-sg: 22, 8080, 9000, 8081, 5000</text>
   <text x="326" y="186" font-size="12" fill="#374151">docker-compose.ci.yml ← bootstrap-ci.sh (idempotente)</text>
 
@@ -95,7 +95,7 @@
   <g font-size="12" fill="#374151">
     <!-- dev -->
     <rect x="900" y="124" width="460" height="236" rx="10" fill="#FFFFFF" stroke="#4CB978" stroke-width="2"/>
-    <text x="916" y="150" font-size="16" font-weight="bold" fill="#1A1A1A">dev · 52.15.213.209</text>
+    <text x="916" y="150" font-size="16" font-weight="bold" fill="#1A1A1A">dev · 52.15.165.116</text>
     <text x="1344" y="150" text-anchor="end" font-weight="bold" fill="#2F7A50">automático</text>
     <text x="916" y="170">SG circleguard-dev-sg (22, 8080, 8180, 8087) · red circleguard_dev_net</text>
     <text x="916" y="187">/opt/circleguard/dev/.env (0600) · compose circleguard-dev</text>
@@ -110,7 +110,7 @@
 
     <!-- stage -->
     <rect x="900" y="384" width="460" height="236" rx="10" fill="#FFFFFF" stroke="#F0681A" stroke-width="2"/>
-    <text x="916" y="410" font-size="16" font-weight="bold" fill="#1A1A1A">stage · 3.17.163.44</text>
+    <text x="916" y="410" font-size="16" font-weight="bold" fill="#1A1A1A">stage · 52.14.89.125</text>
     <text x="1344" y="410" text-anchor="end" font-weight="bold" fill="#B5500F">tras E2E en dev</text>
     <text x="916" y="430">SG circleguard-stage-sg (22, 8080, 8180, 8087) · circleguard_stage_net</text>
     <text x="916" y="447">/opt/circleguard/stage/.env (0600) · compose circleguard-stage</text>
@@ -125,7 +125,7 @@
 
     <!-- prod -->
     <rect x="900" y="644" width="460" height="236" rx="10" fill="#FFFFFF" stroke="#B42318" stroke-width="2"/>
-    <text x="916" y="670" font-size="16" font-weight="bold" fill="#1A1A1A">prod · 3.19.74.9</text>
+    <text x="916" y="670" font-size="16" font-weight="bold" fill="#1A1A1A">prod · 77.113.211.62</text>
     <text x="1344" y="670" text-anchor="end" font-weight="bold" fill="#B42318">aprobación manual</text>
     <text x="916" y="690">SG circleguard-prod-sg (22, 8080, 8180, 8087) · circleguard_prod_net</text>
     <text x="916" y="707">/opt/circleguard/prod/.env (0600) · compose circleguard-prod</text>

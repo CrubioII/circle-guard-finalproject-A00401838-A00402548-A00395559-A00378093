@@ -66,7 +66,7 @@ En *Manage Jenkins -> Credentials -> System -> Global credentials*, crea una cre
 ```bash
 export SONAR_HOST_URL="http://localhost:9000"
 export SONAR_TOKEN="squ_..."
-export JENKINS_URL="http://3.145.182.10:8080"
+export JENKINS_URL="http://18.117.90.15:8080"
 export SONAR_WEBHOOK_SECRET="$(openssl rand -hex 24)"
 
 # Revisar el plan sin modificar SonarQube:

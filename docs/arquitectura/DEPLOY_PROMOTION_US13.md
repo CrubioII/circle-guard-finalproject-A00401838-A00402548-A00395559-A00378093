@@ -47,14 +47,14 @@ Los security groups de US-05 solo abren los puertos 22, 8080, 8180 y 8087. Por e
 | `circleguard-env-ssh` | *SSH Username with private key*. Usuario `ec2-user`, llave de los nodos de US-05 (`proyectoIngeClave.pem`) | SCP, SSH y túneles hacia dev y stage |
 | `nexus-credentials` | *Username with password* (ya existe por US-11) | Publicar imágenes y descargarlas en los nodos (`docker login --password-stdin`) |
 | `openssh-client` en la imagen de Jenkins | Agregado en `infra/bootstrap/jenkins/Dockerfile` | **Reconstruir Jenkins**: `docker compose -f docker-compose.ci.yml --env-file infra/bootstrap/.env.ci up -d --build` (el volumen `jenkins_home` se conserva) |
-| `CG_DEV_HOST`, `CG_STAGE_HOST` y `CG_REGISTRY_URL` (opcionales) | Variables globales de Jenkins | Sobrescriben los valores por defecto `52.15.213.209`, `3.17.163.44` y `52.14.6.11:5000` sin tocar el repositorio |
+| `CG_DEV_HOST`, `CG_STAGE_HOST` y `CG_REGISTRY_URL` (opcionales) | Variables globales de Jenkins | Sobrescriben los valores por defecto `52.15.165.116`, `52.14.89.125` y `18.117.90.15:5000` sin tocar el repositorio |
 
 Requisitos en los nodos (ya los cumple US-05):
 
 - Existe `/opt/circleguard/<env>/.env`.
 - `ec2-user` pertenece al grupo `docker`.
 - `daemon.json` tiene el registro como inseguro.
-- El puerto 22 es accesible desde Jenkins (`3.145.182.10`).
+- El puerto 22 es accesible desde Jenkins (`18.117.90.15`).
 
 La contraseña del registro nunca va en argumentos ni en disco: viaja por stdin de SSH hasta `docker login --password-stdin`. `test-deploy-scripts.sh` lo verifica.
 
