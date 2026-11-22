@@ -8,6 +8,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -41,5 +42,11 @@ class ExposureNotificationListenerTest {
     void shouldHandleStatusChangeEventWithoutError() {
         String mockEvent = "{\"userId\": \"user-123\", \"newStatus\": \"EXPOSED\"}";
         assertDoesNotThrow(() -> listener.handleStatusChange(mockEvent));
+    }
+
+    @Test
+    void rejectsMalformedEventsSoTheyReachTheDeadLetterTopic() {
+        assertThrows(IllegalArgumentException.class, () -> listener.handleStatusChange("not-json"));
+        assertThrows(IllegalArgumentException.class, () -> listener.handleStatusChange("[1, 2]"));
     }
 }

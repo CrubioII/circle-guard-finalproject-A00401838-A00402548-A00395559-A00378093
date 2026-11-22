@@ -1,5 +1,6 @@
 package com.circleguard.notification.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -22,8 +23,8 @@ public class ExposureNotificationListener {
     @KafkaListener(topics = "promotion.status.changed", groupId = "notification-group")
     public void handleStatusChange(String eventJson) {
         log.info("Received health status change event: {}", eventJson);
+        JsonNode node = parse(eventJson);
         try {
-            JsonNode node = objectMapper.readTree(eventJson);
             String userId = node.path("anonymousId").asText("unknown");
             String status = node.path("status").asText("UNKNOWN");
             
@@ -32,7 +33,20 @@ public class ExposureNotificationListener {
                 lmsService.syncRemoteAttendance(userId, status);
             }
         } catch (Exception e) {
-            log.error("Failed to parse health status change event: {}", e.getMessage());
+            log.error("Failed to process health status change event: {}", e.getMessage());
+        }
+    }
+
+    // A payload that is not a JSON object can never succeed: let it reach the Dead Letter Topic (US-40).
+    private JsonNode parse(String eventJson) {
+        try {
+            JsonNode node = objectMapper.readTree(eventJson);
+            if (node == null || !node.isObject()) {
+                throw new IllegalArgumentException("promotion.status.changed event is not a JSON object");
+            }
+            return node;
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("Malformed promotion.status.changed event: " + e.getOriginalMessage(), e);
         }
     }
 }
