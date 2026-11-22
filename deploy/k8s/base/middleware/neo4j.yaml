@@ -44,14 +44,30 @@ spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 60
       securityContext:
+        runAsUser: 7474
+        runAsGroup: 7474
+        fsGroup: 7474
         seccompProfile:
           type: RuntimeDefault
+      # Raíz de solo lectura: el arranque modifica conf, así que se copia a un emptyDir.
+      initContainers:
+        - name: copy-conf
+          image: neo4j:5.26.0
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "cp -R /var/lib/neo4j/conf/. /target/"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: conf
+              mountPath: /target
       containers:
         - name: neo4j
           image: neo4j:5.26.0
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
           ports:
             - name: bolt
               containerPort: 7687
@@ -117,6 +133,23 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: conf
+              mountPath: /var/lib/neo4j/conf
+            - name: logs
+              mountPath: /logs
+            - name: plugins
+              mountPath: /plugins
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: conf
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+        - name: plugins
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: data
