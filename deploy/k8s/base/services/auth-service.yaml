@@ -1,0 +1,45 @@
+# auth-service (8180): Inicio de sesión contra OpenLDAP, emisión de JWT y QR.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: auth-service
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: auth-service
+          image: circleguard/auth-service:0.1.0
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          ports:
+            - {name: http, containerPort: 8180}
+          envFrom:
+            - configMapRef: {name: services-config}
+            - configMapRef: {name: auth-service-config}
+          # $(LDAP_BASE_DN) se reemplaza con el valor anterior (dominio LDAP del ambiente).
+          env:
+            - {name: SPRING_DATASOURCE_USERNAME, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: POSTGRES_USER}}}
+            - {name: SPRING_DATASOURCE_PASSWORD, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: POSTGRES_PASSWORD}}}
+            - {name: JWT_SECRET, valueFrom: {secretKeyRef: {name: circleguard-app, key: JWT_SECRET}}}
+            - {name: QR_SECRET, valueFrom: {secretKeyRef: {name: circleguard-app, key: QR_SECRET}}}
+            - {name: LDAP_BASE_DN, valueFrom: {configMapKeyRef: {name: middleware-config, key: LDAP_BASE_DN}}}
+            - {name: SPRING_LDAP_BASE, value: "$(LDAP_BASE_DN)"}
+            - {name: SPRING_LDAP_USERNAME, value: "cn=admin,$(LDAP_BASE_DN)"}
+            - {name: SPRING_LDAP_PASSWORD, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: LDAP_ADMIN_PASSWORD}}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+spec:
+  selector:
+    app.kubernetes.io/name: auth-service
+  ports:
+    - {name: http, port: 8180, targetPort: http}
