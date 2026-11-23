@@ -2,7 +2,7 @@
 
 Épica EPIC-12 (patrones de diseño, entregable E2.4). Responsable: Juan Camilo Rubio.
 
-Este catálogo describe los patrones que CircleGuard ya traía antes de la Parte 2, cada uno con la ruta y la línea donde se ve en el código. Los patrones nuevos de la Parte 2 (Resilience4j en US-40, Feature Toggle en US-41 y el tercer patrón de US-42) tienen su propio documento en esta carpeta.
+Este catálogo describe los patrones que CircleGuard ya traía antes de la Parte 2, cada uno con la ruta y la línea donde se ve en el código. Los patrones nuevos de la Parte 2 tienen su propio documento en esta carpeta: Circuit Breaker + Retry con Resilience4j y External Configuration en [PATRONES_RESILIENCIA_CONFIGURACION_US23.md](PATRONES_RESILIENCIA_CONFIGURACION_US23.md) (US-23), y el tercer patrón en el documento de US-40.
 
 Las líneas corresponden a `main` en el commit `0ad81ee`.
 
