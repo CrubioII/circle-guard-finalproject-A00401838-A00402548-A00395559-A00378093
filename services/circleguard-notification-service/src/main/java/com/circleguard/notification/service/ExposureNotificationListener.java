@@ -1,12 +1,12 @@
 package com.circleguard.notification.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
+
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -23,10 +23,10 @@ public class ExposureNotificationListener {
     @KafkaListener(topics = "promotion.status.changed", groupId = "notification-group")
     public void handleStatusChange(String eventJson) {
         log.info("Received health status change event: {}", eventJson);
-        JsonNode node = parse(eventJson);
+        Map<String, Object> payload = EventPayloads.toMap(objectMapper, eventJson, "promotion.status.changed");
         try {
-            String userId = node.path("anonymousId").asText("unknown");
-            String status = node.path("status").asText("UNKNOWN");
+            String userId = text(payload, "anonymousId", "unknown");
+            String status = text(payload, "status", "UNKNOWN");
             
             if (!"ACTIVE".equals(status) && !"UNKNOWN".equals(status)) {
                 dispatcher.dispatch(userId, status);
@@ -37,16 +37,8 @@ public class ExposureNotificationListener {
         }
     }
 
-    // A payload that is not a JSON object can never succeed: let it reach the Dead Letter Topic (US-40).
-    private JsonNode parse(String eventJson) {
-        try {
-            JsonNode node = objectMapper.readTree(eventJson);
-            if (node == null || !node.isObject()) {
-                throw new IllegalArgumentException("promotion.status.changed event is not a JSON object");
-            }
-            return node;
-        } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException("Malformed promotion.status.changed event: " + e.getOriginalMessage(), e);
-        }
+    private static String text(Map<String, Object> payload, String field, String fallback) {
+        Object value = payload.get(field);
+        return value == null ? fallback : value.toString();
     }
 }

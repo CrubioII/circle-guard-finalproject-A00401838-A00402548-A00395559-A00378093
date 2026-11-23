@@ -1,7 +1,5 @@
 package com.circleguard.notification.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +26,7 @@ public class PriorityAlertListener {
     @KafkaListener(topics = "alert.priority", groupId = "notification-priority-group")
     public void handlePriorityAlert(String message) {
         log.info("Received alert.priority event: {}", message);
-        Map<String, Object> payload = parse(message);
+        Map<String, Object> payload = EventPayloads.toMap(objectMapper, message, "alert.priority");
         try {
             String eventType = (String) payload.get("eventType");
             Integer affectedCount = (Integer) payload.get("affectedCount");
@@ -58,16 +56,4 @@ public class PriorityAlertListener {
         }
     }
 
-    // A payload that is not valid JSON can never succeed: let it reach the Dead Letter Topic (US-40).
-    private Map<String, Object> parse(String message) {
-        try {
-            Map<String, Object> payload = objectMapper.readValue(message, new TypeReference<Map<String, Object>>() {});
-            if (payload == null) {
-                throw new IllegalArgumentException("alert.priority event is empty");
-            }
-            return payload;
-        } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException("Malformed alert.priority event: " + e.getOriginalMessage(), e);
-        }
-    }
 }
