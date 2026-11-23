@@ -19,7 +19,7 @@ ARG SERVICE=circleguard-dashboard-service
 WORKDIR /workspace
 
 # Root Gradle build (settings + shared subprojects config) and this service's build script only.
-COPY settings.gradle.kts build.gradle.kts ./
+COPY settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY services/${SERVICE}/build.gradle.kts services/${SERVICE}/
 
 # settings.gradle.kts includes all 8 services: create empty dirs for the ones not copied
