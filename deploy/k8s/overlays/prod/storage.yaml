@@ -1,0 +1,54 @@
+# Disco por componente en prod (nodo de 50 GB; 23 Gi en volúmenes).
+# volumeClaimTemplates no se fusiona: cada parche repite la plantilla completa.
+# Es inmutable en un StatefulSet ya creado (ver docs/arquitectura/KUBERNETES_PLATAFORMA_US21.md).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: environment-quota
+spec:
+  hard:
+    requests.storage: 28Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: {requests: {storage: 8Gi}}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+spec:
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: {requests: {storage: 5Gi}}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+spec:
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: {requests: {storage: 6Gi}}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+spec:
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: {requests: {storage: 2Gi}}

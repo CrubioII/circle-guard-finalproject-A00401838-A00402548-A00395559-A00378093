@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" width="1400" height="900" font-family="Helvetica, Arial, sans-serif">
+  <title>CircleGuard: namespaces por ambiente y middleware en k3s (US-21)</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#374151"/>
+    </marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/>
+    </marker>
+  </defs>
+  <rect width="1400" height="900" fill="#FFFFFF"/>
+  <text x="30" y="40" font-size="22" font-weight="bold" fill="#1A1A1A">CircleGuard: namespaces por ambiente y middleware en k3s (US-21)</text>
+  <text x="30" y="63" font-size="13" fill="#6B7280">Un clúster k3s por ambiente (US-20). Cada overlay de Kustomize crea su namespace circleguard-&lt;env&gt; con políticas de aislamiento y despliega el mismo middleware.</text>
+
+  <!-- Clúster dev (detalle) -->
+  <rect x="30" y="90" width="760" height="500" rx="12" fill="#F5F5FF" stroke="#5454E9" stroke-width="1.5"/>
+  <text x="50" y="116" font-size="15" font-weight="bold" fill="#5454E9">Clúster circleguard-dev-k3s · k3s v1.37.2+k3s1 · nodo m7i-flex.large</text>
+  <text x="50" y="136" font-size="12" fill="#5454E9">Nodo con etiqueta circleguard.io/environment=dev · volúmenes local-path · kubeconfig en SSM /circleguard/dev/k3s/kubeconfig</text>
+
+  <rect x="50" y="150" width="720" height="420" rx="10" fill="#FFFFFF" stroke="#4CB978" stroke-width="1.5"/>
+  <text x="70" y="176" font-size="14" font-weight="bold" fill="#1A1A1A">Namespace circleguard-dev</text>
+  <text x="70" y="195" font-size="12" fill="#374151">Pod Security baseline · ResourceQuota (1,8 vCPU / 6 GiB pedidos, 12 GiB de volúmenes) · LimitRange</text>
+
+  <g font-size="12" fill="#374151">
+    <rect x="70" y="210" width="220" height="104" rx="8" fill="#F0FAF4" stroke="#4CB978"/>
+    <text x="85" y="232" font-size="13" font-weight="bold" fill="#1A1A1A">postgres</text>
+    <text x="85" y="250">postgres:16.4-alpine</text>
+    <text x="85" y="268">Service postgres:5432</text>
+    <text x="85" y="286">5 bases (init-db.sql)</text>
+    <text x="85" y="304">PVC 2 / 4 / 8 GiB</text>
+
+    <rect x="300" y="210" width="220" height="104" rx="8" fill="#F0FAF4" stroke="#4CB978"/>
+    <text x="315" y="232" font-size="13" font-weight="bold" fill="#1A1A1A">neo4j</text>
+    <text x="315" y="250">neo4j:5.26.0 + APOC</text>
+    <text x="315" y="268">Service neo4j:7687 / 7474</text>
+    <text x="315" y="286">heap por ambiente</text>
+    <text x="315" y="304">PVC 2 / 3 / 5 GiB</text>
+
+    <rect x="530" y="210" width="220" height="104" rx="8" fill="#F0FAF4" stroke="#4CB978"/>
+    <text x="545" y="232" font-size="13" font-weight="bold" fill="#1A1A1A">redis</text>
+    <text x="545" y="250">redis:7.2.5-alpine (AOF)</text>
+    <text x="545" y="268">Service redis:6379</text>
+    <text x="545" y="286">requirepass del Secret</text>
+    <text x="545" y="304">PVC 1 / 1 / 2 GiB</text>
+
+    <rect x="70" y="326" width="220" height="104" rx="8" fill="#F0FAF4" stroke="#4CB978"/>
+    <text x="85" y="348" font-size="13" font-weight="bold" fill="#1A1A1A">zookeeper</text>
+    <text x="85" y="366">cp-zookeeper:7.6.0</text>
+    <text x="85" y="384">Service zookeeper:2181</text>
+    <text x="85" y="402">persistente (cluster ID)</text>
+    <text x="85" y="420">PVC 1 GiB</text>
+
+    <rect x="300" y="326" width="220" height="104" rx="8" fill="#F0FAF4" stroke="#4CB978"/>
+    <text x="315" y="348" font-size="13" font-weight="bold" fill="#1A1A1A">kafka</text>
+    <text x="315" y="366">cp-kafka:7.6.0</text>
+    <text x="315" y="384">Service kafka:29092 / 9092</text>
+    <text x="315" y="402">retención 72 / 120 / 168 h</text>
+    <text x="315" y="420">PVC 2 / 4 / 6 GiB</text>
+
+    <rect x="530" y="326" width="220" height="104" rx="8" fill="#F0FAF4" stroke="#4CB978"/>
+    <text x="545" y="348" font-size="13" font-weight="bold" fill="#1A1A1A">openldap</text>
+    <text x="545" y="366">osixia/openldap:1.5.0</text>
+    <text x="545" y="384">Service openldap:389</text>
+    <text x="545" y="402">dc=dev,dc=circleguard,dc=edu</text>
+    <text x="545" y="420">PVC 1 GiB</text>
+  </g>
+  <path d="M290,378 L300,378" stroke="#374151" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="70" y="444" width="330" height="110" rx="8" fill="#F9FAFB" stroke="#9CA3AF"/>
+  <g font-size="12" fill="#374151">
+    <text x="85" y="466" font-size="13" font-weight="bold" fill="#1A1A1A">Configuración</text>
+    <text x="85" y="486">Secret circleguard-middleware (fuera de Git):</text>
+    <text x="85" y="504">  contraseñas de postgres, neo4j, redis y ldap</text>
+    <text x="85" y="522">ConfigMap middleware-config: dominio LDAP,</text>
+    <text x="85" y="540">  heap de las JVM, retención de Kafka</text>
+  </g>
+  <rect x="420" y="444" width="330" height="110" rx="8" fill="#FEF2F2" stroke="#DC2626"/>
+  <g font-size="12" fill="#374151">
+    <text x="435" y="466" font-size="13" font-weight="bold" fill="#1A1A1A">Aislamiento de red</text>
+    <text x="435" y="486">NetworkPolicy default-deny-ingress</text>
+    <text x="435" y="504">+ allow-same-namespace</text>
+    <text x="435" y="522">Services headless sin Ingress ni NodePort</text>
+    <text x="435" y="540">Los servicios de US-37 van en este namespace</text>
+  </g>
+
+  <!-- stage y prod -->
+  <g font-size="12" fill="#374151">
+    <rect x="820" y="90" width="550" height="235" rx="12" fill="#F5F5FF" stroke="#5454E9" stroke-width="1.5"/>
+    <text x="840" y="116" font-size="15" font-weight="bold" fill="#5454E9">Clúster circleguard-stage-k3s</text>
+    <rect x="840" y="130" width="510" height="175" rx="10" fill="#FFFFFF" stroke="#4CB978" stroke-width="1.5"/>
+    <text x="860" y="156" font-size="14" font-weight="bold" fill="#1A1A1A">Namespace circleguard-stage</text>
+    <text x="860" y="180">Mismo middleware y políticas (overlays/stage)</text>
+    <text x="860" y="200">Límites de docker-compose.prod.yml (réplica de prod para E2E)</text>
+    <text x="860" y="220">Volúmenes 14 GiB · cuota 18 GiB · disco del nodo 40 GB</text>
+    <text x="860" y="240">LDAP dc=stage,dc=circleguard,dc=edu · Kafka 120 h</text>
+    <text x="860" y="260">Secret del inyector --env stage</text>
+    <text x="860" y="285" fill="#4CB978" font-weight="bold">19 recursos · dry-run en servidor aceptado</text>
+
+    <rect x="820" y="355" width="550" height="235" rx="12" fill="#FFF7ED" stroke="#5454E9" stroke-width="1.5"/>
+    <text x="840" y="381" font-size="15" font-weight="bold" fill="#5454E9">Clúster circleguard-prod-k3s</text>
+    <rect x="840" y="395" width="510" height="175" rx="10" fill="#FFFFFF" stroke="#4CB978" stroke-width="1.5"/>
+    <text x="860" y="421" font-size="14" font-weight="bold" fill="#1A1A1A">Namespace circleguard-prod</text>
+    <text x="860" y="445">Mismo middleware y políticas (overlays/prod)</text>
+    <text x="860" y="465">Límites de docker-compose.prod.yml</text>
+    <text x="860" y="485">Volúmenes 23 GiB · cuota 28 GiB · disco del nodo 50 GB</text>
+    <text x="860" y="505">LDAP dc=prod,dc=circleguard,dc=edu · Kafka 168 h</text>
+    <text x="860" y="525">Secret del inyector --env prod</text>
+    <text x="860" y="550" fill="#4CB978" font-weight="bold">19 recursos · dry-run en servidor aceptado</text>
+  </g>
+
+  <!-- tráfico bloqueado -->
+  <path d="M836,340 C800,360 775,420 752,470" stroke="#DC2626" stroke-width="1.8" fill="none" stroke-dasharray="6 4" marker-end="url(#aR)"/>
+  <text x="842" y="344" font-size="12" fill="#DC2626" font-weight="bold">Tráfico desde otro namespace al middleware de dev: bloqueado (probado)</text>
+
+  <!-- Flujo -->
+  <text x="30" y="628" font-size="16" font-weight="bold" fill="#1A1A1A">Flujo de despliegue (deploy/k8s/scripts)</text>
+  <g font-size="12" fill="#374151">
+    <rect x="30" y="644" width="310" height="104" rx="8" fill="#F9FAFB" stroke="#9CA3AF"/>
+    <text x="45" y="668" font-size="13" font-weight="bold" fill="#1A1A1A">1. validate.sh</text>
+    <text x="45" y="688">Kustomize + kubeconform + reglas propias</text>
+    <text x="45" y="706">Sin clúster ni credenciales</text>
+    <text x="45" y="724">Etapa de Jenkins "Validate Kubernetes</text>
+    <text x="45" y="740">Manifests" en todo build y PR</text>
+
+    <rect x="370" y="644" width="310" height="104" rx="8" fill="#F9FAFB" stroke="#9CA3AF"/>
+    <text x="385" y="668" font-size="13" font-weight="bold" fill="#1A1A1A">2. get-kubeconfig.sh</text>
+    <text x="385" y="688">Lee el kubeconfig de SSM (US-20)</text>
+    <text x="385" y="706">Contexto circleguard-&lt;env&gt;, permisos 600</text>
+    <text x="385" y="724">Requiere AWS_PROFILE</text>
+
+    <rect x="710" y="644" width="310" height="104" rx="8" fill="#F9FAFB" stroke="#9CA3AF"/>
+    <text x="725" y="668" font-size="13" font-weight="bold" fill="#1A1A1A">3. create-secrets.sh</text>
+    <text x="725" y="688">Desde el .env de inject-jenkins-secrets.sh</text>
+    <text x="725" y="706">Archivo temporal 600; nada en Git</text>
+    <text x="725" y="724">ni en la línea de comandos</text>
+
+    <rect x="1050" y="644" width="320" height="104" rx="8" fill="#F0FAF4" stroke="#4CB978"/>
+    <text x="1065" y="668" font-size="13" font-weight="bold" fill="#1A1A1A">4. deploy-middleware.sh</text>
+    <text x="1065" y="688">Comprueba la etiqueta del nodo (ambiente)</text>
+    <text x="1065" y="706">kubectl apply del overlay + Secret</text>
+    <text x="1065" y="724">Espera los 6 StatefulSets listos</text>
+    <text x="1065" y="740">--server-dry-run para validar en la API</text>
+  </g>
+  <g stroke="#374151" stroke-width="1.5" fill="none" marker-end="url(#a)">
+    <path d="M340,696 L370,696"/>
+    <path d="M680,696 L710,696"/>
+    <path d="M1020,696 L1050,696"/>
+  </g>
+
+  <rect x="30" y="772" width="1340" height="104" rx="10" fill="#F9FAFB" stroke="#9CA3AF" stroke-dasharray="6 4"/>
+  <g font-size="12" fill="#374151">
+    <text x="50" y="796" font-size="14" font-weight="bold" fill="#1A1A1A">Mismo código, parámetros por ambiente</text>
+    <text x="50" y="818">base/ define el namespace, las políticas y el middleware con valores de dev. components/prod-sizing aplica los límites de compose prod a stage y prod.</text>
+    <text x="50" y="838">overlays/&lt;env&gt; solo cambia el namespace, la etiqueta, el dominio LDAP, la retención de Kafka y el tamaño de los discos. Las imágenes son las de deploy/compose.</text>
+    <text x="50" y="858">Probado en k3s v1.37.2 local: middleware listo en dev, datos persistentes tras reiniciar y tráfico desde otro namespace bloqueado.</text>
+  </g>
+</svg>

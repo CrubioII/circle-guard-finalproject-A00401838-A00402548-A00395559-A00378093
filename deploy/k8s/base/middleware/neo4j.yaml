@@ -1,0 +1,160 @@
+# Neo4j 5.26 con APOC: grafo de contactos de promotion-service.
+# APOC core viene dentro de la imagen (labs/), así que NEO4J_PLUGINS no descarga nada.
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo4j
+  labels:
+    app.kubernetes.io/name: neo4j
+    app.kubernetes.io/component: graph-database
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: neo4j
+  ports:
+    - name: bolt
+      port: 7687
+      targetPort: bolt
+    - name: http
+      port: 7474
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+  labels:
+    app.kubernetes.io/name: neo4j
+    app.kubernetes.io/component: graph-database
+spec:
+  serviceName: neo4j
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: neo4j
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: neo4j
+        app.kubernetes.io/component: graph-database
+    spec:
+      # Imprescindible: la imagen convierte toda variable NEO4J_* en configuración,
+      # y el Service "neo4j" inyectaría NEO4J_PORT, NEO4J_SERVICE_HOST, etc.
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsUser: 7474
+        runAsGroup: 7474
+        fsGroup: 7474
+        seccompProfile:
+          type: RuntimeDefault
+      # Raíz de solo lectura: el arranque modifica conf, así que se copia a un emptyDir.
+      initContainers:
+        - name: copy-conf
+          image: neo4j:5.26.0
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "cp -R /var/lib/neo4j/conf/. /target/"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: conf
+              mountPath: /target
+      containers:
+        - name: neo4j
+          image: neo4j:5.26.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          ports:
+            - name: bolt
+              containerPort: 7687
+            - name: http
+              containerPort: 7474
+          env:
+            # Formato usuario/clave; lo arma scripts/create-secrets.sh.
+            - name: NEO4J_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-middleware
+                  key: NEO4J_AUTH
+            - name: NEO4J_PLUGINS
+              value: '["apoc"]'
+            - name: NEO4J_server_bolt_listen__address
+              value: ":7687"
+            - name: NEO4J_server_bolt_advertised__address
+              value: ":7687"
+            - name: NEO4J_server_memory_heap_initial__size
+              valueFrom:
+                configMapKeyRef:
+                  name: middleware-config
+                  key: NEO4J_HEAP_SIZE
+            - name: NEO4J_server_memory_heap_max__size
+              valueFrom:
+                configMapKeyRef:
+                  name: middleware-config
+                  key: NEO4J_HEAP_SIZE
+            - name: NEO4J_server_memory_pagecache_size
+              valueFrom:
+                configMapKeyRef:
+                  name: middleware-config
+                  key: NEO4J_PAGECACHE_SIZE
+          resources:
+            requests:
+              cpu: 200m
+              memory: 768Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          # El primer arranque (APOC y almacén nuevo) puede tardar más de un minuto.
+          startupProbe:
+            tcpSocket:
+              port: bolt
+            periodSeconds: 10
+            failureThreshold: 30
+          # Compose usa cypher-shell, pero es otra JVM por cada chequeo: con el
+          # límite de CPU se acumulan y agotan la memoria del pod. La API HTTP
+          # responde 200 solo cuando el servidor terminó de arrancar.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: bolt
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: conf
+              mountPath: /var/lib/neo4j/conf
+            - name: logs
+              mountPath: /logs
+            - name: plugins
+              mountPath: /plugins
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: conf
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+        - name: plugins
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
