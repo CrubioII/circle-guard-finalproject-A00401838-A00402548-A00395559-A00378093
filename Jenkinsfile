@@ -50,7 +50,9 @@
 // US-22 — Terraform en Jenkins: 'Terraform Plan' de dev, stage y prod en cada PR o build de
 //   main que toque infra/terraform (plan archivado en reports/terraform/). En main, apply del plan
 //   guardado en dev (antes de desplegar dev), en stage (tras E2E de dev) y en prod solo después de
-//   la aprobación manual de US-31. Credencial 'aws-terraform' (usuario/clave de acceso).
+//   la aprobación manual de US-31. Credencial 'aws-terraform' (usuario/clave de acceso), opcional:
+//   si no existe, plan y apply se omiten con una advertencia. El apply en main además exige la
+//   variable global CG_TERRAFORM_APPLY=true; sin ella main solo hace plan.
 //
 // US-38 — Trivy bloqueante: 'Trivy IaC Scan' (trivy config sobre infra/terraform y deploy/k8s) en
 //   todo build pesado y 'Trivy Image Scan' sobre las 9 imágenes entre 'Build Images' y
@@ -161,6 +163,21 @@ void withTerraformCredentials(Closure body) {
                  "TF_STATE_BUCKET=${env.TF_STATE_BUCKET}", "TF_LOCK_TABLE=${env.TF_LOCK_TABLE}"]) {
             body()
         }
+    }
+}
+
+// US-22: la credencial de Terraform es opcional mientras el equipo no la cree. Sin ella las
+// etapas de Terraform se omiten con una advertencia, igual que discord-webhook en US-14.
+boolean terraformCredentialsPresent() {
+    try {
+        withCredentials([usernamePassword(credentialsId: env.AWS_TERRAFORM_CREDENTIALS_ID,
+                                          usernameVariable: 'CG_TF_PROBE_ID', passwordVariable: 'CG_TF_PROBE_KEY')]) {
+            echo "[US-22] Credencial '${env.AWS_TERRAFORM_CREDENTIALS_ID}' disponible."
+        }
+        return true
+    } catch (Exception missing) {
+        echo "[US-22] Advertencia: no existe la credencial '${env.AWS_TERRAFORM_CREDENTIALS_ID}'; se omiten Terraform Plan y Apply (${missing.message})."
+        return false
     }
 }
 
@@ -308,6 +325,8 @@ pipeline {
         TF_STATE_BUCKET = "${env.CG_TF_STATE_BUCKET ?: ''}"
         TF_LOCK_TABLE = "${env.CG_TF_LOCK_TABLE ?: 'circleguard-terraform-locks'}"
         TF_STATE_REGION = "${env.CG_AWS_REGION ?: 'us-east-2'}"
+        // US-22: el apply crea infraestructura real con costo; se activa a propósito.
+        TERRAFORM_APPLY_ENABLED = "${env.CG_TERRAFORM_APPLY ?: 'false'}"
         // US-39: plataforma por defecto cuando DEPLOY_PLATFORM=default.
         DEPLOY_PLATFORM_DEFAULT = "${env.CG_DEPLOY_PLATFORM ?: ''}"
     }
@@ -943,7 +962,9 @@ void runDetectChangedComponentsStage() {
         deployPlatform    : params.DEPLOY_PLATFORM,
         configuredPlatform: env.DEPLOY_PLATFORM_DEFAULT,
         k8sOverlaysPresent: k8sOverlaysPresent,
-        enableTrivy       : params.ENABLE_TRIVY_GATE as boolean
+        enableTrivy       : params.ENABLE_TRIVY_GATE as boolean,
+        terraformCredentials : terraformCredentialsPresent(),
+        terraformApplyEnabled: env.TERRAFORM_APPLY_ENABLED == 'true'
     ])
     echo platformFlow.formatPlatformSummary(platform)
 
