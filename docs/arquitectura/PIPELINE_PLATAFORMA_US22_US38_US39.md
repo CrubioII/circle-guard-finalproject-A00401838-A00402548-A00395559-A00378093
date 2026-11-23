@@ -33,6 +33,10 @@ El backend es el de US-20 (S3 + DynamoDB en la Región del proyecto). `tf-pipeli
 
 `FORCE_TERRAFORM=true` corre plan (y apply en main) aunque el commit no toque Terraform, por ejemplo para detectar drift.
 
+**Credencial y apply opcionales.** Al planificar las etapas, el Jenkinsfile comprueba si existe la credencial `aws-terraform`. Si no existe, `Terraform Plan` y los `Terraform Apply` se omiten y el resumen del plan de plataforma lo dice (`Sin credencial de AWS de Terraform`). Un PR que toca Terraform no falla por eso. `FORCE_TERRAFORM=true` sin la credencial sí falla, porque se pidió el plan a propósito.
+
+El apply crea infraestructura real con costo (unos 98 a 111 recursos por ambiente, ver US-20 y US-35), así que en main solo corre con la variable global `CG_TERRAFORM_APPLY=true`. Sin ella main hace el plan y lo archiva, pero no aplica.
+
 ## US-38: Trivy bloqueante
 
 | Criterio | Cómo se cumple |
@@ -60,7 +64,8 @@ Cada despliegue anota los Deployments con `kubernetes.io/change-cause` (versión
 
 | Elemento | Tipo | Uso |
 | :--- | :--- | :--- |
-| `aws-terraform` | Credencial usuario/contraseña (Access Key ID / Secret) | Terraform plan y apply. Debe ser una identidad con permisos solo sobre los recursos de CircleGuard |
+| `aws-terraform` | Credencial usuario/contraseña (Access Key ID / Secret) | Terraform plan y apply. Opcional: sin ella se omiten las etapas de Terraform. Para el plan basta una identidad de solo lectura con acceso al bucket de estado; el apply necesita permisos para crear los recursos de CircleGuard |
+| `CG_TERRAFORM_APPLY` | Variable global (opcional) | `true` activa el apply en main. Vacío o cualquier otro valor: solo plan |
 | `kubeconfig-dev`, `kubeconfig-stage`, `kubeconfig-prod` | Credencial de archivo | kubeconfig de cada clúster k3s, descargado con `deploy/k8s/scripts/get-kubeconfig.sh` (parámetro SSM de US-20) |
 | `CG_TF_STATE_BUCKET`, `CG_TF_LOCK_TABLE`, `CG_AWS_REGION` | Variables globales (opcionales) | Backend de Terraform. Por defecto `circleguard-terraform-state-<cuenta>`, `circleguard-terraform-locks` y `us-east-2` |
 | `CG_DEPLOY_PLATFORM` | Variable global (opcional) | `compose` o `k8s` |
