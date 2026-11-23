@@ -1,0 +1,34 @@
+# CircleGuard — Ambiente stage (US-21)
+# Namespace circleguard-stage en el clúster circleguard-stage-k3s (US-20).
+# Réplica de prod para las pruebas E2E: mismos límites que prod y menos disco
+# (nodo de 40 GB).
+#   kubectl apply -k deploy/k8s/overlays/stage
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: circleguard-stage
+
+resources:
+  - ../../base
+
+components:
+  - ../../components/prod-sizing
+
+labels:
+  - pairs:
+      circleguard.io/environment: stage
+    includeSelectors: false
+    includeTemplates: true
+
+configMapGenerator:
+  - name: middleware-config
+    behavior: merge
+    literals:
+      - POSTGRES_DB=circleguard_stage
+      - LDAP_ORGANISATION=CircleGuard-stage
+      - LDAP_DOMAIN=stage.circleguard.edu
+      - LDAP_BASE_DN=dc=stage,dc=circleguard,dc=edu
+      - KAFKA_LOG_RETENTION_HOURS=120
+
+patches:
+  - path: storage.yaml

@@ -1,0 +1,156 @@
+# OpenLDAP 1.5.0 (osixia): directorio de identidades de auth-service.
+# Dominio y base DN por ambiente, igual que infra/bootstrap/inject-jenkins-secrets.sh:
+# <env>.circleguard.edu y dc=<env>,dc=circleguard,dc=edu.
+apiVersion: v1
+kind: Service
+metadata:
+  name: openldap
+  labels:
+    app.kubernetes.io/name: openldap
+    app.kubernetes.io/component: directory
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: openldap
+  ports:
+    - name: ldap
+      port: 389
+      targetPort: ldap
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openldap
+  labels:
+    app.kubernetes.io/name: openldap
+    app.kubernetes.io/component: directory
+spec:
+  serviceName: openldap
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openldap
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openldap
+        app.kubernetes.io/component: directory
+    spec:
+      # La imagen de osixia lee variables LDAP_*; se evitan las de otros Services.
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      # Raíz de solo lectura: el primer arranque de osixia reconfigura slapd con debconf
+      # y escribe en /container, /usr/sbin, /etc, /var y /root. Se copian a un emptyDir (unos 36 MB).
+      initContainers:
+        - name: copy-writable
+          image: osixia/openldap:1.5.0
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "for d in container usr/sbin etc var root; do mkdir -p /w/$d && cp -a /$d/. /w/$d/; done; mkdir -p /w/run /w/tmp"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: writable
+              mountPath: /w
+      containers:
+        - name: openldap
+          image: osixia/openldap:1.5.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          ports:
+            - name: ldap
+              containerPort: 389
+          env:
+            - name: LDAP_ORGANISATION
+              valueFrom:
+                configMapKeyRef:
+                  name: middleware-config
+                  key: LDAP_ORGANISATION
+            - name: LDAP_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: middleware-config
+                  key: LDAP_DOMAIN
+            - name: LDAP_BASE_DN
+              valueFrom:
+                configMapKeyRef:
+                  name: middleware-config
+                  key: LDAP_BASE_DN
+            - name: LDAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-middleware
+                  key: LDAP_ADMIN_PASSWORD
+            # Solo LDAP interno; sin TLS autogenerado ni replicación.
+            - name: LDAP_TLS
+              value: "false"
+            - name: LDAP_REPLICATION
+              value: "false"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - ldapwhoami -x -H ldap://localhost:389 -D "cn=admin,$LDAP_BASE_DN" -w "$LDAP_ADMIN_PASSWORD" >/dev/null
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: ldap
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/ldap
+              subPath: database
+            - name: data
+              mountPath: /etc/ldap/slapd.d
+              subPath: config
+            - name: writable
+              mountPath: /container
+              subPath: container
+            - name: writable
+              mountPath: /usr/sbin
+              subPath: usr/sbin
+            - name: writable
+              mountPath: /etc
+              subPath: etc
+            - name: writable
+              mountPath: /var
+              subPath: var
+            - name: writable
+              mountPath: /root
+              subPath: root
+            - name: writable
+              mountPath: /run/slapd
+              subPath: run
+            - name: writable
+              mountPath: /tmp
+              subPath: tmp
+      volumes:
+        - name: writable
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

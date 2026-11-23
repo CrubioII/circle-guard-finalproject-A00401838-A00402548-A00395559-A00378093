@@ -26,6 +26,7 @@ resources:
   - middleware/zookeeper.yaml
   - middleware/kafka.yaml
   - middleware/redis.yaml
+  - middleware/openldap.yaml
 
 configMapGenerator:
   # Crea circleguard_auth, _identity, _promotion, _form y _dashboard en el primer
