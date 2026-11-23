@@ -1,0 +1,29 @@
+# Jaeger para el trazado distribuido de CircleGuard (US-25 / SCRUM-94).
+#
+# Los servicios exportan sus spans por OTLP/HTTP (puerto 4318) y Jaeger los guarda en
+# memoria para consultarlos en su interfaz web (puerto 16686). Sirve para desarrollo
+# local sin Kubernetes: los servicios corren en el host y envían a localhost:4318.
+#
+#   docker compose -f observability/docker-compose.tracing.yml up -d
+#   open http://localhost:16686
+#
+# Ver docs/operaciones/TRAZADO_DISTRIBUIDO_US25.md.
+name: circleguard-tracing
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      # Guarda las últimas 50 000 trazas en memoria (se pierden al reiniciar el contenedor).
+      MEMORY_MAX_TRACES: "50000"
+    ports:
+      - "127.0.0.1:16686:16686"   # interfaz web y API de consulta
+      - "127.0.0.1:4317:4317"     # OTLP gRPC
+      - "127.0.0.1:4318:4318"     # OTLP HTTP (el que usan los servicios)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:14269/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
