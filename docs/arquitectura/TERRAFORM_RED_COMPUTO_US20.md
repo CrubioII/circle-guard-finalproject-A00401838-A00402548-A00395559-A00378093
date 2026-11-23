@@ -109,14 +109,15 @@ Recursos de red y cómputo en cada plan:
 | Registro, almacenamiento y observabilidad (US-35) | 64 | 64 | 73 |
 | **Total del ambiente** | **98** | **98** | **111** |
 
-**Plan real contra AWS.** Todavía no se ejecutó, porque el equipo aún no tiene las credenciales de la cuenta. Cuando estén disponibles, se corre sin esperar el backend remoto de US-36:
+**Plan real contra AWS.** Ejecutado el 2026-11-22 con el backend remoto de [US-36](TERRAFORM_BACKEND_US36.md): dev 98, stage 98 y prod 111 recursos, igual que la tabla anterior.
 
 ```bash
-export AWS_PROFILE=circleguard-plan      # usuario IAM con ReadOnlyAccess; las llaves quedan en ~/.aws
-bash infra/terraform/scripts/plan-all.sh --real --local-backend
+export AWS_PROFILE=circleguard-terraform   # ReadOnlyAccess + bucket de estado; las llaves quedan en ~/.aws
+bash infra/terraform/scripts/init-backend.sh
+bash infra/terraform/scripts/plan-all.sh --real
 ```
 
-`--local-backend` crea un `backend_override.tf` temporal con estado local (ignorado por Git) y lo borra al terminar, aunque el plan falle. Guarda `reports/terraform/<env>-plan.txt` y `<env>-plan.json` y busca credenciales en ambos. Sin credenciales, el script falla con `No valid credential sources found` y no deja archivos temporales. Así se verificó.
+El script guarda `reports/terraform/<env>-plan.txt` y `<env>-plan.json` y busca credenciales en ambos. `--local-backend` queda como respaldo con estado local temporal.
 
 ## 4. Seguridad
 

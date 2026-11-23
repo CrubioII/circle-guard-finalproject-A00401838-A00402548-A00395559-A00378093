@@ -23,8 +23,7 @@ bash infra/terraform/scripts/plan-all.sh                    # sin credenciales
 export AWS_PROFILE=circleguard-terraform
 bash infra/terraform/scripts/init-backend.sh                # backend.hcl de cada raíz (una vez por clon)
 bash infra/terraform/scripts/test-state-lock.sh             # prueba del bloqueo
-bash infra/terraform/scripts/plan-all.sh --real --env dev   # plan real (AWS_PROFILE + backend.hcl)
-bash infra/terraform/scripts/plan-all.sh --real --local-backend   # plan real con estado local (sin US-36)
+bash infra/terraform/scripts/plan-all.sh --real --env dev   # plan real con el backend remoto
 ```
 
 Diseño, parámetros por ambiente y criterios de aceptación:

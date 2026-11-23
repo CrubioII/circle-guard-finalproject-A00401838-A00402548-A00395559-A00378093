@@ -8,6 +8,8 @@
 | Relación | Completa el backend parcial que dejaron [US-20](TERRAFORM_RED_COMPUTO_US20.md) y [US-35](TERRAFORM_PLATAFORMA_US35.md). El `plan` y el `apply` desde Jenkins son de [US-22](PIPELINE_PLATAFORMA_US22_US38_US39.md) y usan este mismo backend. |
 | Código | [`infra/terraform/bootstrap`](../../infra/terraform/bootstrap/), [`infra/terraform/scripts`](../../infra/terraform/scripts/), [`infra/terraform/tests/state-lock`](../../infra/terraform/tests/state-lock/main.tf) |
 
+![Estado remoto de Terraform con bloqueo](diagramas/terraform-estado-remoto-us36.svg)
+
 La historia entra en tres PR:
 
 | Parte | Contenido |
@@ -27,6 +29,7 @@ La historia entra en tres PR:
 | SSE-S3 (AES256) en vez de SSE-KMS | Quien lee el estado no necesita permisos sobre una clave KMS, y la clave de US-35 es por ambiente, no compartida. |
 | `backend.hcl` generado por `init-backend.sh` | Los archivos `backend.tf` siguen siendo parciales. El ID de la cuenta sale de `sts get-caller-identity` y no se versiona. |
 | El pipeline de US-22 usa el mismo bloqueo | `tf-pipeline.sh` pasa `use_lockfile=true` al `init`. La tabla `circleguard-terraform-locks` que esperaba antes no existe en la cuenta. |
+| Jenkins también valida sin credenciales | La etapa `Validate Terraform` corre `plan-all.sh` con proveedor simulado. Cubre módulos, `bootstrap` y ambientes aunque no exista la credencial `aws-terraform`, que es la que necesita el plan real de US-22. |
 
 ## 2. Estructura
 
@@ -48,6 +51,8 @@ infra/terraform/
     ├── bootstrap-backend.sh       # crea o actualiza el bucket y migra su estado
     ├── init-backend.sh            # genera backend.hcl en cada raíz
     ├── test-state-lock.sh         # prueba de CA2
+    ├── ensure-terraform.sh        # Terraform 1.14.6 con SHA-256 si el agente no lo tiene
+    ├── plan-all.sh                # ahora también valida bootstrap y tests/state-lock
     └── tf-pipeline.sh             # US-22: init con use_lockfile=true
 ```
 
@@ -144,7 +149,78 @@ El script falla si alguna comprobación no se cumple y deja el reporte en `repor
 
 ### CA3 — `init`, `validate` y `plan` funcionan, con diagramas actualizados
 
-En la parte 3: etapa `Validate Terraform`, plan real de los tres ambientes con el backend remoto y diagramas.
+**Sin credenciales** (etapa `Validate Terraform` de Jenkins y cualquier integrante sin perfil de AWS):
+
+```
+$ bash infra/terraform/scripts/plan-all.sh
+[terraform][OK]    Formato correcto.
+[terraform][OK]    Módulo network: Success! ...
+...
+[terraform][OK]    Stack bootstrap: Success! 2 passed, 0 failed.
+[terraform][OK]    Configuración de la prueba de bloqueo válida (tests/state-lock).
+[terraform][OK]    Ambiente dev: 98 recursos planeados.
+[terraform][OK]    Ambiente stage: 98 recursos planeados.
+[terraform][OK]    Ambiente prod: 111 recursos planeados.
+[terraform][OK]    Verificación de Terraform completada para: dev stage prod.
+```
+
+**Etapa `Validate Terraform` de Jenkins.** Corre `plan-all.sh` después de `Validate Kubernetes Manifests` y archiva `reports/terraform/offline/`, aparte de los planes de `Terraform Plan` (US-22). Se activa cuando el cambio toca `infra/terraform/` o el `Jenkinsfile`, en `main`, con `FORCE_FULL_BUILD` o si no se pudo calcular qué archivos cambiaron.
+
+- Si el agente no tiene Terraform 1.11 o superior, `ensure-terraform.sh` descarga la 1.14.6 de `releases.hashicorp.com`, compara su SHA-256 con el valor fijo del script y la guarda en `~/.cache/circleguard/tools`.
+- Los proveedores se guardan en `~/.cache/circleguard/terraform-plugins` (unos 790 MB, sobre todo el proveedor AWS) y se reutilizan entre builds. Los módulos no versionan su `.terraform.lock.hcl`, por eso la etapa activa `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE`; los ambientes y `bootstrap` sí verifican contra su lock file.
+
+Se probó el 2026-11-23 en un contenedor `jenkins/jenkins:lts` sin Terraform, solo con los archivos versionados y las mismas variables de la etapa:
+
+```
+[terraform][INFO]  Descargando Terraform 1.14.6 para linux_amd64 en /var/jenkins_home/.cache/circleguard/tools...
+[terraform][INFO]  Usando Terraform v1.14.6 (/var/jenkins_home/.cache/circleguard/tools/terraform-1.14.6/terraform).
+[terraform][OK]    Formato correcto.
+[terraform][OK]    Sin credenciales en texto plano: código Terraform (61 archivos).
+[terraform][OK]    Módulo network: Success! 5 passed, 0 failed.
+[terraform][OK]    Módulo compute: Success! 6 passed, 0 failed.
+[terraform][OK]    Módulo registry: Success! 5 passed, 0 failed.
+[terraform][OK]    Módulo storage: Success! 4 passed, 0 failed.
+[terraform][OK]    Módulo observability: Success! 4 passed, 0 failed.
+[terraform][OK]    Stack bootstrap: Success! 2 passed, 0 failed.
+[terraform][OK]    Configuración de la prueba de bloqueo válida (tests/state-lock).
+[terraform][OK]    Ambiente dev: 98 recursos planeados. Resumen en reports/terraform/offline/dev-resources.txt
+[terraform][OK]    Ambiente stage: 98 recursos planeados. Resumen en reports/terraform/offline/stage-resources.txt
+[terraform][OK]    Ambiente prod: 111 recursos planeados. Resumen en reports/terraform/offline/prod-resources.txt
+[terraform][OK]    Verificación de Terraform completada para: dev stage prod.
+```
+
+La primera ejecución, que descarga Terraform y el proveedor AWS, tardó 154 s.
+
+**Contra AWS con el backend remoto** (`init -backend-config=backend.hcl`, `validate` y `plan` de cada ambiente, 2026-11-22):
+
+```
+$ AWS_PROFILE=circleguard-terraform bash infra/terraform/scripts/plan-all.sh --real
+[terraform][INFO]  Ambiente dev: plan real contra AWS...
+[terraform][OK]    Ambiente dev: 98 recursos planeados. Resumen en reports/terraform/dev-resources.txt
+[terraform][INFO]  Ambiente stage: plan real contra AWS...
+[terraform][OK]    Ambiente stage: 98 recursos planeados. Resumen en reports/terraform/stage-resources.txt
+[terraform][INFO]  Ambiente prod: plan real contra AWS...
+[terraform][OK]    Ambiente prod: 111 recursos planeados. Resumen en reports/terraform/prod-resources.txt
+[terraform][OK]    Verificación de Terraform completada para: dev stage prod.
+```
+
+| Ambiente | `init` | `validate` | `plan` real |
+|---|---|---|---|
+| dev | backend `s3`, `envs/dev/platform.tfstate` | OK | `Plan: 98 to add, 0 to change, 0 to destroy.` |
+| stage | backend `s3`, `envs/stage/platform.tfstate` | OK | `Plan: 98 to add, 0 to change, 0 to destroy.` |
+| prod | backend `s3`, `envs/prod/platform.tfstate` | OK | `Plan: 111 to add, 0 to change, 0 to destroy.` |
+
+El plan real coincide con el simulado de US-20 y US-35. `plan` toma el bloqueo pero no escribe estado, por eso los objetos `envs/<env>/platform.tfstate` aparecerán con el primer `apply`.
+
+**Diagramas:**
+
+| Diagrama | Contenido |
+|---|---|
+| [`terraform-estado-remoto-us36.svg`](diagramas/terraform-estado-remoto-us36.svg) | Bucket de estado, claves por raíz, controles, secuencia del bloqueo y flujo de trabajo |
+| [`infraestructura-aws-us36.svg`](diagramas/infraestructura-aws-us36.svg) | Infraestructura completa de los tres ambientes según el plan real: VPC, nodo k3s, namespace y middleware (US-21), SSM, ECR, S3 y observabilidad, más los recursos compartidos |
+| [`terraform-red-computo-us20.svg`](diagramas/terraform-red-computo-us20.svg) y [`terraform-plataforma-us35.svg`](diagramas/terraform-plataforma-us35.svg) | Detalle de red y cómputo, y de registro, almacenamiento y observabilidad (sin cambios) |
+
+![Infraestructura AWS de CircleGuard](diagramas/infraestructura-aws-us36.svg)
 
 ## 4. Operación
 
