@@ -16,6 +16,40 @@ spring:
 server:
   port: 8084
 
+# US-23 (SCRUM-92): llamada a promotion-service. URL, timeouts y umbrales se pueden
+# cambiar por ambiente con variables de entorno, sin recompilar (External Configuration).
+circleguard:
+  promotion-service:
+    url: ${PROMOTION_SERVICE_URL:http://localhost:8088}
+    connect-timeout: ${PROMOTION_CONNECT_TIMEOUT:1s}
+    read-timeout: ${PROMOTION_READ_TIMEOUT:2s}
+
+resilience4j:
+  retry:
+    instances:
+      promotionService:
+        max-attempts: ${PROMOTION_RETRY_MAX_ATTEMPTS:3}
+        wait-duration: ${PROMOTION_RETRY_WAIT:200ms}
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        # Solo fallos transitorios: caída de red/timeout o 5xx. Un 4xx no se reintenta.
+        retry-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+  circuitbreaker:
+    instances:
+      promotionService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: ${PROMOTION_CB_WINDOW:10}
+        minimum-number-of-calls: ${PROMOTION_CB_MIN_CALLS:5}
+        failure-rate-threshold: ${PROMOTION_CB_FAILURE_RATE:50}
+        wait-duration-in-open-state: ${PROMOTION_CB_OPEN_WAIT:30s}
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+
 management:
   # US-24 (SCRUM-93): etiquetas comunes para distinguir servicio y ambiente en Prometheus/Grafana
   metrics:

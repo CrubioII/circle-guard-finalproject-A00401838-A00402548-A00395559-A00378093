@@ -1,5 +1,8 @@
 package com.circleguard.dashboard.client;
 
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.github.resilience4j.retry.RetryConfig;
+import io.github.resilience4j.retry.RetryRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -7,9 +10,11 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Duration;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.client.ExpectedCount.times;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -26,8 +31,11 @@ class PromotionClientTest {
 
     @BeforeEach
     void setUp() {
-        client = new PromotionClient();
-        ReflectionTestUtils.setField(client, "promotionServiceUrl", BASE);
+        // US-23: Retry de 3 intentos sin espera para que las pruebas sean rápidas
+        RetryRegistry retryRegistry = RetryRegistry.of(RetryConfig.custom()
+                .maxAttempts(3).waitDuration(Duration.ofMillis(1)).build());
+        client = new PromotionClient(BASE, Duration.ofSeconds(1), Duration.ofSeconds(2),
+                retryRegistry, CircuitBreakerRegistry.ofDefaults());
         RestTemplate restTemplate = (RestTemplate) ReflectionTestUtils.getField(client, "restTemplate");
         server = MockRestServiceServer.bindTo(restTemplate).build();
     }
@@ -46,7 +54,8 @@ class PromotionClientTest {
 
     @Test
     void getHealthStatsFallsBackWhenServiceFails() {
-        server.expect(requestTo(BASE + "/api/v1/health-status/stats")).andRespond(withServerError());
+        // US-23: un 5xx se reintenta 3 veces antes de usar el fallback
+        server.expect(times(3), requestTo(BASE + "/api/v1/health-status/stats")).andRespond(withServerError());
 
         Map<String, Object> stats = client.getHealthStats();
 
@@ -68,7 +77,7 @@ class PromotionClientTest {
 
     @Test
     void getHealthStatsByDepartmentFallsBackWhenServiceFails() {
-        server.expect(requestTo(BASE + "/api/v1/health-status/stats/department/Law")).andRespond(withServerError());
+        server.expect(times(3), requestTo(BASE + "/api/v1/health-status/stats/department/Law")).andRespond(withServerError());
 
         Map<String, Object> stats = client.getHealthStatsByDepartment("Law");
 
