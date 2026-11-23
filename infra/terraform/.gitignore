@@ -17,3 +17,6 @@ override.tf.json
 
 # Los módulos no fijan versiones: el lock file solo se versiona en envs/
 modules/**/.terraform.lock.hcl
+
+# Copias locales de proveedores y módulos para validar sin conexión
+**/.terraform-offline/

@@ -354,6 +354,7 @@ Cada servicio expone su documentación OpenAPI en `http://localhost:<puerto>/swa
 | Kubernetes: namespaces por ambiente y middleware con Kustomize sobre k3s (US-21) | [`docs/arquitectura/KUBERNETES_PLATAFORMA_US21.md`](docs/arquitectura/KUBERNETES_PLATAFORMA_US21.md) y [`deploy/k8s/README.md`](deploy/k8s/README.md) |
 | Terraform: módulos de red y cómputo con clúster k3s por ambiente (US-20) | [`docs/arquitectura/TERRAFORM_RED_COMPUTO_US20.md`](docs/arquitectura/TERRAFORM_RED_COMPUTO_US20.md) |
 | Terraform: módulos de registro, almacenamiento y observabilidad (US-35) | [`docs/arquitectura/TERRAFORM_PLATAFORMA_US35.md`](docs/arquitectura/TERRAFORM_PLATAFORMA_US35.md) y [`infra/terraform/README.md`](infra/terraform/README.md) |
+| Terraform: backend remoto del estado con bloqueo nativo de S3 (US-36) | [`docs/arquitectura/TERRAFORM_BACKEND_US36.md`](docs/arquitectura/TERRAFORM_BACKEND_US36.md) |
 | Informe de la Parte 1 y cómo actualizarlo | [`docs/informe/INFORME_PARTE1.md`](docs/informe/INFORME_PARTE1.md) y [`docs/informe/README.md`](docs/informe/README.md) |
 | Uso de IA generativa | [`docs/BITACORA_IAG_EQUIPO.md`](docs/BITACORA_IAG_EQUIPO.md) |
 
