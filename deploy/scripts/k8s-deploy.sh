@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # =============================================================================
-# CircleGuard — Despliegue y verificación en Kubernetes (US-39)
+# CircleGuard — Despliegue, verificación y rollback en Kubernetes (US-39 / US-28)
 #
 # Uso:
 #   k8s-deploy.sh deploy   --env <dev|stage|prod> --version X.Y.Z [--dry-run]
 #   k8s-deploy.sh verify   --env <env> --version X.Y.Z [--report reports/ci/k8s-<env>.json] [--dry-run]
+#   k8s-deploy.sh rollback --env <env> [--to X.Y.Z] [--dry-run]
 #   k8s-deploy.sh status   --env <env>
 #
 # deploy   (US-39 CA1) Arma una kustomization temporal en build/k8s-release/<env>/ que usa
@@ -15,6 +16,9 @@
 # verify   (US-39 CA2) `kubectl rollout status` de todos los Deployments y StatefulSets del
 #          namespace y comprobación de que las imágenes de CircleGuard tienen la etiqueta
 #          X.Y.Z. Si algo no queda listo, sale con 3 y la etapa de Jenkins falla.
+# rollback (US-28 CA1) Sin --to: `kubectl rollout undo` de los Deployments de CircleGuard
+#          (vuelven a la revisión anterior). Con --to: redeploy de esa etiqueta. En ambos
+#          casos espera el rollout.
 # status   Versión registrada, imágenes y revisiones de cada Deployment.
 #
 # Variables:
@@ -47,14 +51,15 @@ IMAGES=(auth identity promotion notification form file gateway dashboard mobile
 
 log()  { printf '[k8s-deploy][%s] %s\n' "${ENV_NAME:-?}" "$*"; }
 fail() { printf '[k8s-deploy][%s][ERROR] %s\n' "${ENV_NAME:-?}" "$*" >&2; exit "${2:-1}"; }
-usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; }
 
 COMMAND="${1:-}"; shift || true
-ENV_NAME=""; VERSION=""; REPORT=""
+ENV_NAME=""; VERSION=""; TO=""; REPORT=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --env) ENV_NAME="${2:?--env necesita un valor}"; shift 2 ;;
         --version) VERSION="${2:?--version necesita un valor}"; shift 2 ;;
+        --to) TO="${2:?--to necesita un valor}"; shift 2 ;;
         --report) REPORT="${2:?--report necesita un valor}"; shift 2 ;;
         --dry-run) DRY_RUN=1; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -62,7 +67,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-case "${COMMAND}" in deploy|verify|status) ;; -h|--help|"") usage; exit 0 ;; *) fail "Comando desconocido: ${COMMAND}" ;; esac
+case "${COMMAND}" in deploy|verify|rollback|status) ;; -h|--help|"") usage; exit 0 ;; *) fail "Comando desconocido: ${COMMAND}" ;; esac
 case "${ENV_NAME}" in dev|stage|prod) ;; *) fail "--env debe ser dev, stage o prod." ;; esac
 
 NAMESPACE="${K8S_NAMESPACE:-circleguard-${ENV_NAME}}"
@@ -193,6 +198,41 @@ PY
     log "Rollout completo: ${#ok[@]} recursos listos con la versión ${version}."
 }
 
+cmd_rollback() {
+    require_tools
+    if [[ -n "${TO}" ]]; then
+        validate_version "${TO}"
+        log "Rollback por redeploy de la etiqueta ${TO}"
+        cmd_deploy "${TO}"
+        cmd_verify "${TO}"
+        return
+    fi
+    log "Rollback a la revisión anterior (kubectl rollout undo) de los Deployments ${APP_SELECTOR}"
+    local deployments d
+    if [[ "${DRY_RUN}" == "1" ]]; then
+        printf '[dry-run] %s -n %s rollout undo deployment/<cada deployment con %s>\n' "${KUBECTL}" "${NAMESPACE}" "${APP_SELECTOR}"
+        printf '[dry-run] %s -n %s rollout status deployment/<...> --timeout=%s\n' "${KUBECTL}" "${NAMESPACE}" "${ROLLOUT_TIMEOUT}"
+        return 0
+    fi
+    deployments="$("${KUBECTL}" -n "${NAMESPACE}" get deployments -l "${APP_SELECTOR}" -o name)"
+    [[ -n "${deployments}" ]] || fail "No hay Deployments con ${APP_SELECTOR} en ${NAMESPACE}." 3
+    while read -r d; do
+        [[ -n "${d}" ]] || continue
+        "${KUBECTL}" -n "${NAMESPACE}" rollout undo "${d}"
+    done <<< "${deployments}"
+    while read -r d; do
+        [[ -n "${d}" ]] || continue
+        "${KUBECTL}" -n "${NAMESPACE}" rollout status "${d}" --timeout="${ROLLOUT_TIMEOUT}" \
+            || fail "El rollback de ${d} no quedó listo." 3
+    done <<< "${deployments}"
+    # La versión restaurada es la etiqueta que quedó en los contenedores de CircleGuard.
+    local restored
+    restored="$("${KUBECTL}" -n "${NAMESPACE}" get deployments -l "${APP_SELECTOR}" \
+        -o jsonpath='{.items[0].spec.template.spec.containers[0].image}' | sed 's/.*://')"
+    [[ "${restored}" =~ ${SEMVER_RE} ]] && record_release "${restored}"
+    log "Rollback completado: ${NAMESPACE} ejecuta ${restored:-la revisión anterior}."
+}
+
 cmd_status() {
     require_tools
     printf 'Namespace : %s\n' "${NAMESPACE}"
@@ -208,5 +248,6 @@ cmd_status() {
 case "${COMMAND}" in
     deploy) [[ -n "${VERSION}" ]] || fail "deploy necesita --version"; cmd_deploy "${VERSION}" ;;
     verify) [[ -n "${VERSION}" ]] || fail "verify necesita --version"; cmd_verify "${VERSION}" ;;
+    rollback) cmd_rollback ;;
     status) cmd_status ;;
 esac

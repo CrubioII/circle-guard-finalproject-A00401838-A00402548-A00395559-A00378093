@@ -50,6 +50,7 @@ spec:
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           # redis-cli usa REDISCLI_AUTH; la clave no aparece en la línea de comandos.
