@@ -1,0 +1,38 @@
+# form-service (8086): Encuestas de salud, certificados y adjuntos.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: form-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: form-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: form-service
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: form-service
+          image: circleguard/form-service:0.1.0
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          ports:
+            - {name: http, containerPort: 8086}
+          envFrom:
+            - configMapRef: {name: services-config}
+            - configMapRef: {name: form-service-config}
+          env:
+            - {name: SPRING_DATASOURCE_USERNAME, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: POSTGRES_USER}}}
+            - {name: SPRING_DATASOURCE_PASSWORD, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: POSTGRES_PASSWORD}}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: form-service
+spec:
+  selector:
+    app.kubernetes.io/name: form-service
+  ports:
+    - {name: http, port: 8086, targetPort: http}
