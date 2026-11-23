@@ -1,6 +1,7 @@
 package com.circleguard.auth.controller;
 
 import com.circleguard.auth.client.IdentityClient;
+import com.circleguard.auth.client.IdentityServiceUnavailableException;
 import com.circleguard.auth.model.LocalUser;
 import com.circleguard.auth.repository.LocalUserRepository;
 import com.circleguard.auth.service.JwtTokenService;
@@ -59,6 +60,20 @@ class AuthControllersUnitTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(500);
         assertThat(response.getBody().get("message")).contains("identity down");
+    }
+
+    @Test
+    void login_identityUnavailable_returns503() {
+        // US-23 (SCRUM-92): reintentos agotados o Circuit Breaker abierto
+        LoginController controller = new LoginController(authManager, jwtService, identityClient);
+        when(authManager.authenticate(any())).thenReturn(new UsernamePasswordAuthenticationToken("u", null, List.of()));
+        when(identityClient.getAnonymousId("u"))
+                .thenThrow(new IdentityServiceUnavailableException(new IllegalStateException("open")));
+
+        ResponseEntity<Map<String, String>> response = controller.login(Map.of("username", "u"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody().get("message")).contains("temporarily unavailable");
     }
 
     @Test
