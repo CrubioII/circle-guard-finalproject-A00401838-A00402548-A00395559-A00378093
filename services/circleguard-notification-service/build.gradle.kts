@@ -13,6 +13,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     // US-24 (SCRUM-93): expone /actuator/prometheus para que Prometheus recoja las métricas
     runtimeOnly("io.micrometer:micrometer-registry-prometheus")
+    // US-25 (SCRUM-94): trazas distribuidas con OpenTelemetry, exportadas por OTLP a Jaeger
+    implementation("io.micrometer:micrometer-tracing-bridge-otel")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp")
     implementation("org.springframework.kafka:spring-kafka")
     implementation("org.springframework.boot:spring-boot-starter-mail")
     implementation("com.twilio.sdk:twilio:10.1.1")
