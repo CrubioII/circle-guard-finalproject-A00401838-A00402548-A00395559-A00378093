@@ -11,18 +11,18 @@ import org.springframework.stereotype.Component;
 @Component
 public class CheckInMetrics {
 
-    public static final String GRANTED = "granted";
-    public static final String DENIED = "denied";
-    public static final String INVALID = "invalid";
+    public static final String RESULT_GRANTED = "granted";
+    public static final String RESULT_DENIED = "denied";
+    public static final String RESULT_INVALID = "invalid";
 
     private final Counter granted;
     private final Counter denied;
     private final Counter invalid;
 
     public CheckInMetrics(MeterRegistry registry) {
-        this.granted = counter(registry, GRANTED);
-        this.denied = counter(registry, DENIED);
-        this.invalid = counter(registry, INVALID);
+        this.granted = counter(registry, RESULT_GRANTED);
+        this.denied = counter(registry, RESULT_DENIED);
+        this.invalid = counter(registry, RESULT_INVALID);
     }
 
     private static Counter counter(MeterRegistry registry, String result) {

@@ -53,8 +53,8 @@ class CheckInMetricsTest {
         service.validateToken(token("risk"));
         service.validateToken("not-a-jwt");
 
-        assertEquals(2.0, checkins(CheckInMetrics.GRANTED));
-        assertEquals(1.0, checkins(CheckInMetrics.DENIED));
-        assertEquals(1.0, checkins(CheckInMetrics.INVALID));
+        assertEquals(2.0, checkins(CheckInMetrics.RESULT_GRANTED));
+        assertEquals(1.0, checkins(CheckInMetrics.RESULT_DENIED));
+        assertEquals(1.0, checkins(CheckInMetrics.RESULT_INVALID));
     }
 }

@@ -23,6 +23,7 @@ public class PromotionMetrics {
     static final String PROMOTIONS = "circleguard.promotions";
     static final String CONTAINMENT = "circleguard.containment";
     static final String CONTACTS_FENCED = "circleguard.contacts.fenced";
+    static final String STATUS_TAG = "status";
 
     private final MeterRegistry registry;
 
@@ -38,19 +39,19 @@ public class PromotionMetrics {
     public void promotionCompleted(Timer.Sample sample, String status, int contactsFenced) {
         sample.stop(Timer.builder(CONTAINMENT)
                 .description("Tiempo desde el cambio de estado hasta el cerco de los contactos")
-                .tag("status", status)
+                .tag(STATUS_TAG, status)
                 .publishPercentileHistogram()
                 .serviceLevelObjectives(Duration.ofMillis(300), Duration.ofSeconds(1))
                 .register(registry));
         Counter.builder(PROMOTIONS)
                 .description("Cambios de estado de salud aplicados")
-                .tag("status", status)
+                .tag(STATUS_TAG, status)
                 .register(registry)
                 .increment();
         if (contactsFenced > 0) {
             Counter.builder(CONTACTS_FENCED)
                     .description("Contactos cercados por una promoción")
-                    .tag("status", status)
+                    .tag(STATUS_TAG, status)
                     .register(registry)
                     .increment(contactsFenced);
         }
