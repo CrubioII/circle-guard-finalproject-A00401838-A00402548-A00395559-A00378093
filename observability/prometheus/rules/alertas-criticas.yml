@@ -1,0 +1,50 @@
+# Alertas críticas de CircleGuard (US-41 / SCRUM-122).
+# Prometheus evalúa estas reglas cada 15 s; si una condición se mantiene durante "for",
+# la alerta pasa a "firing" y se envía a Alertmanager, que notifica al canal de guardia
+# (observability/alertmanager/alertmanager.yml).
+groups:
+  - name: circleguard-criticas
+    rules:
+      - alert: CircleGuardServicioCaido
+        expr: up{job="circleguard-services"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: plataforma
+        annotations:
+          summary: "{{ $labels.application }} ({{ $labels.instance }}) no responde"
+          description: "Prometheus no puede leer /actuator/prometheus de {{ $labels.instance }} desde hace más de 1 minuto."
+
+      - alert: CircleGuardContencionLenta
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, environment) (rate(circleguard_containment_seconds_bucket[5m]))) > 1
+        for: 2m
+        labels:
+          severity: critical
+          team: salud
+        annotations:
+          summary: "El p95 del tiempo de contención supera 1 s en {{ $labels.environment }}"
+          description: "p95 = {{ $value | humanizeDuration }}. El requisito NFR-1 pide cercar los contactos en menos de 1 s."
+
+      - alert: CircleGuardErroresHttp5xx
+        expr: |
+          sum by (application, environment) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+            / sum by (application, environment) (rate(http_server_requests_seconds_count[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: plataforma
+        annotations:
+          summary: "Más del 5 % de las peticiones de {{ $labels.application }} fallan con 5xx"
+          description: "Tasa de errores = {{ $value | humanizePercentage }} en {{ $labels.environment }}."
+
+      - alert: CircleGuardBroteDeConfirmados
+        expr: sum by (environment) (rate(circleguard_promotions_total{status="CONFIRMED"}[5m])) * 60 > 5
+        for: 2m
+        labels:
+          severity: critical
+          team: salud
+        annotations:
+          summary: "Más de 5 casos confirmados por minuto en {{ $labels.environment }}"
+          description: "{{ $value | humanize }} confirmados/min. Posible brote: revisar cercos y avisar al comité de salud."
