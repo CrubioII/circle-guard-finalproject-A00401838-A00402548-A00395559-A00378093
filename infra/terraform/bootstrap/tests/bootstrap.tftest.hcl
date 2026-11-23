@@ -63,10 +63,12 @@ run "plan_backend" {
     error_message = "La política del bucket debe rechazar conexiones sin TLS."
   }
 
+  # Terraform 1.11 (el del agente de Jenkins) evalúa los dos lados de &&, así que se usa try()
+  # para las reglas que no tienen noncurrent_version_expiration.
   assert {
     condition = anytrue([
       for r in aws_s3_bucket_lifecycle_configuration.state.rule :
-      r.id == "expire-noncurrent-state-versions" && one(r.noncurrent_version_expiration).noncurrent_days == 90
+      r.id == "expire-noncurrent-state-versions" && try(one(r.noncurrent_version_expiration).noncurrent_days, 0) == 90
     ])
     error_message = "Las versiones anteriores del estado deben conservarse 90 días."
   }
