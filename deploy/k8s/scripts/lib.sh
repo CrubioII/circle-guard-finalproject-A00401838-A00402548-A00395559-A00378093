@@ -15,7 +15,8 @@ ALL_ENVS=(dev stage prod)
 MIDDLEWARE=(postgres neo4j zookeeper kafka redis openldap)
 SECRET_NAME="circleguard-middleware"
 # Microservicios (US-37): Deployment y Service con el mismo nombre que en compose.
-SERVICES=(auth-service identity-service promotion-service form-service gateway-service)
+SERVICES=(auth-service identity-service promotion-service form-service gateway-service
+          notification-service dashboard-service file-service)
 APP_SECRET_NAME="circleguard-app"
 
 log()  { printf '[k8s] %s\n' "$*"; }
