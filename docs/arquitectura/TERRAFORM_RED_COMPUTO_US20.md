@@ -4,7 +4,7 @@
 |---|---|
 | Historia | US-20 (5 SP), épico E2.1 — IaC con Terraform |
 | Alcance | Red propia por ambiente (VPC) y cómputo (clúster Kubernetes ligero k3s sobre EC2) |
-| Relación | Usa la clave KMS y ECR de [US-35](TERRAFORM_PLATAFORMA_US35.md). El backend remoto es US-36. Los namespaces y el middleware sobre este clúster son US-21. |
+| Relación | Usa la clave KMS y ECR de [US-35](TERRAFORM_PLATAFORMA_US35.md). El backend remoto es [US-36](TERRAFORM_BACKEND_US36.md). Los namespaces y el middleware sobre este clúster son US-21. |
 | Código | [`infra/terraform/modules/network`](../../infra/terraform/modules/network/README.md), [`infra/terraform/modules/compute`](../../infra/terraform/modules/compute/README.md), [`infra/terraform/envs/`](../../infra/terraform/envs/) |
 
 ![Red y cómputo por ambiente](diagramas/terraform-red-computo-us20.svg)
@@ -147,5 +147,5 @@ Hay que apagar o destruir (`terraform destroy`) al terminar la evaluación. En p
 ## 6. Antes del primer `apply`
 
 1. **Cuota de vCPU:** la cuenta tiene 8 vCPU y las usan las 4 instancias de la Parte 1. Hay que detener los 3 nodos de ambiente de la Parte 1 (`dev`, `stage`, `prod`) o pedir más cuota. El nodo de CI se mantiene.
-2. **Backend remoto (US-36):** copiar `backend.hcl.example` a `backend.hcl` en cada ambiente.
+2. **Backend remoto (US-36):** ya existe. En cada clon basta con `bash infra/terraform/scripts/init-backend.sh` para generar `backend.hcl`.
 3. **Acceso a la API:** pasar la IP del administrador con `TF_VAR_compute_api_allowed_cidrs='["<ip>/32"]'`, o usar un túnel SSM.

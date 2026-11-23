@@ -7,7 +7,7 @@
 #   tf-pipeline.sh apply --env <dev|stage|prod> [--dry-run]
 #
 # plan:
-#   init con el backend S3 + DynamoDB de US-20, validate, plan -out y reportes:
+#   init con el backend S3 de US-36 (bloqueo nativo), validate, plan -out y reportes:
 #     reports/terraform/<env>.tfplan       plan binario (lo consume apply)
 #     reports/terraform/<env>-plan.txt     plan legible (artefacto de Jenkins)
 #     reports/terraform/<env>-plan.json    plan en JSON (terraform show -json)
@@ -21,7 +21,7 @@
 # Backend (sin datos de la cuenta en Git):
 #   TF_STATE_BUCKET  bucket del estado. Si falta, se arma como
 #                    circleguard-terraform-state-<ID_CUENTA> con aws sts get-caller-identity.
-#   TF_LOCK_TABLE    tabla de bloqueo (por defecto circleguard-terraform-locks)
+#   El bloqueo es <clave>.tflock en el mismo bucket (use_lockfile, US-36); no hay tabla.
 #   TF_STATE_REGION  región del backend (por defecto us-east-2, la Región del proyecto)
 #   TF_STATE_KEY     clave del estado (por defecto envs/<env>/platform.tfstate)
 #
@@ -89,17 +89,16 @@ resolve_state_bucket() {
 }
 
 terraform_init() {
-    local bucket key region table
+    local bucket key region
     bucket="$(resolve_state_bucket)"
     key="${TF_STATE_KEY:-envs/${ENV_NAME}/platform.tfstate}"
     region="${TF_STATE_REGION:-us-east-2}"
-    table="${TF_LOCK_TABLE:-circleguard-terraform-locks}"
-    log "init: backend s3://${bucket}/${key} (${region}), lock ${table}"
+    log "init: backend s3://${bucket}/${key} (${region}), bloqueo nativo de S3"
     tf init -reconfigure -no-color \
         -backend-config="bucket=${bucket}" \
         -backend-config="key=${key}" \
         -backend-config="region=${region}" \
-        -backend-config="dynamodb_table=${table}" \
+        -backend-config="use_lockfile=true" \
         -backend-config="encrypt=true"
 }
 

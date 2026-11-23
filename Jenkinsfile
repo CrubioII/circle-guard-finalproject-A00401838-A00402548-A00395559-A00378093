@@ -160,7 +160,7 @@ void withTerraformCredentials(Closure body) {
     withCredentials([usernamePassword(credentialsId: env.AWS_TERRAFORM_CREDENTIALS_ID,
                                       usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
         withEnv(["AWS_DEFAULT_REGION=${env.TF_STATE_REGION}", "TF_STATE_REGION=${env.TF_STATE_REGION}",
-                 "TF_STATE_BUCKET=${env.TF_STATE_BUCKET}", "TF_LOCK_TABLE=${env.TF_LOCK_TABLE}"]) {
+                 "TF_STATE_BUCKET=${env.TF_STATE_BUCKET}"]) {
             body()
         }
     }
@@ -319,11 +319,10 @@ pipeline {
         PROD_HOST = "${env.CG_PROD_HOST ?: '77.113.211.62'}"
         PROD_APPROVERS = "${env.CG_PROD_APPROVERS ?: ''}"
         PROD_APPROVAL_TIMEOUT_MIN = "${env.CG_PROD_APPROVAL_TIMEOUT_MIN ?: '60'}"
-        // US-22: backend remoto de US-20. Si CG_TF_STATE_BUCKET está vacío, tf-pipeline.sh usa
-        // circleguard-terraform-state-<ID_CUENTA>. La Región es la del proyecto AWS.
+        // US-22: backend remoto de US-36 con bloqueo nativo de S3. Si CG_TF_STATE_BUCKET está
+        // vacío, tf-pipeline.sh usa circleguard-terraform-state-<ID_CUENTA>. La Región es la del proyecto AWS.
         AWS_TERRAFORM_CREDENTIALS_ID = 'aws-terraform'
         TF_STATE_BUCKET = "${env.CG_TF_STATE_BUCKET ?: ''}"
-        TF_LOCK_TABLE = "${env.CG_TF_LOCK_TABLE ?: 'circleguard-terraform-locks'}"
         TF_STATE_REGION = "${env.CG_AWS_REGION ?: 'us-east-2'}"
         // US-22: el apply crea infraestructura real con costo; se activa a propósito.
         TERRAFORM_APPLY_ENABLED = "${env.CG_TERRAFORM_APPLY ?: 'false'}"

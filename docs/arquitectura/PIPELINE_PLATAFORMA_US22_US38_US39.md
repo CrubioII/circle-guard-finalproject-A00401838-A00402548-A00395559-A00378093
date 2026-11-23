@@ -29,7 +29,7 @@ En un Pull Request solo corren `Terraform Plan` (si el PR toca Terraform) y `Tri
 
 `apply` aplica el archivo `reports/terraform/<env>.tfplan` que generó `plan` en la misma ejecución. Si no existe, el script sale con código 3: no se aplica nada que no se haya planificado y archivado. El resultado por ambiente queda en `reports/ci/terraform-apply.json`.
 
-El backend es el de US-20 (S3 + DynamoDB en la Región del proyecto). `tf-pipeline.sh` arma la configuración al iniciar, sin datos de la cuenta en Git: el bucket sale de `CG_TF_STATE_BUCKET` o, si está vacío, de `circleguard-terraform-state-<ID_CUENTA>` con `aws sts get-caller-identity`.
+El backend es el de [US-36](TERRAFORM_BACKEND_US36.md): S3 en la Región del proyecto con bloqueo nativo (`use_lockfile=true`), sin tabla DynamoDB. `tf-pipeline.sh` arma la configuración al iniciar, sin datos de la cuenta en Git: el bucket sale de `CG_TF_STATE_BUCKET` o, si está vacío, de `circleguard-terraform-state-<ID_CUENTA>` con `aws sts get-caller-identity`.
 
 `FORCE_TERRAFORM=true` corre plan (y apply en main) aunque el commit no toque Terraform, por ejemplo para detectar drift.
 
@@ -67,7 +67,7 @@ Cada despliegue anota los Deployments con `kubernetes.io/change-cause` (versión
 | `aws-terraform` | Credencial usuario/contraseña (Access Key ID / Secret) | Terraform plan y apply. Opcional: sin ella se omiten las etapas de Terraform. Para el plan basta una identidad de solo lectura con acceso al bucket de estado; el apply necesita permisos para crear los recursos de CircleGuard |
 | `CG_TERRAFORM_APPLY` | Variable global (opcional) | `true` activa el apply en main. Vacío o cualquier otro valor: solo plan |
 | `kubeconfig-dev`, `kubeconfig-stage`, `kubeconfig-prod` | Credencial de archivo | kubeconfig de cada clúster k3s, descargado con `deploy/k8s/scripts/get-kubeconfig.sh` (parámetro SSM de US-20) |
-| `CG_TF_STATE_BUCKET`, `CG_TF_LOCK_TABLE`, `CG_AWS_REGION` | Variables globales (opcionales) | Backend de Terraform. Por defecto `circleguard-terraform-state-<cuenta>`, `circleguard-terraform-locks` y `us-east-2` |
+| `CG_TF_STATE_BUCKET`, `CG_AWS_REGION` | Variables globales (opcionales) | Backend de Terraform. Por defecto `circleguard-terraform-state-<cuenta>` y `us-east-2` |
 | `CG_DEPLOY_PLATFORM` | Variable global (opcional) | `compose` o `k8s` |
 
 La imagen de Jenkins ([`infra/bootstrap/jenkins/Dockerfile`](../../infra/bootstrap/jenkins/Dockerfile)) instala Terraform 1.11.4, Trivy 0.69.3 (con las plantillas JUnit y HTML) y kubectl v1.32.2, cada uno comparado contra el checksum del proveedor. Hay que reconstruirla en el servidor de CI para que las etapas nuevas funcionen:

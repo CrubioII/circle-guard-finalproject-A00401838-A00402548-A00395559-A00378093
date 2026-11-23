@@ -4,7 +4,7 @@
 |---|---|
 | Historia | US-35 (5 SP), épico E2.1 — IaC con Terraform |
 | Alcance | Servicios compartidos de cada ambiente: registro de imágenes (ECR), almacenamiento de objetos (S3) y observabilidad base (CloudWatch + SNS) |
-| Fuera de alcance | Red y cómputo/clúster (otra historia), creación del bucket de estado y la tabla de bloqueo (otra historia), Prometheus/Grafana/Jaeger/Loki en Kubernetes (E2.5) y migración del pipeline de Nexus a ECR (E2.3) |
+| Fuera de alcance | Red y cómputo/clúster (otra historia), creación del bucket de estado y su bloqueo ([US-36](TERRAFORM_BACKEND_US36.md)), Prometheus/Grafana/Jaeger/Loki en Kubernetes (E2.5) y migración del pipeline de Nexus a ECR (E2.3) |
 | Código | [`infra/terraform/`](../../infra/terraform/) |
 
 ![Módulos y ambientes de US-35](diagramas/terraform-plataforma-us35.svg)
@@ -162,7 +162,7 @@ En ambos casos, con `--real` el script guarda `reports/terraform/<env>-plan.txt`
 
 ### Aplicar y destruir
 
-No se debe ejecutar `apply` sin el backend remoto de US-36. Con estado local, el estado quedaría en un solo computador y sin bloqueo.
+El `apply` se hace siempre con el backend remoto de [US-36](TERRAFORM_BACKEND_US36.md) (`backend.hcl`, generado por `init-backend.sh`), para que el estado quede compartido y bloqueado durante la ejecución.
 
 ```bash
 cd infra/terraform/envs/dev
