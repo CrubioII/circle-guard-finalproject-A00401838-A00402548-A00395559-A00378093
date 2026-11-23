@@ -108,11 +108,11 @@ String sonarCmd = sonarQualityGate.buildSonarGradleCommand(
     ['circleguard-auth-service', 'circleguard-identity-service'],
     [projectKey: 'circleguard-monorepo', skipTests: true, daemon: false]
 )
-assert sonarCmd.startsWith('./gradlew sonar')
+assert sonarCmd.startsWith('./gradlew test sonar')
 assert sonarCmd.contains('-Dsonar.projectKey=circleguard-monorepo')
 assert sonarCmd.contains('services/circleguard-auth-service/build/reports/jacoco/test/jacocoTestReport.xml')
 assert sonarCmd.contains('services/circleguard-identity-service/build/reports/jacoco/test/jacocoTestReport.xml')
-assert sonarCmd.contains('-x test')
+assert !sonarCmd.contains('-x test')
 assert sonarCmd.contains('--no-daemon --stacktrace')
 
 String compileCmd = pipelineUtils.buildGradleCommandForServices(
