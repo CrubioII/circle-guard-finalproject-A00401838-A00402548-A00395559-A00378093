@@ -67,6 +67,28 @@ assert platformFlow.planPlatform(mainPlan, appDetection, [forceTerraform: true])
 println('[OK] Caso 3: plan solo con cambios reales de .tf/.tfvars/.hcl o con FORCE_TERRAFORM.')
 
 // -----------------------------------------------------------------------------
+// Caso 3b: sin la credencial de AWS no hay plan ni apply (salvo FORCE_TERRAFORM, que falla);
+// sin CG_TERRAFORM_APPLY=true main solo planifica.
+// -----------------------------------------------------------------------------
+Map noCreds = platformFlow.planPlatform(prPlan, tfDetection, [terraformCredentials: false])
+assert noCreds.terraformChanged && !noCreds.runTerraformPlan && !noCreds.terraformApply
+assert !noCreds.stages.contains('Terraform Plan') && noCreds.terraformNote.contains('Sin credencial')
+assert !platformFlow.planPlatform(mainPlan, tfDetection, [terraformCredentials: false]).terraformApply
+assert platformFlow.planPlatform(mainPlan, appDetection, [terraformCredentials: false]).terraformNote == ''
+try {
+    platformFlow.planPlatform(prPlan, appDetection, [forceTerraform: true, terraformCredentials: false])
+    assert false : 'FORCE_TERRAFORM sin credencial debería fallar'
+} catch (IllegalStateException expected) {
+    assert expected.message.contains('FORCE_TERRAFORM')
+}
+Map planOnly = platformFlow.planPlatform(mainPlan, tfDetection, [terraformApplyEnabled: false])
+assert planOnly.runTerraformPlan && !planOnly.terraformApply && planOnly.terraformNote.contains('CG_TERRAFORM_APPLY')
+assert planOnly.stages.contains('Terraform Plan') && !planOnly.stages.any { it.startsWith('Terraform Apply') }
+assert !platformFlow.terraformApplyDecision(planOnly, 'dev').apply
+assert platformFlow.planPlatform(prPlan, tfDetection, [terraformApplyEnabled: false]).terraformNote == ''
+println('[OK] Caso 3b: sin credencial se omite Terraform y sin CG_TERRAFORM_APPLY main solo hace plan.')
+
+// -----------------------------------------------------------------------------
 // Caso 4 (US-22 CA2): compuerta de apply por ambiente.
 // -----------------------------------------------------------------------------
 assert platformFlow.terraformApplyDecision(mainTf, 'dev').apply
@@ -168,6 +190,9 @@ String jf = jenkinsfile.getText('UTF-8')
     "platformFlow.terraformApplyDecision(platform, 'stage', [deployResults: deployResults])",
     "platformFlow.terraformApplyDecision(platform, 'prod', [prodApproval: prodApproval])",
     "AWS_TERRAFORM_CREDENTIALS_ID = 'aws-terraform'", "name: 'FORCE_TERRAFORM'",
+    'terraformCredentials : terraformCredentialsPresent()',
+    "TERRAFORM_APPLY_ENABLED = \"\${env.CG_TERRAFORM_APPLY ?: 'false'}\"",
+    "terraformApplyEnabled: env.TERRAFORM_APPLY_ENABLED == 'true'",
     // US-38
     "stage('Trivy IaC Scan')", './infra/scripts/trivy-scan.sh config --target infra/terraform --target deploy/k8s',
     "stage('Build Images')", "stage('Trivy Image Scan')", './infra/scripts/trivy-scan.sh image --version',

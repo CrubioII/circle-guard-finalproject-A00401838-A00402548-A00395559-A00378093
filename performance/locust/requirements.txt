@@ -1,0 +1,2 @@
+# US-27 (SCRUM-96): dependencias de las pruebas de carga
+locust>=2.31,<3

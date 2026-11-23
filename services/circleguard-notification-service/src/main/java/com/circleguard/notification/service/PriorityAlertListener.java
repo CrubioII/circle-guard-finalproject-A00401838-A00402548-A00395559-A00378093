@@ -1,6 +1,5 @@
 package com.circleguard.notification.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,8 +26,8 @@ public class PriorityAlertListener {
     @KafkaListener(topics = "alert.priority", groupId = "notification-priority-group")
     public void handlePriorityAlert(String message) {
         log.info("Received alert.priority event: {}", message);
+        Map<String, Object> payload = EventPayloads.toMap(objectMapper, message, "alert.priority");
         try {
-            Map<String, Object> payload = objectMapper.readValue(message, new TypeReference<Map<String, Object>>() {});
             String eventType = (String) payload.get("eventType");
             Integer affectedCount = (Integer) payload.get("affectedCount");
             
@@ -56,4 +55,5 @@ public class PriorityAlertListener {
             log.error("Failed to process alert.priority event: {}", e.getMessage(), e);
         }
     }
+
 }

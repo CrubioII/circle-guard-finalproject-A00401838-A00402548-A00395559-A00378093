@@ -351,6 +351,7 @@ Cada servicio expone su documentación OpenAPI en `http://localhost:<puerto>/swa
 | Aprobación manual de prod (US-31) | [`docs/arquitectura/PROD_APPROVAL_US31.md`](docs/arquitectura/PROD_APPROVAL_US31.md) |
 | Seguridad de Jenkins: cuentas, permisos y aprobadores (US-31) | [`docs/operaciones/JENKINS_SEGURIDAD_US31.md`](docs/operaciones/JENKINS_SEGURIDAD_US31.md) |
 | E2E con Playwright (US-34) | [`docs/agil/PLAYWRIGHT_E2E_US34.md`](docs/agil/PLAYWRIGHT_E2E_US34.md) |
+| Kubernetes: namespaces por ambiente y middleware con Kustomize sobre k3s (US-21) | [`docs/arquitectura/KUBERNETES_PLATAFORMA_US21.md`](docs/arquitectura/KUBERNETES_PLATAFORMA_US21.md) y [`deploy/k8s/README.md`](deploy/k8s/README.md) |
 | Terraform: módulos de red y cómputo con clúster k3s por ambiente (US-20) | [`docs/arquitectura/TERRAFORM_RED_COMPUTO_US20.md`](docs/arquitectura/TERRAFORM_RED_COMPUTO_US20.md) |
 | Terraform: módulos de registro, almacenamiento y observabilidad (US-35) | [`docs/arquitectura/TERRAFORM_PLATAFORMA_US35.md`](docs/arquitectura/TERRAFORM_PLATAFORMA_US35.md) y [`infra/terraform/README.md`](infra/terraform/README.md) |
 | Terraform: backend remoto del estado con bloqueo nativo de S3 (US-36) | [`docs/arquitectura/TERRAFORM_BACKEND_US36.md`](docs/arquitectura/TERRAFORM_BACKEND_US36.md) |

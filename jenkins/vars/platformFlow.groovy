@@ -83,11 +83,17 @@ Map resolveDeployPlatform(String requested, String configuredDefault, boolean k8
  *   - configuredPlatform (String): variable global CG_DEPLOY_PLATFORM.
  *   - k8sOverlaysPresent (boolean): existen los overlays de US-21.
  *   - enableTrivy (boolean): ENABLE_TRIVY_GATE (por defecto true).
+ *   - terraformCredentials (boolean): existe la credencial de AWS de Terraform (por defecto
+ *     true). Sin ella no corre ni plan ni apply; con forceTerraform el build falla.
+ *   - terraformApplyEnabled (boolean): se permite el apply en main (por defecto true). El
+ *     Jenkinsfile lo activa solo con CG_TERRAFORM_APPLY=true.
  */
 Map planPlatform(Map plan, Map detection, Map config = [:]) {
     List<String> changed = ((detection?.changedFiles ?: []) as List).collect { it.toString() }
     boolean forceTerraform = (config.forceTerraform ?: false) as boolean
     boolean enableTrivy = (config.containsKey('enableTrivy') ? config.enableTrivy : true) as boolean
+    boolean tfCredentials = (config.containsKey('terraformCredentials') ? config.terraformCredentials : true) as boolean
+    boolean tfApplyEnabled = (config.containsKey('terraformApplyEnabled') ? config.terraformApplyEnabled : true) as boolean
     boolean heavy = (plan?.runHeavyBuild ?: false) as boolean
     boolean isMain = (plan?.isMainBranch ?: false) as boolean
     boolean autoDeploy = (plan?.autoDeployDev ?: false) as boolean
@@ -103,9 +109,19 @@ Map planPlatform(Map plan, Map detection, Map config = [:]) {
     )
 
     // US-22 CA1: plan en cada PR (y en main) que modifique infra/terraform.
-    boolean runTerraformPlan = terraformChanged && (heavy || forceTerraform)
+    boolean wantsTerraformPlan = terraformChanged && (heavy || forceTerraform)
+    if (wantsTerraformPlan && forceTerraform && !tfCredentials) {
+        throw new IllegalStateException('FORCE_TERRAFORM=true exige la credencial de AWS de Terraform (US-22); no existe en Jenkins.')
+    }
+    boolean runTerraformPlan = wantsTerraformPlan && tfCredentials
     // US-22 CA2: apply solo desde main, en el mismo orden de promoción que la aplicación.
-    boolean terraformApply = runTerraformPlan && autoDeploy
+    boolean terraformApply = runTerraformPlan && autoDeploy && tfApplyEnabled
+    String terraformNote = ''
+    if (wantsTerraformPlan && !tfCredentials) {
+        terraformNote = 'Sin credencial de AWS de Terraform: se omiten plan y apply.'
+    } else if (runTerraformPlan && autoDeploy && !tfApplyEnabled) {
+        terraformNote = 'Apply desactivado (CG_TERRAFORM_APPLY no es true): solo plan.'
+    }
     // US-38 CA1: trivy config en todo build pesado (PR y main); trivy image antes de publicar.
     boolean runTrivyConfig = enableTrivy && heavy
     boolean runTrivyImages = enableTrivy && isMain && heavy
@@ -130,7 +146,8 @@ Map planPlatform(Map plan, Map detection, Map config = [:]) {
         terraformEnvs     : TERRAFORM_ENVS,
         runTerraformPlan  : runTerraformPlan,
         terraformApply    : terraformApply,
-        k8sChanged        : !k8sFiles.isEmpty(),
+        terraformNote     : terraformNote,
+        k8sChanged       : !k8sFiles.isEmpty(),
         runTrivyConfig    : runTrivyConfig,
         runTrivyImages    : runTrivyImages,
         trivySeverity     : TRIVY_BLOCKING_SEVERITY,
@@ -215,7 +232,8 @@ Map rollbackOnlyPlans(Map plan, Map platformPlan) {
 String formatPlatformSummary(Map p) {
     return [
         '=== Plan de plataforma (US-22 / US-38 / US-39) ===',
-        "Terraform: cambios=${p.terraformChanged} plan=${p.runTerraformPlan} apply=${p.terraformApply} archivos=${p.terraformFiles}",
+        "Terraform: cambios=${p.terraformChanged} plan=${p.runTerraformPlan} apply=${p.terraformApply} archivos=${p.terraformFiles}" +
+            (p.terraformNote ? " (${p.terraformNote})" : ''),
         "Trivy: config=${p.runTrivyConfig} imágenes=${p.runTrivyImages} severidad=${p.trivySeverity}",
         "Despliegue: plataforma=${p.deployPlatform} (${p.deployPlatformFrom})",
         "Etapas: ${p.stages}"

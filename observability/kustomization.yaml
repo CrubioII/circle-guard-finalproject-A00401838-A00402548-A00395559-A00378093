@@ -17,6 +17,7 @@ configMapGenerator:
     namespace: circleguard-observability
     files:
       - prometheus.yml=prometheus/prometheus.yml
+      - alertas-criticas.yml=prometheus/rules/alertas-criticas.yml
   - name: grafana-datasources
     namespace: circleguard-observability
     files:
@@ -29,3 +30,4 @@ configMapGenerator:
     namespace: circleguard-observability
     files:
       - circleguard-servicios-tecnico.json=grafana/dashboards/circleguard-servicios-tecnico.json
+      - circleguard-negocio.json=grafana/dashboards/circleguard-negocio.json

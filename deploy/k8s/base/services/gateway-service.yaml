@@ -1,0 +1,39 @@
+# gateway-service (8087): Control de acceso en las entradas del campus (valida el QR).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gateway-service
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: gateway-service
+          image: circleguard/gateway-service:0.1.0
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          ports:
+            - {name: http, containerPort: 8087}
+          envFrom:
+            - configMapRef: {name: services-config}
+            - configMapRef: {name: gateway-service-config}
+          env:
+            - {name: JWT_SECRET, valueFrom: {secretKeyRef: {name: circleguard-app, key: JWT_SECRET}}}
+            - {name: QR_SECRET, valueFrom: {secretKeyRef: {name: circleguard-app, key: QR_SECRET}}}
+            - {name: SPRING_DATA_REDIS_PASSWORD, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: REDIS_PASSWORD}}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+spec:
+  selector:
+    app.kubernetes.io/name: gateway-service
+  ports:
+    - {name: http, port: 8087, targetPort: http}

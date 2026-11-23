@@ -2,6 +2,12 @@ spring:
   application:
     name: circleguard-notification-service
   kafka:
+    # US-25 (SCRUM-94): el productor escribe el contexto de traza (traceparent) en los headers
+    # del mensaje y el consumidor lo lee, así la traza sigue a través de Kafka.
+    template:
+      observation-enabled: true
+    listener:
+      observation-enabled: true
     bootstrap-servers: localhost:9092
     consumer:
       group-id: notification-group
@@ -33,7 +39,22 @@ qr:
 server:
   port: 8082
 
+# Retry + Dead Letter Topic for the Kafka listeners (US-40): a failing message is retried
+# max-retries times, then published to <topic>.DLT.
+circleguard:
+  kafka:
+    dlq:
+      retry-interval-ms: ${KAFKA_DLQ_RETRY_INTERVAL_MS:1000}
+      max-retries: ${KAFKA_DLQ_MAX_RETRIES:2}
+
 management:
+  # US-25 (SCRUM-94): trazas OpenTelemetry enviadas por OTLP/HTTP a Jaeger
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
   # US-24 (SCRUM-93): etiquetas comunes para distinguir servicio y ambiente en Prometheus/Grafana
   metrics:
     tags:

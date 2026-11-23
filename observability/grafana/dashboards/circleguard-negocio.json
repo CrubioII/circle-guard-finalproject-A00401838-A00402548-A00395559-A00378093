@@ -1,0 +1,54 @@
+{
+  "uid": "circleguard-negocio",
+  "title": "CircleGuard · Negocio y alertas",
+  "tags": [
+    "circleguard",
+    "US-41"
+  ],
+  "description": "Indicadores de negocio (US-41 / SCRUM-122): promociones, tiempo de contención, check-ins y alertas críticas.",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "environment",
+        "label": "Ambiente",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(up{job=\"circleguard-services\"}, environment)",
+          "refId": "env"
+        },
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {"id": 1, "type": "stat", "title": "Promociones por minuto", "description": "Cambios de estado de salud aplicados por promotion-service.", "datasource": {"type": "prometheus", "uid": "prometheus"}, "gridPos": {"x": 0, "y": 0, "w": 4, "h": 5}, "fieldConfig": {"defaults": {"unit": "short", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}, "overrides": []}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}, "targets": [{"refId": "A", "expr": "sum(rate(circleguard_promotions_total{environment=~\"$environment\"}[5m])) * 60 or vector(0)"}]},
+    {"id": 2, "type": "stat", "title": "Tiempo de contención p95", "description": "95 % de las promociones cercan a sus contactos en menos de este tiempo. NFR-1: < 1 s.", "datasource": {"type": "prometheus", "uid": "prometheus"}, "gridPos": {"x": 4, "y": 0, "w": 4, "h": 5}, "fieldConfig": {"defaults": {"unit": "s", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.3}, {"color": "red", "value": 1}]}}, "overrides": []}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}, "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(circleguard_containment_seconds_bucket{environment=~\"$environment\"}[5m])))"}]},
+    {"id": 3, "type": "stat", "title": "Check-ins por minuto", "description": "Validaciones de QR en las puertas del campus.", "datasource": {"type": "prometheus", "uid": "prometheus"}, "gridPos": {"x": 8, "y": 0, "w": 4, "h": 5}, "fieldConfig": {"defaults": {"unit": "short", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}, "overrides": []}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}, "targets": [{"refId": "A", "expr": "sum(rate(circleguard_checkins_total{environment=~\"$environment\"}[5m])) * 60 or vector(0)"}]},
+    {"id": 4, "type": "stat", "title": "Check-ins rechazados", "description": "Porcentaje de check-ins negados por riesgo de salud o QR inválido.", "datasource": {"type": "prometheus", "uid": "prometheus"}, "gridPos": {"x": 12, "y": 0, "w": 4, "h": 5}, "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.1}, {"color": "red", "value": 0.3}]}}, "overrides": []}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}, "targets": [{"refId": "A", "expr": "sum(rate(circleguard_checkins_total{environment=~\"$environment\", result!=\"granted\"}[5m])) / sum(rate(circleguard_checkins_total{environment=~\"$environment\"}[5m]))"}]},
+    {"id": 5, "type": "stat", "title": "Contactos cercados (1 h)", "description": "Contactos que las promociones movieron a SUSPECT o PROBABLE en la última hora.", "datasource": {"type": "prometheus", "uid": "prometheus"}, "gridPos": {"x": 16, "y": 0, "w": 4, "h": 5}, "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "purple", "value": null}]}}, "overrides": []}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}, "targets": [{"refId": "A", "expr": "sum(increase(circleguard_contacts_fenced_total{environment=~\"$environment\"}[1h])) or vector(0)"}]},
+    {"id": 6, "type": "stat", "title": "Alertas críticas activas", "description": "Alertas de observability/prometheus/rules/alertas-criticas.yml que están disparadas.", "datasource": {"type": "prometheus", "uid": "prometheus"}, "gridPos": {"x": 20, "y": 0, "w": 4, "h": 5}, "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}, "targets": [{"refId": "A", "expr": "count(ALERTS{alertstate=\"firing\", severity=\"critical\"}) or vector(0)"}]},
+    {"id": 7, "type": "timeseries", "title": "Promociones por minuto según estado", "description": "Una subida de CONFIRMED es la señal temprana de un brote.", "datasource": {"type": "prometheus", "uid": "prometheus"}, "gridPos": {"x": 0, "y": 5, "w": 12, "h": 8}, "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}, "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "targets": [{"refId": "A", "expr": "sum by (status) (rate(circleguard_promotions_total{environment=~\"$environment\"}[5m])) * 60", "legendFormat": "{{status}}"}]},
+    {"id": 8, "type": "timeseries", "title": "Tiempo de contención", "description": "Desde que llega el cambio de estado hasta que los contactos quedan cercados y el evento publicado.", "datasource": {"type": "prometheus", "uid": "prometheus"}, "gridPos": {"x": 12, "y": 5, "w": 12, "h": 8}, "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}, "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "targets": [{"refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(circleguard_containment_seconds_bucket{environment=~\"$environment\"}[5m])))", "legendFormat": "p50"}, {"refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(circleguard_containment_seconds_bucket{environment=~\"$environment\"}[5m])))", "legendFormat": "p95"}, {"refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(circleguard_containment_seconds_bucket{environment=~\"$environment\"}[5m])))", "legendFormat": "p99"}]},
+    {"id": 9, "type": "timeseries", "title": "Check-ins por minuto según resultado", "description": "granted = acceso permitido, denied = riesgo de salud, invalid = QR inválido o vencido.", "datasource": {"type": "prometheus", "uid": "prometheus"}, "gridPos": {"x": 0, "y": 13, "w": 12, "h": 8}, "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}, "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "targets": [{"refId": "A", "expr": "sum by (result) (rate(circleguard_checkins_total{environment=~\"$environment\"}[5m])) * 60", "legendFormat": "{{result}}"}]},
+    {"id": 10, "type": "timeseries", "title": "Contactos cercados por minuto", "description": "Contactos afectados por las promociones, según el estado que las originó.", "datasource": {"type": "prometheus", "uid": "prometheus"}, "gridPos": {"x": 12, "y": 13, "w": 12, "h": 8}, "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}, "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "targets": [{"refId": "A", "expr": "sum by (status) (rate(circleguard_contacts_fenced_total{environment=~\"$environment\"}[5m])) * 60", "legendFormat": "{{status}}"}]}
+  ]
+}

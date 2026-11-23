@@ -30,5 +30,13 @@ configMapGenerator:
       - LDAP_BASE_DN=dc=stage,dc=circleguard,dc=edu
       - KAFKA_LOG_RETENTION_HOURS=120
 
+  # Configuración de los microservicios en este ambiente (US-37).
+  - name: services-config
+    behavior: merge
+    literals:
+      - SPRING_PROFILES_ACTIVE=stage
+      - CG_ENVIRONMENT=stage
+      - LOGGING_LEVEL_COM_CIRCLEGUARD=INFO
+
 patches:
   - path: storage.yaml
