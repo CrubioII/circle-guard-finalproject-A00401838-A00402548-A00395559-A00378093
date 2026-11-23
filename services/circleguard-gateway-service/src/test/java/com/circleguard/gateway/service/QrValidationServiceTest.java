@@ -1,5 +1,7 @@
 package com.circleguard.gateway.service;
 
+import com.circleguard.gateway.metrics.CheckInMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
@@ -28,7 +30,7 @@ public class QrValidationServiceTest {
         valueOps = Mockito.mock(ValueOperations.class);
         Mockito.when(redisTemplate.opsForValue()).thenReturn(valueOps);
         
-        service = new QrValidationService(redisTemplate);
+        service = new QrValidationService(redisTemplate, new CheckInMetrics(new SimpleMeterRegistry()));
         ReflectionTestUtils.setField(service, "qrSecret", secret);
     }
 

@@ -1,0 +1,29 @@
+# Alertmanager de CircleGuard (US-41 / SCRUM-122).
+# Agrupa las alertas por nombre, ambiente y servicio (un correo por servicio caído) y las envía por correo al equipo de guardia.
+# En los ambientes compose el SMTP es Mailpit (bandeja de prueba en http://127.0.0.1:8025);
+# para un SMTP real se cambian smarthost, auth_username y auth_password.
+global:
+  smtp_smarthost: mailpit:1025
+  smtp_from: alertas@circleguard.local
+  smtp_require_tls: false
+
+route:
+  receiver: guardia-circleguard
+  group_by: [alertname, environment, application]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 1h
+
+receivers:
+  - name: guardia-circleguard
+    email_configs:
+      - to: guardia@circleguard.local
+        send_resolved: true
+        headers:
+          Subject: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }} {{ .CommonLabels.application }}{{ with .CommonLabels.environment }} ({{ . }}){{ end }}'
+
+# Si el servicio está caído no tiene sentido avisar también de sus errores 5xx.
+inhibit_rules:
+  - source_matchers: [alertname="CircleGuardServicioCaido"]
+    target_matchers: [alertname="CircleGuardErroresHttp5xx"]
+    equal: [application, environment]
