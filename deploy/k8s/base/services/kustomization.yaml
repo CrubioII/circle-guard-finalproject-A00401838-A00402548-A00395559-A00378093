@@ -1,0 +1,115 @@
+# CircleGuard — Los 8 microservicios en Kubernetes (US-37)
+#
+# Un Deployment y un Service (ClusterIP) por microservicio, con el mismo nombre y
+# puerto que en compose. La configuración no va en la imagen:
+#   - ConfigMap services-config: lo común y lo que cambia por ambiente (los overlays
+#     lo reemplazan con behavior: merge).
+#   - ConfigMap <servicio>-config: URL de sus dependencias dentro del namespace.
+#   - Secrets circleguard-middleware y circleguard-app: contraseñas y llaves. No están
+#     en Git; los crea scripts/create-secrets.sh. Cada pod solo recibe las llaves que usa.
+# Kustomize agrega un hash al nombre de cada ConfigMap: si cambia un valor, cambia el
+# nombre y los pods se reinician solos con la configuración nueva.
+# La imagen circleguard/<servicio>:0.1.0 es la del último release; deploy/scripts/k8s-deploy.sh
+# la cambia por <registro>/circleguard/<servicio>:<versión> en cada despliegue (US-39).
+# Probes y autoscaling: US-38.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/component: backend
+    includeSelectors: false
+    includeTemplates: true
+
+resources:
+  - auth-service.yaml
+  - identity-service.yaml
+  - promotion-service.yaml
+  - form-service.yaml
+  - gateway-service.yaml
+  - notification-service.yaml
+  - dashboard-service.yaml
+  - file-service.yaml
+  - ingress.yaml
+
+configMapGenerator:
+  - name: services-config
+    literals:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CG_ENVIRONMENT=dev
+      - LOGGING_LEVEL_COM_CIRCLEGUARD=DEBUG
+      - MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED=true
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+  - name: auth-service-config
+    literals:
+      - SERVER_PORT=8180
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/circleguard_auth
+      - SPRING_LDAP_URLS=ldap://openldap:389
+      - IDENTITY_SERVICE_URL=http://identity-service:8083
+  - name: identity-service-config
+    literals:
+      - SERVER_PORT=8083
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/circleguard_identity
+  - name: promotion-service-config
+    literals:
+      - SERVER_PORT=8088
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/circleguard_promotion
+      - SPRING_NEO4J_URI=bolt://neo4j:7687
+  - name: form-service-config
+    literals:
+      - SERVER_PORT=8086
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/circleguard_form
+  - name: gateway-service-config
+    literals:
+      - SERVER_PORT=8087
+  - name: notification-service-config
+    literals:
+      - SERVER_PORT=8082
+      - AUTH_API_URL=http://auth-service:8180
+      - IDENTITY_API_URL=http://identity-service:8083
+  - name: dashboard-service-config
+    literals:
+      - SERVER_PORT=8084
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/circleguard_dashboard
+      - CIRCLEGUARD_PROMOTIONSERVICE_URL=http://promotion-service:8088
+  - name: file-service-config
+    literals:
+      - SERVER_PORT=8085
+
+# Lo común a los 8 Deployments. El usuario no root y el disco de solo lectura van
+# en cada archivo porque Trivy revisa cada YAML tal cual, sin aplicar estos parches.
+# Aquí: actualización sin pods extra para no pasar la ResourceQuota (un pod nuevo por
+# servicio duplicaría lo pedido), sin token ni variables de enlace, /tmp escribible
+# (Spring y Tomcat lo usan) y recursos.
+patches:
+  - target: {kind: Deployment}
+    patch: |-
+      - op: add
+        path: /spec/strategy
+        value: {type: RollingUpdate, rollingUpdate: {maxSurge: 0, maxUnavailable: 1}}
+      - op: add
+        path: /spec/template/spec/enableServiceLinks
+        value: false
+      - op: add
+        path: /spec/template/spec/automountServiceAccountToken
+        value: false
+      - op: add
+        path: /spec/template/spec/volumes
+        value: [{name: tmp, emptyDir: {sizeLimit: 256Mi}}]
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value: [{name: tmp, mountPath: /tmp}]
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 100m, memory: 384Mi}, limits: {cpu: 500m, memory: 768Mi}}
+  # file-service guarda los archivos en /app/uploads: volumen persistente propio.
+  - target: {kind: Deployment, name: file-service}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value: {name: uploads, persistentVolumeClaim: {claimName: file-uploads}}
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: {name: uploads, mountPath: /app/uploads}

@@ -10,6 +10,9 @@
 #        openldap) está completo, usa las mismas imágenes con versión fija que
 #        deploy/compose, tiene probes y recursos, no expone puertos fuera del
 #        clúster y toma las contraseñas solo del Secret circleguard-middleware.
+#   US-37 Comprueba los 8 microservicios: Deployment y Service por cada uno, imagen
+#        circleguard/<servicio> con versión, recursos, usuario no root, disco de solo
+#        lectura, contraseñas solo desde Secrets y un único Ingress hacia sus APIs.
 #   +    Valida el esquema de cada recurso con kubeconform (-strict), revisa que
 #        el volumen pedido quepa en la cuota y busca credenciales en texto plano.
 #
@@ -32,7 +35,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --env) [[ $# -ge 2 ]] || fail "--env necesita un valor."; require_env "$2"; ENVS+=("$2"); shift ;;
         --skip-schema) SKIP_SCHEMA=true ;;
-        -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
         *) fail "Opción desconocida: $1" ;;
     esac
     shift
@@ -122,25 +125,40 @@ for env in "${ENVS[@]}"; do
     deny_selector="$(q 'select(.kind == "NetworkPolicy" and .metadata.name == "default-deny-ingress") | .spec.podSelector | length' "${out}")"
     check "$([[ "${deny_selector}" == "0" ]] && echo true)" "${env}: default-deny-ingress debe aplicar a todos los pods (podSelector vacío)."
 
-    # CA3: middleware completo.
+    # CA3: middleware completo y (US-37) los 8 microservicios.
     expected="$(printf '%s\n' "${MIDDLEWARE[@]}" | sort | tr '\n' ' ')"
+    expected_apps="$(printf '%s\n' "${SERVICES[@]}" | sort | tr '\n' ' ')"
+    expected_svcs="$(printf '%s\n' "${MIDDLEWARE[@]}" "${SERVICES[@]}" | sort | tr '\n' ' ')"
     sts="$(q 'select(.kind == "StatefulSet") | .metadata.name' "${out}" | sort | tr '\n' ' ')"
+    deps="$(q 'select(.kind == "Deployment") | .metadata.name' "${out}" | sort | tr '\n' ' ')"
     svcs="$(q 'select(.kind == "Service") | .metadata.name' "${out}" | sort | tr '\n' ' ')"
     check "$([[ "${sts}" == "${expected}" ]] && echo true)" "${env}: StatefulSets esperados: ${expected}; encontrados: ${sts}"
-    check "$([[ "${svcs}" == "${expected}" ]] && echo true)" "${env}: Services esperados: ${expected}; encontrados: ${svcs}"
+    check "$([[ "${deps}" == "${expected_apps}" ]] && echo true)" "${env}: Deployments esperados: ${expected_apps}; encontrados: ${deps}"
+    check "$([[ "${svcs}" == "${expected_svcs}" ]] && echo true)" "${env}: Services esperados: ${expected_svcs}; encontrados: ${svcs}"
 
-    # Exposición: ni Ingress, ni LoadBalancer, ni NodePort, ni red del host.
-    exposed="$(q 'select(.kind == "Ingress" or (.kind == "Service" and (.spec.type // "ClusterIP") != "ClusterIP")) | .kind + "/" + .metadata.name' "${out}")"
-    check "$([[ -z "${exposed}" ]] && echo true)" "${env}: el middleware no debe exponerse fuera del clúster: ${exposed}"
-    risky="$(q 'select(.kind == "StatefulSet") | select(.spec.template.spec.hostNetwork == true or .spec.template.spec.hostPID == true or ([.spec.template.spec.volumes[]? | select(has("hostPath"))] | length) > 0 or ([.spec.template.spec.containers[].securityContext.privileged] | any)) | .metadata.name' "${out}")"
+    # Exposición: un solo Ingress (circleguard-api, host del ambiente) que apunta solo a
+    # microservicios; ni LoadBalancer, ni NodePort, ni red del host.
+    exposed="$(q 'select(.kind == "Service" and (.spec.type // "ClusterIP") != "ClusterIP") | .kind + "/" + .metadata.name' "${out}")"
+    check "$([[ -z "${exposed}" ]] && echo true)" "${env}: ningún Service debe exponerse fuera del clúster: ${exposed}"
+    ingresses="$(q 'select(.kind == "Ingress") | .metadata.name + "@" + .spec.rules[0].host' "${out}" | tr '\n' ' ')"
+    check "$([[ "${ingresses}" == "circleguard-api@api.${env}.circleguard.edu " ]] && echo true)" \
+        "${env}: se espera solo el Ingress circleguard-api con host api.${env}.circleguard.edu; encontrados: ${ingresses}"
+    backends="$(q 'select(.kind == "Ingress") | .spec.rules[].http.paths[].backend.service.name' "${out}" | sort -u | tr '\n' ' ')"
+    for b in ${backends}; do
+        check "$([[ " ${SERVICES[*]} " == *" ${b} "* && "${b}" != "notification-service" ]] && echo true)" "${env}: el Ingress no debe publicar ${b}."
+    done
+    check "$([[ "$(wc -w <<< "${backends}" | tr -d ' ')" == "$(( ${#SERVICES[@]} - 1 ))" ]] && echo true)" \
+        "${env}: el Ingress debe publicar los microservicios con API (todos menos notification-service): ${backends}"
+    risky="$(q 'select(.kind == "StatefulSet" or .kind == "Deployment") | select(.spec.template.spec.hostNetwork == true or .spec.template.spec.hostPID == true or ([.spec.template.spec.volumes[]? | select(has("hostPath"))] | length) > 0 or ([.spec.template.spec.containers[].securityContext.privileged] | any)) | .metadata.name' "${out}")"
     check "$([[ -z "${risky}" ]] && echo true)" "${env}: pods con hostNetwork, hostPID, hostPath o privileged: ${risky}"
 
     # Secretos: ninguno en Git y ninguna contraseña como valor literal.
     secrets_in_render="$(q 'select(.kind == "Secret") | .metadata.name' "${out}")"
     check "$([[ -z "${secrets_in_render}" ]] && echo true)" "${env}: el render incluye Secrets (${secrets_in_render}); deben crearse con create-secrets.sh."
     secret_refs="$(q '.. | select(tag == "!!map" and has("secretKeyRef")) | .secretKeyRef.name' "${out}" | sort -u | tr '\n' ' ')"
-    check "$([[ "${secret_refs}" == "${SECRET_NAME} " ]] && echo true)" "${env}: las contraseñas deben salir solo de ${SECRET_NAME}; referencias: ${secret_refs}"
-    literal="$(q 'select(.kind == "StatefulSet") | .spec.template.spec.containers[].env[]? | select(has("value") and (.name | test("PASSWORD|SECRET|TOKEN|AUTH"))) | .name' "${out}")"
+    check "$([[ "${secret_refs}" == "${APP_SECRET_NAME} ${SECRET_NAME} " ]] && echo true)" \
+        "${env}: las contraseñas deben salir solo de ${APP_SECRET_NAME} y ${SECRET_NAME}; referencias: ${secret_refs}"
+    literal="$(q 'select(.kind == "StatefulSet" or .kind == "Deployment") | .spec.template.spec.containers[].env[]? | select(has("value") and (.name | test("PASSWORD|SECRET|TOKEN|AUTH"))) | .name' "${out}")"
     check "$([[ -z "${literal}" ]] && echo true)" "${env}: variables sensibles con valor literal: ${literal}"
 
     # Contenedores: imagen fija e igual a compose, probes y recursos.
@@ -162,11 +180,27 @@ for env in "${ENVS[@]}"; do
          (.resources.limits.cpu // ""), (.resources.limits.memory // ""),
          ($p.enableServiceLinks | tostring), ($p.automountServiceAccountToken | tostring)] | join("|")' "${out}")
 
-    # Almacenamiento: los volúmenes deben caber en la cuota del namespace.
+    # US-37: microservicios con imagen versionada, recursos y contenedor endurecido.
+    while IFS='|' read -r owner image rcpu rmem lcpu lmem links token nonroot rofs; do
+        [[ -n "${owner}" ]] || continue
+        check "$([[ "${image}" =~ ^circleguard/${owner}:[0-9]+\.[0-9]+\.[0-9]+ ]] && echo true)" \
+            "${env}: ${owner} debe usar circleguard/${owner}:<X.Y.Z> (k8s-deploy.sh fija registro y versión): ${image}"
+        check "$([[ -n "${rcpu}" && -n "${rmem}" && -n "${lcpu}" && -n "${lmem}" ]] && echo true)" \
+            "${env}: ${owner} necesita requests y limits de CPU y memoria."
+        check "$([[ "${links}|${token}|${nonroot}|${rofs}" == "false|false|true|true" ]] && echo true)" \
+            "${env}: ${owner} debe tener enableServiceLinks y token en false, runAsNonRoot y readOnlyRootFilesystem."
+    done < <(q 'select(.kind == "Deployment") | .metadata.name as $o | .spec.template.spec as $p | $p.containers[] |
+        [$o, .image, (.resources.requests.cpu // ""), (.resources.requests.memory // ""),
+         (.resources.limits.cpu // ""), (.resources.limits.memory // ""),
+         ($p.enableServiceLinks | tostring), ($p.automountServiceAccountToken | tostring),
+         ($p.securityContext.runAsNonRoot | tostring), (.securityContext.readOnlyRootFilesystem | tostring)] | join("|")' "${out}")
+
+    # Almacenamiento: los volúmenes (StatefulSets y PVC sueltos) deben caber en la cuota.
     pvc_total=0
     while read -r size; do
         [[ -n "${size}" ]] && pvc_total="$(awk -v a="${pvc_total}" -v b="$(to_gi "${size}")" 'BEGIN { printf "%g", a + b }')"
-    done < <(q 'select(.kind == "StatefulSet") | .spec.volumeClaimTemplates[].spec.resources.requests.storage' "${out}")
+    done < <(q 'select(.kind == "StatefulSet") | .spec.volumeClaimTemplates[].spec.resources.requests.storage' "${out}"
+             q 'select(.kind == "PersistentVolumeClaim") | .spec.resources.requests.storage' "${out}")
     quota_storage="$(q 'select(.kind == "ResourceQuota") | .spec.hard["requests.storage"]' "${out}")"
     check "$(awk -v a="${pvc_total}" -v b="$(to_gi "${quota_storage}")" 'BEGIN { print (a <= b) ? "true" : "false" }')" \
         "${env}: los volúmenes piden ${pvc_total} Gi y la cuota es ${quota_storage}."
@@ -190,7 +224,7 @@ for env in "${ENVS[@]}"; do
     } > "${REPORT_DIR}/${env}-summary.txt"
 
     if [[ ${ERRORS} -eq ${before} ]]; then
-        ok "Ambiente ${env}: ${total} recursos en ${ns}; middleware completo; volúmenes ${pvc_total} Gi de ${quota_storage}."
+        ok "Ambiente ${env}: ${total} recursos en ${ns}; middleware y ${#SERVICES[@]} microservicios completos; volúmenes ${pvc_total} Gi de ${quota_storage}."
     fi
 done
 

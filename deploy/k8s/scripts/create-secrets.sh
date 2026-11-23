@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
-# CircleGuard — Secret del middleware en Kubernetes (US-21)
+# CircleGuard — Secrets del middleware y de los microservicios (US-21, US-37)
 #
-# Crea o actualiza el Secret circleguard-middleware en circleguard-<env>. Las
+# Crea o actualiza los Secrets circleguard-middleware y circleguard-app en circleguard-<env>. Las
 # contraseñas no se guardan en Git ni pasan por la línea de comandos: se leen
 # del .env que genera infra/bootstrap/inject-jenkins-secrets.sh (US-05) o de
 # variables de entorno, y se envían a kubectl desde un archivo temporal 600.
@@ -11,11 +11,13 @@
 #   bash infra/bootstrap/inject-jenkins-secrets.sh --env dev --output /tmp/cg-dev.env
 #   bash deploy/k8s/scripts/create-secrets.sh --env dev --env-file /tmp/cg-dev.env
 #   POSTGRES_PASSWORD=... NEO4J_PASSWORD=... REDIS_PASSWORD=... LDAP_ADMIN_PASSWORD=... \
+#   JWT_SECRET=... QR_SECRET=... VAULT_SECRET=... VAULT_SALT=... VAULT_HASH_SALT=... \
 #     bash deploy/k8s/scripts/create-secrets.sh --env dev
 # Opciones: --context <contexto>, --dry-run (muestra las claves, nunca los valores).
 #
-# Claves: POSTGRES_USER, POSTGRES_PASSWORD, NEO4J_USER, NEO4J_PASSWORD,
+# circleguard-middleware: POSTGRES_USER, POSTGRES_PASSWORD, NEO4J_USER, NEO4J_PASSWORD,
 # NEO4J_AUTH (usuario/clave), REDIS_PASSWORD y LDAP_ADMIN_PASSWORD.
+# circleguard-app (US-37): JWT_SECRET, QR_SECRET, VAULT_SECRET, VAULT_SALT y VAULT_HASH_SALT.
 # =============================================================================
 set -euo pipefail
 
@@ -32,7 +34,7 @@ while [[ $# -gt 0 ]]; do
         --env-file) ENV_FILE="${2:?--env-file necesita un valor}"; shift ;;
         --context) CONTEXT="${2:?--context necesita un valor}"; shift ;;
         --dry-run) DRY_RUN=true ;;
-        -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
         *) fail "Opción desconocida: $1" ;;
     esac
     shift
@@ -66,6 +68,8 @@ declare -A SECRETS=(
     [REDIS_PASSWORD]="$(read_key REDIS_PASSWORD)"
     [LDAP_ADMIN_PASSWORD]="$(read_key LDAP_ADMIN_PASSWORD)"
 )
+APP_KEYS=(JWT_SECRET QR_SECRET VAULT_SECRET VAULT_SALT VAULT_HASH_SALT)
+for key in "${APP_KEYS[@]}"; do SECRETS[${key}]="$(read_key "${key}")"; done
 for key in "${!SECRETS[@]}"; do
     value="${SECRETS[${key}]}"
     [[ -n "${value}" ]] || fail "Falta ${key} (en --env-file o como variable de entorno)."
@@ -77,7 +81,8 @@ done
 
 umask 077
 TMP="$(mktemp)"
-trap 'rm -f "${TMP}"' EXIT
+TMP_APP="$(mktemp)"
+trap 'rm -f "${TMP}" "${TMP_APP}"' EXIT
 {
     printf 'POSTGRES_USER=%s\n' "${POSTGRES_USER_VAL}"
     printf 'POSTGRES_PASSWORD=%s\n' "${SECRETS[POSTGRES_PASSWORD]}"
@@ -87,18 +92,24 @@ trap 'rm -f "${TMP}"' EXIT
     printf 'REDIS_PASSWORD=%s\n' "${SECRETS[REDIS_PASSWORD]}"
     printf 'LDAP_ADMIN_PASSWORD=%s\n' "${SECRETS[LDAP_ADMIN_PASSWORD]}"
 } > "${TMP}"
+for key in "${APP_KEYS[@]}"; do printf '%s=%s\n' "${key}" "${SECRETS[${key}]}"; done > "${TMP_APP}"
 
 if [[ "${DRY_RUN}" == "true" ]]; then
     ok "Secret ${SECRET_NAME} para ${NAMESPACE} con las claves: $(cut -d= -f1 "${TMP}" | tr '\n' ' ')(valores ocultos)."
+    ok "Secret ${APP_SECRET_NAME} para ${NAMESPACE} con las claves: ${APP_KEYS[*]} (valores ocultos)."
     exit 0
 fi
 
 "${KCTL[@]}" get namespace "${NAMESPACE}" >/dev/null 2>&1 \
     || fail "No existe el namespace ${NAMESPACE}. Aplica antes el overlay (deploy-middleware.sh)."
 
-"${KCTL[@]}" create secret generic "${SECRET_NAME}" --namespace "${NAMESPACE}" \
-        --from-env-file="${TMP}" --dry-run=client -o yaml \
-    | "${KCTL[@]}" label --local -f - -o yaml \
-        app.kubernetes.io/part-of=circleguard "circleguard.io/environment=${ENV_NAME}" \
-    | "${KCTL[@]}" apply -f - >/dev/null
-ok "Secret ${SECRET_NAME} actualizado en ${NAMESPACE} (7 claves, valores ocultos)."
+apply_secret() {   # apply_secret <nombre> <archivo .env>
+    "${KCTL[@]}" create secret generic "$1" --namespace "${NAMESPACE}" \
+            --from-env-file="$2" --dry-run=client -o yaml \
+        | "${KCTL[@]}" label --local -f - -o yaml \
+            app.kubernetes.io/part-of=circleguard "circleguard.io/environment=${ENV_NAME}" \
+        | "${KCTL[@]}" apply -f - >/dev/null
+    ok "Secret $1 actualizado en ${NAMESPACE} ($(wc -l < "$2" | tr -d ' ') claves, valores ocultos)."
+}
+apply_secret "${SECRET_NAME}" "${TMP}"
+apply_secret "${APP_SECRET_NAME}" "${TMP_APP}"

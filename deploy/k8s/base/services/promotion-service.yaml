@@ -1,0 +1,42 @@
+# promotion-service (8088): Grafo de contactos (Neo4j) y cambios de estado de salud.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: promotion-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: promotion-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: promotion-service
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: promotion-service
+          image: circleguard/promotion-service:0.1.0
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          ports:
+            - {name: http, containerPort: 8088}
+          envFrom:
+            - configMapRef: {name: services-config}
+            - configMapRef: {name: promotion-service-config}
+          env:
+            - {name: SPRING_DATASOURCE_USERNAME, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: POSTGRES_USER}}}
+            - {name: SPRING_DATASOURCE_PASSWORD, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: POSTGRES_PASSWORD}}}
+            - {name: JWT_SECRET, valueFrom: {secretKeyRef: {name: circleguard-app, key: JWT_SECRET}}}
+            - {name: SPRING_DATA_REDIS_PASSWORD, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: REDIS_PASSWORD}}}
+            - {name: SPRING_NEO4J_AUTHENTICATION_USERNAME, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: NEO4J_USER}}}
+            - {name: SPRING_NEO4J_AUTHENTICATION_PASSWORD, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: NEO4J_PASSWORD}}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: promotion-service
+spec:
+  selector:
+    app.kubernetes.io/name: promotion-service
+  ports:
+    - {name: http, port: 8088, targetPort: http}

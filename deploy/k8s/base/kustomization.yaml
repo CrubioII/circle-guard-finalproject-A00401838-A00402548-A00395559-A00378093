@@ -27,6 +27,8 @@ resources:
   - middleware/kafka.yaml
   - middleware/redis.yaml
   - middleware/openldap.yaml
+  # Los 8 microservicios, su configuración y el Ingress (US-37).
+  - services
 
 configMapGenerator:
   # Crea circleguard_auth, _identity, _promotion, _form y _dashboard en el primer

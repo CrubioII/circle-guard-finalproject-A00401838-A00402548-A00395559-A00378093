@@ -25,3 +25,18 @@ configMapGenerator:
       - LDAP_DOMAIN=dev.circleguard.edu
       - LDAP_BASE_DN=dc=dev,dc=circleguard,dc=edu
       - KAFKA_LOG_RETENTION_HOURS=72
+  # Configuración de los microservicios en este ambiente (US-37).
+  - name: services-config
+    behavior: merge
+    literals:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CG_ENVIRONMENT=dev
+      - LOGGING_LEVEL_COM_CIRCLEGUARD=DEBUG
+
+patches:
+  # Host del Ingress de este ambiente (US-37).
+  - target: {kind: Ingress, name: circleguard-api}
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: api.dev.circleguard.edu
