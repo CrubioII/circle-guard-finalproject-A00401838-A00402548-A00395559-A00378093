@@ -43,9 +43,18 @@ public class PromotionClient {
         requestFactory.setConnectTimeout((int) connectTimeout.toMillis());
         requestFactory.setReadTimeout((int) readTimeout.toMillis());
         this.restTemplate = new RestTemplate(requestFactory);
-        this.promotionServiceUrl = promotionServiceUrl.replaceAll("/+$", "");
+        this.promotionServiceUrl = stripTrailingSlashes(promotionServiceUrl);
         this.retry = retryRegistry.retry(RESILIENCE_INSTANCE);
         this.circuitBreaker = circuitBreakerRegistry.circuitBreaker(RESILIENCE_INSTANCE);
+    }
+
+    /** Quita las barras finales de la URL sin usar regex (evita backtracking, Sonar S5852). */
+    private static String stripTrailingSlashes(String url) {
+        int end = url.length();
+        while (end > 0 && url.charAt(end - 1) == '/') {
+            end--;
+        }
+        return url.substring(0, end);
     }
 
     public Map<String, Object> getHealthStats() {
