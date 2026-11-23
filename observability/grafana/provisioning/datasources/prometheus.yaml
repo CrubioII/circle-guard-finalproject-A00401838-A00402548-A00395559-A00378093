@@ -1,0 +1,12 @@
+# Datasource de Grafana (US-24). La URL cambia entre Kubernetes y compose con la
+# variable PROMETHEUS_URL del contenedor de Grafana.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: ${PROMETHEUS_URL}
+    isDefault: true
+    jsonData:
+      timeInterval: 15s

@@ -31,6 +31,8 @@ import groovy.transform.Field
  * - registryUrl (String): registro Docker (por defecto 18.117.90.15:5000).
  * - host (String): IP del nodo del ambiente; redespliega por SSH con deploy/scripts/environment.sh (US-13).
  *   Requiere las credenciales SSH y de Nexus inyectadas con withCredentials, igual que el despliegue.
+ * - platform (String): 'compose' (por defecto) o 'k8s' (US-28: kubectl rollout undo o redeploy
+ *   de la etiqueta con deploy/scripts/k8s-deploy.sh; requiere KUBECONFIG inyectado).
  * - dryRun (Boolean): muestra los comandos sin ejecutarlos.
  */
 Map call(Map config = [:]) {
@@ -40,10 +42,16 @@ Map call(Map config = [:]) {
         requireSemVer(target)
     }
     String toArg = target ? " --to '${target}'" : ''
-    String hostArg = config.host ? " --host '${config.host}'" : ''
-    echo "[rollbackDeployment] Restaurando '${targetEnv}' a ${target ?: 'la última versión estable registrada'}."
-    runScript(config, "rollback '${targetEnv}'${toArg}${hostArg}")
-    return [env: targetEnv, targetVersion: target ?: 'last_stable_version']
+    String platform = (config.platform ?: 'compose').toString().trim()
+    if (!(platform in ['compose', 'k8s'])) {
+        error("[rollbackDeployment] Plataforma inválida '${platform}'. Valores permitidos: compose, k8s.")
+    }
+    String hostArg = (config.host && platform == 'compose') ? " --host '${config.host}'" : ''
+    String platformArg = platform == 'k8s' ? ' --platform k8s' : ''
+    String fallback = platform == 'k8s' ? 'la revisión anterior (kubectl rollout undo)' : 'la última versión estable registrada'
+    echo "[rollbackDeployment] Restaurando '${targetEnv}' (${platform}) a ${target ?: fallback}."
+    runScript(config, "rollback '${targetEnv}'${toArg}${hostArg}${platformArg}")
+    return [env: targetEnv, platform: platform, targetVersion: target ?: (platform == 'k8s' ? 'previous_revision' : 'last_stable_version')]
 }
 
 /** Registra la versión que se acaba de desplegar (antes del smoke test). */

@@ -52,6 +52,21 @@
 //   guardado en dev (antes de desplegar dev), en stage (tras E2E de dev) y en prod solo después de
 //   la aprobación manual de US-31. Credencial 'aws-terraform' (usuario/clave de acceso).
 //
+// US-38 — Trivy bloqueante: 'Trivy IaC Scan' (trivy config sobre infra/terraform y deploy/k8s) en
+//   todo build pesado y 'Trivy Image Scan' sobre las 9 imágenes entre 'Build Images' y
+//   'Publish Images to Nexus'. HIGH/CRITICAL con --exit-code 1; excepciones en .trivyignore.
+//   Reportes en reports/trivy/ (tabla, JSON y JUnit). Desactivable con ENABLE_TRIVY_GATE=false.
+//
+// US-39 — Despliegue y promoción en Kubernetes: con DEPLOY_PLATFORM=k8s (o CG_DEPLOY_PLATFORM=k8s)
+//   las mismas etapas de dev, stage y prod usan deploy/scripts/k8s-deploy.sh (kubectl apply -k con
+//   la versión SemVer de US-12 y kubectl rollout status). Si el rollout falla se hace rollback
+//   (kubectl rollout undo, US-28) y la etapa falla. Kubeconfig: credencial de archivo 'kubeconfig-<env>'.
+//   La notificación de éxito/fallo es la de US-14 (Discord).
+//
+// US-28 — Rollback en Kubernetes: si el rollout falla, kubectl rollout undo automático. Con los
+//   parámetros ROLLBACK_ENV / ROLLBACK_TARGET_VERSION, un build de main solo restaura ese ambiente
+//   (prod con aprobación de CG_PROD_APPROVERS). Cada versión verificada queda como estable.
+//
 // Requisitos del agente: JDK 21, Node.js 20+, librerías de sistema de Chromium (imagen
 // infra/bootstrap/jenkins), plugins htmlpublisher y sonar, git, openssh-client y permisos de
 // ejecución sobre ./gradlew. Credenciales: 'nexus-credentials', 'circleguard-env-ssh',
@@ -81,11 +96,13 @@ import groovy.transform.Field
 @Field def prodResults = [deployProd: 'NOT_RUN', verifyProd: 'NOT_RUN']
 // US-14: última etapa iniciada; si el build falla, es la etapa que se reporta en Discord.
 @Field def pipelineTrack = [stage: '']
-// US-22: paso platformFlow (cargado del workspace) y su plan de etapas.
+// US-22 / US-38 / US-39: paso platformFlow (cargado del workspace) y su plan de etapas.
 @Field def platformFlow = null
 @Field def platform = [:]
 // US-22: resultado del apply de Terraform por ambiente (SUCCESS | FAILURE | SKIPPED | NOT_RUN).
 @Field def terraformResults = [dev: 'NOT_RUN', stage: 'NOT_RUN', prod: 'NOT_RUN']
+// US-28: rollback manual pedido por parámetro.
+@Field def rollbackRequest = [requested: false]
 
 // US-31: distingue timeout de abort en la compuerta manual.
 // - TIMEOUT se detecta por el tiempo esperado (no requiere aprobaciones de sandbox).
@@ -143,6 +160,27 @@ void withTerraformCredentials(Closure body) {
         withEnv(["AWS_DEFAULT_REGION=${env.TF_STATE_REGION}", "TF_STATE_REGION=${env.TF_STATE_REGION}",
                  "TF_STATE_BUCKET=${env.TF_STATE_BUCKET}", "TF_LOCK_TABLE=${env.TF_LOCK_TABLE}"]) {
             body()
+        }
+    }
+}
+
+// US-39: kubeconfig del clúster k3s de cada ambiente (credencial de archivo 'kubeconfig-<env>').
+void withKubeconfig(String envName, Closure body) {
+    withCredentials([file(credentialsId: "kubeconfig-${envName}", variable: 'KUBECONFIG')]) {
+        withEnv(["REGISTRY_URL=${env.DEPLOY_REGISTRY_URL}"]) {
+            body()
+        }
+    }
+}
+
+// US-39 CA2 + US-28: verifica el rollout; si falla, vuelve a la revisión anterior y falla la etapa.
+void verifyK8sOrRollback(String envName, String version, String report) {
+    withKubeconfig(envName) {
+        int rc = sh(returnStatus: true, script: "./deploy/scripts/k8s-deploy.sh verify --env '${envName}' --version '${version}' --report '${report}'")
+        if (rc != 0) {
+            echo "[US-39] El rollout de ${version} en ${envName} falló; rollback automático (kubectl rollout undo, US-28)."
+            sh "./infra/scripts/rollback.sh rollback '${envName}' --platform k8s || true"
+            error("Rollout de ${version} en ${envName} incompleto: se restauró la revisión anterior.")
         }
     }
 }
@@ -215,10 +253,31 @@ pipeline {
             defaultValue: true,
             description: 'US-10: ejecuta el análisis estático con SonarQube y el bloqueo waitForQualityGate(abortPipeline: true).'
         )
+        choice(
+            name: 'DEPLOY_PLATFORM',
+            choices: ['default', 'compose', 'k8s'],
+            description: 'US-39: plataforma de despliegue. default = variable global CG_DEPLOY_PLATFORM (o compose si no existe); k8s = kubectl apply -k por overlay.'
+        )
         booleanParam(
             name: 'FORCE_TERRAFORM',
             defaultValue: false,
             description: 'US-22: corre terraform plan (y apply en main) aunque el commit no toque infra/terraform.'
+        )
+        booleanParam(
+            name: 'ENABLE_TRIVY_GATE',
+            defaultValue: true,
+            description: 'US-38: escaneo bloqueante con Trivy (IaC y las 9 imágenes) con severidad HIGH,CRITICAL.'
+        )
+        choice(
+            name: 'ROLLBACK_ENV',
+            choices: ['none', 'dev', 'stage', 'prod'],
+            description: 'US-28: restaura este ambiente y no construye ni despliega nada más. Solo main; prod exige aprobación de CG_PROD_APPROVERS.'
+        )
+        string(
+            name: 'ROLLBACK_TARGET_VERSION',
+            defaultValue: '',
+            trim: true,
+            description: 'US-28: versión SemVer a restaurar. Vacío = revisión anterior (k8s) o última versión estable registrada (compose).'
         )
         booleanParam(
             name: 'PUBLISH_GITHUB_STATUS',
@@ -249,6 +308,8 @@ pipeline {
         TF_STATE_BUCKET = "${env.CG_TF_STATE_BUCKET ?: ''}"
         TF_LOCK_TABLE = "${env.CG_TF_LOCK_TABLE ?: 'circleguard-terraform-locks'}"
         TF_STATE_REGION = "${env.CG_AWS_REGION ?: 'us-east-2'}"
+        // US-39: plataforma por defecto cuando DEPLOY_PLATFORM=default.
+        DEPLOY_PLATFORM_DEFAULT = "${env.CG_DEPLOY_PLATFORM ?: ''}"
     }
 
     stages {
@@ -417,8 +478,8 @@ pipeline {
                     sh 'IMAGE_TAG="' + (versionMap.APP_VERSION ?: '0.1.0') + '" ./deploy/compose/validate-compose.sh'
                     // US-13: los scripts de despliegue/promoción se prueban también en los PR (sin Docker ni credenciales).
                     sh 'chmod +x deploy/scripts/*.sh && ./deploy/scripts/test-deploy-scripts.sh'
-                    // US-22: scripts de plataforma con binarios simulados.
-                    sh 'chmod +x infra/scripts/*.sh infra/terraform/scripts/*.sh && ./infra/scripts/test-platform-scripts.sh'
+                    // US-22 / US-38 / US-39 / US-28: scripts de plataforma con binarios simulados.
+                    sh 'chmod +x infra/scripts/*.sh infra/terraform/scripts/*.sh && ./infra/scripts/test-platform-scripts.sh && ./infra/scripts/test-rollback.sh'
                 }
             }
         }
@@ -440,6 +501,70 @@ pipeline {
             }
         }
 
+        // US-21: namespaces y middleware de Kubernetes (Kustomize). Corre en todo build,
+        // también en los PR: no necesita clúster ni credenciales y tarda menos de un minuto.
+        stage('Validate Kubernetes Manifests') {
+            steps {
+                script {
+                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+                    echo 'Validando namespaces y middleware de Kubernetes para dev, stage y prod (US-21)...'
+                    sh 'bash deploy/k8s/scripts/validate.sh'
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/k8s/**', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // US-38 CA1: misconfiguraciones HIGH/CRITICAL en el IaC rompen el build.
+        stage('Trivy IaC Scan') {
+            when {
+                expression { platform?.runTrivyConfig == true }
+            }
+            steps {
+                script {
+                    runTrivyIaCScanStage()
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'reports/trivy/junit/config-*.xml'
+                    archiveArtifacts artifacts: 'reports/trivy/config-*,reports/trivy/summary-config.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // US-38: las imágenes se construyen, se escanean y solo entonces se publican.
+        stage('Build Images') {
+            when {
+                expression { flow?.isMainBranch == true && plan?.runHeavyBuild == true }
+            }
+            steps {
+                script {
+                    runBuildImagesStage()
+                }
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            when {
+                expression { flow?.isMainBranch == true && plan?.runHeavyBuild == true && platform?.runTrivyImages == true }
+            }
+            steps {
+                script {
+                    runTrivyImageScanStage()
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'reports/trivy/junit/image-*.xml'
+                    archiveArtifacts artifacts: 'reports/trivy/image-*,reports/trivy/summary-image.json', allowEmptyArchive: true
+                }
+            }
+        }
+
         stage('Publish Images to Nexus') {
             when {
                 expression { flow?.isMainBranch == true && plan?.runHeavyBuild == true }
@@ -448,18 +573,18 @@ pipeline {
                 script {
                     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
                     String semver = versionMap.APP_VERSION ?: '0.1.0'
-                    echo "Construyendo y publicando imagenes en Nexus con version semantica: ${semver} (US-11)..."
+                    echo "Publicando en Nexus las imágenes ya escaneadas con versión semántica: ${semver} (US-11 / US-38)..."
                     withCredentials([usernamePassword(
                         credentialsId: 'nexus-credentials',
                         usernameVariable: 'NEXUS_USER',
                         passwordVariable: 'NEXUS_PASSWORD'
                     )]) {
-                        sh 'chmod +x infra/scripts/publish-docker-images.sh'
                         sh """
                             REGISTRY_URL="18.117.90.15:5000" \
                             REGISTRY_USER="\${NEXUS_USER}" \
                             REGISTRY_PASSWORD="\${NEXUS_PASSWORD}" \
                             VERSION="${semver}" \
+                            PUSH_ONLY=true \
                             ./infra/scripts/publish-docker-images.sh
                         """
                     }
@@ -469,7 +594,7 @@ pipeline {
 
         stage('Generate Release Notes & Tag') {
             when {
-                expression { flow?.isMainBranch == true }
+                expression { flow?.isMainBranch == true && plan?.rollbackOnly != true }
             }
             steps {
                 script {
@@ -635,6 +760,18 @@ pipeline {
             }
         }
 
+        // US-28 CA1/CA2: rollback manual. Restaura con la plataforma activa y, en prod, solo con aprobación.
+        stage('Manual Rollback') {
+            when {
+                expression { rollbackRequest?.allowed == true }
+            }
+            steps {
+                script {
+                    runManualRollbackStage()
+                }
+            }
+        }
+
         stage('Release Gate') {
             when {
                 expression { plan?.deploymentAllowed == true }
@@ -753,8 +890,8 @@ pipeline {
                 }
             }
             // reports/ci/** incluye promotion-stage.json y health-<env>.json (US-13).
-            // reports/terraform: planes de US-22 (sin los .tfplan binarios).
-            archiveArtifacts artifacts: 'reports/ci/**,reports/terraform/*.txt,reports/terraform/*.json,docs/release-notes/**,services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
+            // reports/terraform y reports/trivy: planes de US-22 y escaneos de US-38 (sin los .tfplan binarios).
+            archiveArtifacts artifacts: 'reports/ci/**,reports/trivy/**,reports/terraform/*.txt,reports/terraform/*.json,docs/release-notes/**,services/*/build/reports/jacoco/test/**', allowEmptyArchive: true
         }
         // US-14 / SCRUM-70 (CA1): `cleanup` corre al final, con el resultado definitivo del build
         // (incluida la descripción de US-13 / US-31), y nunca cambia ese resultado.
@@ -798,13 +935,29 @@ void runDetectChangedComponentsStage() {
         multibranchFlow.requireDeploymentAllowed(flow, params.TARGET_ENV)
     }
 
-    // US-22: etapas de plataforma (Terraform).
+    // US-22 / US-38 / US-39: etapas de plataforma (Terraform, Trivy y plataforma de despliegue).
     platformFlow = load 'jenkins/vars/platformFlow.groovy'
+    boolean k8sOverlaysPresent = ['dev', 'stage', 'prod'].every { fileExists("deploy/k8s/overlays/${it}/kustomization.yaml") }
     platform = platformFlow.planPlatform(plan, detection, [
-        forceTerraform: params.FORCE_TERRAFORM as boolean
+        forceTerraform    : params.FORCE_TERRAFORM as boolean,
+        deployPlatform    : params.DEPLOY_PLATFORM,
+        configuredPlatform: env.DEPLOY_PLATFORM_DEFAULT,
+        k8sOverlaysPresent: k8sOverlaysPresent,
+        enableTrivy       : params.ENABLE_TRIVY_GATE as boolean
     ])
     echo platformFlow.formatPlatformSummary(platform)
 
+    // US-28: un rollback manual reemplaza el resto del flujo (no hay build ni despliegue nuevo).
+    rollbackRequest = platformFlow.rollbackRequest(flow, params.ROLLBACK_ENV, params.ROLLBACK_TARGET_VERSION)
+    if (rollbackRequest.requested) {
+        if (!rollbackRequest.allowed) {
+            error(rollbackRequest.reason)
+        }
+        Map rollbackPlans = platformFlow.rollbackOnlyPlans(plan, platform)
+        plan = rollbackPlans.plan
+        platform = rollbackPlans.platform
+        echo "[US-28] ${rollbackRequest.reason}"
+    }
 
     sh 'mkdir -p reports/ci'
     writeFile file: 'reports/ci/change-detection.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(detection))
@@ -889,6 +1042,30 @@ void runTerraformPlanStage() {
     }
 }
 
+void runTrivyIaCScanStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    sh 'chmod +x infra/scripts/trivy-scan.sh && ./infra/scripts/trivy-scan.sh config --target infra/terraform --target deploy/k8s'
+}
+
+void runBuildImagesStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    String semver = versionMap.APP_VERSION ?: '0.1.0'
+    echo "Construyendo las 9 imágenes con versión semántica ${semver} (US-11), sin publicar todavía (US-38)..."
+    sh 'chmod +x infra/scripts/publish-docker-images.sh'
+    sh """
+        REGISTRY_URL="${env.DEPLOY_REGISTRY_URL}" \
+        VERSION="${semver}" \
+        DO_PUSH=false SKIP_LOGIN=true \
+        ./infra/scripts/publish-docker-images.sh
+    """
+}
+
+void runTrivyImageScanStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    String semver = versionMap.APP_VERSION ?: '0.1.0'
+    sh "./infra/scripts/trivy-scan.sh image --version '${semver}' --registry '${env.DEPLOY_REGISTRY_URL}'"
+}
+
 void runTerraformApplyDevStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     Map tfDecision = platformFlow.terraformApplyDecision(platform, 'dev')
@@ -904,9 +1081,17 @@ void runDeployToDevStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     deployResults.deployDev = 'FAILURE'
     String version = requireReleaseVersion(versionMap)
-    echo "Desplegando automáticamente ${version} en dev (${env.DEV_HOST}) (US-13 / CA1)..."
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/environment.sh deploy --env dev --version '${version}' --host '${env.DEV_HOST}'"
+    if (platform?.deployPlatform == 'k8s') {
+        // US-39 CA1: kubectl apply -k del overlay dev con la etiqueta SemVer de US-12.
+        echo "Desplegando automáticamente ${version} en el namespace circleguard-dev (US-39)..."
+        withKubeconfig('dev') {
+            sh "./deploy/scripts/k8s-deploy.sh deploy --env dev --version '${version}'"
+        }
+    } else {
+        echo "Desplegando automáticamente ${version} en dev (${env.DEV_HOST}) (US-13 / CA1)..."
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh deploy --env dev --version '${version}' --host '${env.DEV_HOST}'"
+        }
     }
     deployResults.deployDev = 'SUCCESS'
 }
@@ -915,10 +1100,17 @@ void runVerifyDevHealthStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     deployResults.verifyDev = 'FAILURE'
     String version = requireReleaseVersion(versionMap)
-    echo "Verificando healthchecks de los 12 contenedores de dev para ${version} (US-13 / CA1)..."
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/environment.sh verify --env dev --version '${version}' --host '${env.DEV_HOST}' --report reports/ci/health-dev.json"
+    if (platform?.deployPlatform == 'k8s') {
+        // US-39 CA2: kubectl rollout status; si falla, rollback y la etapa falla.
+        verifyK8sOrRollback('dev', version, 'reports/ci/health-dev.json')
+    } else {
+        echo "Verificando healthchecks de los 12 contenedores de dev para ${version} (US-13 / CA1)..."
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh verify --env dev --version '${version}' --host '${env.DEV_HOST}' --report reports/ci/health-dev.json"
+        }
     }
+    // US-28: la versión verificada queda como estable; es la que restaura un rollback sin versión.
+    sh "./infra/scripts/rollback.sh mark-stable 'dev' '${version}' || true"
     deployResults.verifyDev = 'SUCCESS'
 }
 
@@ -926,8 +1118,14 @@ void runE2EAgainstDevStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     deployResults.e2eDev = 'FAILURE'
     echo 'Ejecutando contra los servicios REALES de dev los flujos E2E de US-17 (@us17, @smoke) y los contratos @deployed (US-13 / CA2)...'
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/run-e2e.sh --env dev --host '${env.DEV_HOST}'"
+    if (platform?.deployPlatform == 'k8s') {
+        withKubeconfig('dev') {
+            sh './deploy/scripts/run-e2e.sh --env dev --k8s'
+        }
+    } else {
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/run-e2e.sh --env dev --host '${env.DEV_HOST}'"
+        }
     }
     deployResults.e2eDev = 'SUCCESS'
 }
@@ -955,9 +1153,17 @@ void runPromoteToStageStage() {
         error(promotion.reason)
     }
     deployResults.promoteStage = 'FAILURE'
-    echo "${promotion.reason} Desplegando en stage (${env.STAGE_HOST})..."
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/environment.sh deploy --env stage --version '${version}' --host '${env.STAGE_HOST}'"
+    if (platform?.deployPlatform == 'k8s') {
+        // US-39 CA3: promoción automática a stage tras E2E, en el namespace circleguard-stage.
+        echo "${promotion.reason} Desplegando en el namespace circleguard-stage (US-39)..."
+        withKubeconfig('stage') {
+            sh "./deploy/scripts/k8s-deploy.sh deploy --env stage --version '${version}'"
+        }
+    } else {
+        echo "${promotion.reason} Desplegando en stage (${env.STAGE_HOST})..."
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh deploy --env stage --version '${version}' --host '${env.STAGE_HOST}'"
+        }
     }
     deployResults.promoteStage = 'SUCCESS'
 }
@@ -966,9 +1172,15 @@ void runVerifyStageHealthStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     deployResults.verifyStage = 'FAILURE'
     String version = requireReleaseVersion(versionMap)
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/environment.sh verify --env stage --version '${version}' --host '${env.STAGE_HOST}' --report reports/ci/health-stage.json"
+    if (platform?.deployPlatform == 'k8s') {
+        verifyK8sOrRollback('stage', version, 'reports/ci/health-stage.json')
+    } else {
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh verify --env stage --version '${version}' --host '${env.STAGE_HOST}' --report reports/ci/health-stage.json"
+        }
     }
+    // US-28: la versión verificada queda como estable; es la que restaura un rollback sin versión.
+    sh "./infra/scripts/rollback.sh mark-stable 'stage' '${version}' || true"
     deployResults.verifyStage = 'SUCCESS'
 }
 
@@ -1043,8 +1255,14 @@ void runDeployToProdStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     prodResults.deployProd = 'FAILURE'
     echo "Desplegando ${prodApproval.version} en PRODUCCIÓN (${env.PROD_HOST}), aprobado por ${prodApproval.approver} (US-31)..."
-    withEnvironmentCredentials {
-        sh "./deploy/scripts/environment.sh deploy --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}'"
+    if (platform?.deployPlatform == 'k8s') {
+        withKubeconfig('prod') {
+            sh "./deploy/scripts/k8s-deploy.sh deploy --env prod --version '${prodApproval.version}'"
+        }
+    } else {
+        withEnvironmentCredentials {
+            sh "./deploy/scripts/environment.sh deploy --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}'"
+        }
     }
     prodResults.deployProd = 'SUCCESS'
 }
@@ -1053,12 +1271,49 @@ void runVerifyProdHealthStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     prodResults.verifyProd = 'FAILURE'
     try {
-        withEnvironmentCredentials {
-            sh "./deploy/scripts/environment.sh verify --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}' --report reports/ci/health-prod.json"
+        if (platform?.deployPlatform == 'k8s') {
+            verifyK8sOrRollback('prod', prodApproval.version, 'reports/ci/health-prod.json')
+        } else {
+            withEnvironmentCredentials {
+                sh "./deploy/scripts/environment.sh verify --env prod --version '${prodApproval.version}' --host '${env.PROD_HOST}' --report reports/ci/health-prod.json"
+            }
         }
     } finally {
         // CA3: el resultado (sano o no) se publica como pruebas JUnit, un caso por contenedor.
         sh 'if [ -s reports/ci/health-prod.json ]; then ./deploy/scripts/health-report-to-junit.sh reports/ci/health-prod.json reports/ci/junit/health-prod.xml; fi'
     }
+    // US-28: la versión verificada queda como estable; es la que restaura un rollback sin versión.
+    sh "./infra/scripts/rollback.sh mark-stable 'prod' '${prodApproval.version}' || true"
     prodResults.verifyProd = 'SUCCESS'
+}
+
+void runManualRollbackStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    String rbEnv = rollbackRequest.env
+    if (rollbackRequest.requiresApproval) {
+        List<String> approvers = multibranchFlow.parseProdApprovers(env.PROD_APPROVERS)
+        if (approvers.isEmpty()) {
+            error('[US-28] Rollback de prod sin CG_PROD_APPROVERS configurado: no se ejecuta.')
+        }
+        timeout(time: Integer.parseInt(env.PROD_APPROVAL_TIMEOUT_MIN ?: '60'), unit: 'MINUTES') {
+            input(id: 'ProdRollback', message: "¿Aprobar el rollback de PRODUCCIÓN a ${rollbackRequest.version ?: 'la versión anterior'}?",
+                  ok: 'Aprobar rollback', submitter: approvers.join(','))
+        }
+    }
+    Map hosts = [dev: env.DEV_HOST, stage: env.STAGE_HOST, prod: env.PROD_HOST]
+    String toArg = rollbackRequest.version ? " --to '${rollbackRequest.version}'" : ''
+    if (platform?.deployPlatform == 'k8s') {
+        withKubeconfig(rbEnv) {
+            sh "./deploy/scripts/k8s-deploy.sh status --env '${rbEnv}' > reports/ci/rollback-before-${rbEnv}.txt 2>&1 || true"
+            sh "./infra/scripts/rollback.sh rollback '${rbEnv}' --platform k8s${toArg}"
+            sh "./deploy/scripts/k8s-deploy.sh status --env '${rbEnv}' > reports/ci/rollback-after-${rbEnv}.txt 2>&1 || true"
+        }
+    } else {
+        withEnvironmentCredentials {
+            sh "./infra/scripts/rollback.sh status '${rbEnv}' > reports/ci/rollback-before-${rbEnv}.txt 2>&1 || true"
+            sh "./infra/scripts/rollback.sh rollback '${rbEnv}' --host '${hosts[rbEnv]}'${toArg}"
+            sh "./infra/scripts/rollback.sh status '${rbEnv}' > reports/ci/rollback-after-${rbEnv}.txt 2>&1 || true"
+        }
+    }
+    currentBuild.description = "ROLLBACK ${rbEnv} -> ${rollbackRequest.version ?: 'versión anterior'} (${platform?.deployPlatform})"
 }

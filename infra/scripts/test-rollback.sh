@@ -110,4 +110,35 @@ set +e; ( cd "${WORK}" && ENV_STUB_MODE=unhealthy "${ROLLBACK}" rollback prod --
 [[ ${rc} -eq 3 ]] || die "Caso 10: se esperaba código 3, obtenido ${rc}"
 pass "Caso 10: verificación remota fallida tras el rollback devuelve código 3"
 
+# Caso 11 (US-28): --platform k8s sin --to delega en k8s-deploy.sh rollback (kubectl rollout undo).
+cat > "${WORK}/k8s-deploy.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >> "${K8S_SCRIPT_LOG}"
+[[ "${K8S_STUB_MODE:-ok}" == "fail" ]] && exit 3
+exit 0
+STUB
+export K8S_DEPLOY_SCRIPT="${WORK}/k8s-deploy.sh" K8S_SCRIPT_LOG="${WORK}/k8s.log"
+: > "${K8S_SCRIPT_LOG}"
+"${ROLLBACK}" mark-stable stage 4.0.0 >/dev/null
+"${ROLLBACK}" mark-stable stage 4.1.0 >/dev/null
+"${ROLLBACK}" rollback stage --platform k8s >/dev/null
+grep -qx "rollback --env stage" "${K8S_SCRIPT_LOG}" || die "Caso 11: no llamó a k8s-deploy.sh rollback --env stage"
+[[ "$(state stage current_version)" == "4.0.0" ]] || die "Caso 11: current_version debería volver a la estable anterior 4.0.0"
+grep -q "rollback-ok	revision-anterior" "${ROLLBACK_STATE_DIR}/stage/history.tsv" || die "Caso 11: falta rollback-ok en el historial"
+pass "Caso 11: --platform k8s hace rollout undo con k8s-deploy.sh y deja el registro en el historial"
+
+# Caso 12 (US-28): --platform k8s --to X.Y.Z redespliega esa etiqueta y la marca estable.
+: > "${K8S_SCRIPT_LOG}"
+"${ROLLBACK}" rollback stage --platform k8s --to 3.9.0 >/dev/null
+grep -qx "rollback --env stage --to 3.9.0" "${K8S_SCRIPT_LOG}" || die "Caso 12: no pidió el redeploy de 3.9.0"
+[[ "$(state stage last_stable_version)" == "3.9.0" ]] || die "Caso 12: last_stable_version debería ser 3.9.0"
+pass "Caso 12: --platform k8s --to 3.9.0 redespliega la etiqueta y la registra como estable"
+
+# Caso 13 (US-28): si el rollout del rollback falla en Kubernetes -> código 3; plataforma inválida -> 1.
+set +e; K8S_STUB_MODE=fail "${ROLLBACK}" rollback stage --platform k8s >/dev/null 2>&1; rc=$?; set -e
+[[ ${rc} -eq 3 ]] || die "Caso 13: se esperaba código 3, obtenido ${rc}"
+set +e; "${ROLLBACK}" rollback stage --platform swarm >/dev/null 2>&1; rc=$?; set -e
+[[ ${rc} -eq 1 ]] || die "Caso 13: plataforma inválida debería dar código 1"
+pass "Caso 13: rollback fallido en Kubernetes devuelve 3 y una plataforma inválida se rechaza"
+
 echo "Todas las pruebas de rollback.sh pasaron."

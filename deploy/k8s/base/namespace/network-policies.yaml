@@ -1,0 +1,26 @@
+# Aislamiento de red del namespace (k3s trae controlador de NetworkPolicy).
+#   1. Se niega todo el tráfico de entrada a los pods del namespace.
+#   2. Se permite el tráfico entre pods del mismo namespace: los servicios de
+#      US-37 llegan al middleware, pero otro namespace (otro ambiente) no.
+# El middleware no tiene Ingress ni Service externo. La salida no se restringe
+# porque los nodos necesitan descargar imágenes.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
