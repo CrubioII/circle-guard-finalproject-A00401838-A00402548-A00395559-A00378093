@@ -82,9 +82,16 @@ String buildSonarGradleCommand(List<String> services, Map options) {
     boolean skipTests = options.containsKey('skipTests') ? (options.skipTests as boolean) : true
     boolean daemon = options.containsKey('daemon') ? (options.daemon as boolean) : false
 
-    List<String> xmlPaths = resolveJacocoXmlReportPaths(targetServices)
+    // US-39: con 'test' corren las pruebas de todos los servicios, así que se envían todos los reportes.
+    List<String> xmlPaths = resolveJacocoXmlReportPaths(ALL_BACKEND_SERVICES)
+    // US-39: en los PR solo se compilan y prueban los servicios que cambiaron, pero Sonar
+    // analiza el monorepo completo. Con 'test' antes de 'sonar', los módulos que faltan se
+    // compilan y generan su JaCoCo (el test de cada servicio termina en jacocoTestReport);
+    // así el análisis no falla pidiendo sonar.java.binaries y la cobertura no cae a 0 en los
+    // servicios que no cambiaron. Gradle no repite las pruebas que ya corrieron en el build.
     List<String> args = [
         './gradlew',
+        'test',
         'sonar',
         "-Dsonar.projectKey=${projectKey}",
         "-Dsonar.projectName=\"${projectName}\"",
@@ -94,9 +101,7 @@ String buildSonarGradleCommand(List<String> services, Map options) {
     if (options.sonarHostUrl) {
         args.add("-Dsonar.host.url=${options.sonarHostUrl}")
     }
-    if (skipTests) {
-        args.add('-x test')
-    }
+    // skipTests se conserva por compatibilidad, pero ya no excluye 'test' (ver arriba).
     args.add(daemon ? '--stacktrace' : '--no-daemon --stacktrace')
 
     return args.join(' ').trim()

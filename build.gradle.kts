@@ -96,10 +96,6 @@ subprojects {
 
     // US-10: cada servicio entrega a SonarQube su XML de JaCoCo y sus resultados JUnit.
     sonar {
-        // US-38: en los PR, Jenkins compila solo los servicios que cambiaron; un módulo
-        // sin clases compiladas se omite del análisis (Sonar fallaría pidiendo
-        // sonar.java.binaries). En main se compila todo, así que se analizan todos.
-        isSkipProject = !layout.buildDirectory.dir("classes/java/main").get().asFile.exists()
         properties {
             property(
                 "sonar.coverage.jacoco.xmlReportPaths",
