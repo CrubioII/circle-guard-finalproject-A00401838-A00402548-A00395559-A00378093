@@ -33,6 +33,14 @@ qr:
 server:
   port: 8082
 
+# Retry + Dead Letter Topic for the Kafka listeners (US-40): a failing message is retried
+# max-retries times, then published to <topic>.DLT.
+circleguard:
+  kafka:
+    dlq:
+      retry-interval-ms: ${KAFKA_DLQ_RETRY_INTERVAL_MS:1000}
+      max-retries: ${KAFKA_DLQ_MAX_RETRIES:2}
+
 management:
   # US-24 (SCRUM-93): etiquetas comunes para distinguir servicio y ambiente en Prometheus/Grafana
   metrics:

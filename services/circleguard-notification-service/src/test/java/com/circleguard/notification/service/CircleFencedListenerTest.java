@@ -3,6 +3,7 @@ package com.circleguard.notification.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -36,8 +37,9 @@ class CircleFencedListenerTest {
     }
 
     @Test
-    void ignoresMalformedMessages() {
-        listener.handleCircleFenced("not-json");
+    void rejectsMalformedMessagesSoTheyReachTheDeadLetterTopic() {
+        assertThatThrownBy(() -> listener.handleCircleFenced("not-json"))
+                .isInstanceOf(IllegalArgumentException.class);
 
         verify(roomReservationService, never()).cancelReservation(any(), any());
     }
