@@ -19,28 +19,28 @@ class KafkaErrorHandlingConfigTest {
     private final ConsumerRecordRecoverer recoverer = mock(ConsumerRecordRecoverer.class);
     private final Consumer<?, ?> consumer = mock(Consumer.class);
     private final MessageListenerContainer container = mock(MessageListenerContainer.class);
-    private final ConsumerRecord<String, String> record = new ConsumerRecord<>("circle.fenced", 0, 0L, "k", "v");
+    private final ConsumerRecord<String, String> consumerRecord = new ConsumerRecord<>("circle.fenced", 0, 0L, "k", "v");
 
     @Test
     void transientErrorsAreRetriedBeforeGoingToTheDeadLetterTopic() {
         DefaultErrorHandler handler = KafkaErrorHandlingConfig.errorHandler(recoverer, 0L, 2L);
         RuntimeException failure = wrap(new IllegalStateException("downstream unavailable"));
 
-        assertThat(handler.handleOne(failure, record, consumer, container)).isFalse();
-        assertThat(handler.handleOne(failure, record, consumer, container)).isFalse();
+        assertThat(handler.handleOne(failure, consumerRecord, consumer, container)).isFalse();
+        assertThat(handler.handleOne(failure, consumerRecord, consumer, container)).isFalse();
         verifyNoInteractions(recoverer);
 
-        assertThat(handler.handleOne(failure, record, consumer, container)).isTrue();
-        verify(recoverer).accept(eq(record), any());
+        assertThat(handler.handleOne(failure, consumerRecord, consumer, container)).isTrue();
+        verify(recoverer).accept(eq(consumerRecord), any());
     }
 
     @Test
     void malformedPayloadsGoStraightToTheDeadLetterTopic() {
         DefaultErrorHandler handler = KafkaErrorHandlingConfig.errorHandler(recoverer, 0L, 2L);
 
-        assertThat(handler.handleOne(wrap(new IllegalArgumentException("Malformed")), record, consumer, container)).isTrue();
-        assertThat(handler.handleOne(wrap(new JsonParseException(null, "bad json")), record, consumer, container)).isTrue();
-        verify(recoverer, times(2)).accept(eq(record), any());
+        assertThat(handler.handleOne(wrap(new IllegalArgumentException("Malformed")), consumerRecord, consumer, container)).isTrue();
+        assertThat(handler.handleOne(wrap(new JsonParseException(null, "bad json")), consumerRecord, consumer, container)).isTrue();
+        verify(recoverer, times(2)).accept(eq(consumerRecord), any());
     }
 
     private static RuntimeException wrap(Exception cause) {

@@ -23,19 +23,19 @@ public class DeadLetterListener {
     @KafkaListener(
             topics = {"promotion.status.changed.DLT", "circle.fenced.DLT", "alert.priority.DLT"},
             groupId = "notification-dlt-group")
-    public void handleDeadLetter(ConsumerRecord<String, String> record) {
+    public void handleDeadLetter(ConsumerRecord<String, String> consumerRecord) {
         log.error("Dead letter received from topic={} partition={} offset={} key={} exception={} message={} payload={}",
-                header(record, KafkaHeaders.DLT_ORIGINAL_TOPIC, record.topic()),
-                header(record, KafkaHeaders.DLT_ORIGINAL_PARTITION, "?"),
-                header(record, KafkaHeaders.DLT_ORIGINAL_OFFSET, "?"),
-                record.key(),
-                header(record, KafkaHeaders.DLT_EXCEPTION_FQCN, "unknown"),
-                header(record, KafkaHeaders.DLT_EXCEPTION_MESSAGE, "unknown"),
-                record.value());
+                header(consumerRecord, KafkaHeaders.DLT_ORIGINAL_TOPIC, consumerRecord.topic()),
+                header(consumerRecord, KafkaHeaders.DLT_ORIGINAL_PARTITION, "?"),
+                header(consumerRecord, KafkaHeaders.DLT_ORIGINAL_OFFSET, "?"),
+                consumerRecord.key(),
+                header(consumerRecord, KafkaHeaders.DLT_EXCEPTION_FQCN, "unknown"),
+                header(consumerRecord, KafkaHeaders.DLT_EXCEPTION_MESSAGE, "unknown"),
+                consumerRecord.value());
     }
 
-    static String header(ConsumerRecord<?, ?> record, String name, String fallback) {
-        Header header = record.headers().lastHeader(name);
+    static String header(ConsumerRecord<?, ?> consumerRecord, String name, String fallback) {
+        Header header = consumerRecord.headers().lastHeader(name);
         if (header == null || header.value() == null) {
             return fallback;
         }

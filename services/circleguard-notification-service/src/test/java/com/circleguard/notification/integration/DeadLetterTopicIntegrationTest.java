@@ -90,7 +90,7 @@ class DeadLetterTopicIntegrationTest {
         assertThat(more).as("the valid message must not reach the DLT").isEmpty();
     }
 
-    private static String header(ConsumerRecord<?, ?> record, String name) {
-        return new String(record.headers().lastHeader(name).value(), StandardCharsets.UTF_8);
+    private static String header(ConsumerRecord<?, ?> consumerRecord, String name) {
+        return new String(consumerRecord.headers().lastHeader(name).value(), StandardCharsets.UTF_8);
     }
 }
