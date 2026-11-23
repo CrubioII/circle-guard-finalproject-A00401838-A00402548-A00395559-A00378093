@@ -189,7 +189,7 @@ Se probó el 2026-11-23 en un contenedor `jenkins/jenkins:lts` sin Terraform, so
 [terraform][OK]    Verificación de Terraform completada para: dev stage prod.
 ```
 
-La primera ejecución, que descarga Terraform y el proveedor AWS, tardó 154 s.
+La primera ejecución, que descarga Terraform y el proveedor AWS, tardó 154 s. El agente de Jenkins ya trae Terraform 1.11.4 en su imagen y `ensure-terraform.sh` lo usa; con esa versión el mismo resultado tardó 129 s con el caché lleno. Las pruebas no dependen de que `&&` haga cortocircuito, que Terraform recién agregó en 1.12.
 
 **Contra AWS con el backend remoto** (`init -backend-config=backend.hcl`, `validate` y `plan` de cada ambiente, 2026-11-22):
 
