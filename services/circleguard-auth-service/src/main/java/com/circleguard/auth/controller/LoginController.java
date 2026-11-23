@@ -17,6 +17,9 @@ public class LoginController {
 
     private final AuthenticationManager authManager;
     private final JwtTokenService jwtService;
+    private static final String MESSAGE = "message";
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(LoginController.class);
+
     private final IdentityClient identityClient;
 
     @PostMapping("/login")
@@ -47,15 +50,15 @@ public class LoginController {
             ));
         } catch (org.springframework.security.core.AuthenticationException e) {
             System.err.println("Authentication failed for " + username + ": " + e.getMessage());
-            return ResponseEntity.status(401).body(Map.of("message", "Invalid username or password"));
+            return ResponseEntity.status(401).body(Map.of(MESSAGE, "Invalid username or password"));
         } catch (IdentityServiceUnavailableException e) {
             // US-23 (SCRUM-92): fallo transitorio de identity-service, no un error interno
-            System.err.println("Identity service unavailable during login for " + username + ": " + e.getCause());
-            return ResponseEntity.status(503).body(Map.of("message", "Identity service temporarily unavailable, try again later"));
+            log.warn("Identity service unavailable during login for {}: {}", username, e.getCause().toString());
+            return ResponseEntity.status(503).body(Map.of(MESSAGE, "Identity service temporarily unavailable, try again later"));
         } catch (Exception e) {
             System.err.println("Unexpected error during login for " + username + ":");
             e.printStackTrace();
-            return ResponseEntity.status(500).body(Map.of("message", "Internal server error: " + e.getMessage()));
+            return ResponseEntity.status(500).body(Map.of(MESSAGE, "Internal server error: " + e.getMessage()));
         }
     }
 

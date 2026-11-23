@@ -58,13 +58,14 @@ public class IdentityClient {
 
     public UUID getAnonymousId(String realIdentity) {
         Map<String, String> request = Map.of("realIdentity", realIdentity);
-        Supplier<Map> call = () -> restTemplate.postForObject(identityMapUrl, request, Map.class);
+        @SuppressWarnings("unchecked")
+        Supplier<Map<String, Object>> call = () -> restTemplate.postForObject(identityMapUrl, request, Map.class);
         // Retry por fuera del Circuit Breaker: cada intento cuenta para el breaker y,
         // si el breaker está abierto, no se insiste contra un servicio caído.
-        Supplier<Map> resilientCall = Retry.decorateSupplier(retry,
+        Supplier<Map<String, Object>> resilientCall = Retry.decorateSupplier(retry,
                 CircuitBreaker.decorateSupplier(circuitBreaker, call));
         try {
-            Map response = resilientCall.get();
+            Map<String, Object> response = resilientCall.get();
             return UUID.fromString(response.get("anonymousId").toString());
         } catch (CallNotPermittedException | ResourceAccessException | HttpServerErrorException e) {
             throw new IdentityServiceUnavailableException(e);
