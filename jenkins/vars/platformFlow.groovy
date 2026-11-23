@@ -1,5 +1,6 @@
 // jenkins/vars/platformFlow.groovy
-// Historias de Usuario: US-22 (Terraform en Jenkins) y US-38 (Trivy bloqueante).
+// Historias de Usuario: US-22 (Terraform en Jenkins), US-38 (Trivy bloqueante),
+// US-39 (despliegue y promoción en Kubernetes) y US-28 (rollback manual).
 //
 // Propósito: decidir, sin depender de una instancia Jenkins, qué etapas de plataforma
 // corre cada build. El Jenkinsfile lo carga desde el workspace (load), igual que
@@ -10,12 +11,18 @@
 //     aprobación manual de US-31.
 //   - Trivy: `trivy config` sobre infra/terraform y deploy/k8s en todo build pesado, y
 //     `trivy image` sobre las 9 imágenes antes de publicarlas en Nexus (solo main).
+//   - Plataforma de despliegue: 'compose' (Parte 1, nodos EC2 por SSH) o 'k8s'
+//     (kubectl apply -k por overlay). El valor por defecto sale de CG_DEPLOY_PLATFORM.
+//   - Rollback manual (US-28): solo desde main y sin construir ni desplegar nada nuevo.
 
 import groovy.transform.Field
 
 @Field final String TERRAFORM_ROOT = 'infra/terraform/'
+@Field final String K8S_ROOT = 'deploy/k8s/'
 @Field final List<String> TERRAFORM_ENVS = ['dev', 'stage', 'prod']
 @Field final List<String> TERRAFORM_FILE_SUFFIXES = ['.tf', '.tfvars', '.hcl', '.tftest.hcl', '.sh']
+@Field final List<String> DEPLOY_PLATFORMS = ['compose', 'k8s']
+@Field final String DEFAULT_DEPLOY_PLATFORM = 'compose'
 // US-38 CA2: severidades que rompen el build.
 @Field final String TRIVY_BLOCKING_SEVERITY = 'HIGH,CRITICAL'
 // Las 9 imágenes que publica infra/scripts/publish-docker-images.sh (US-11).
@@ -39,12 +46,42 @@ boolean isTerraformChange(String file) {
     return path.startsWith(TERRAFORM_ROOT) && TERRAFORM_FILE_SUFFIXES.any { path.endsWith(it) }
 }
 
+boolean isKubernetesChange(String file) {
+    String path = (file ?: '').replace('\\', '/').trim()
+    return path.startsWith(K8S_ROOT) && !path.endsWith('.md')
+}
+
+/**
+ * Resuelve la plataforma de despliegue. `requested` viene del parámetro DEPLOY_PLATFORM
+ * ('default' | 'compose' | 'k8s'); `configuredDefault` de la variable global CG_DEPLOY_PLATFORM.
+ * Con 'k8s' se exige que existan los overlays de deploy/k8s.
+ */
+Map resolveDeployPlatform(String requested, String configuredDefault, boolean k8sOverlaysPresent) {
+    String asked = (requested ?: 'default').trim().toLowerCase()
+    String fallback = (configuredDefault ?: DEFAULT_DEPLOY_PLATFORM).trim().toLowerCase()
+    if (!DEPLOY_PLATFORMS.contains(fallback)) {
+        throw new IllegalArgumentException("CG_DEPLOY_PLATFORM='${configuredDefault}' no es válido. Valores: ${DEPLOY_PLATFORMS}.")
+    }
+    String platform = asked == 'default' ? fallback : asked
+    if (!DEPLOY_PLATFORMS.contains(platform)) {
+        throw new IllegalArgumentException("DEPLOY_PLATFORM='${requested}' no es válido. Valores: default, ${DEPLOY_PLATFORMS.join(', ')}.")
+    }
+    if (platform == 'k8s' && !k8sOverlaysPresent) {
+        throw new IllegalStateException('DEPLOY_PLATFORM=k8s exige deploy/k8s/overlays/{dev,stage,prod} (US-21); no existen en este commit.')
+    }
+    String source = asked == 'default' ? (configuredDefault ? 'CG_DEPLOY_PLATFORM' : 'valor por defecto') : 'parámetro DEPLOY_PLATFORM'
+    return [platform: platform, source: source]
+}
+
 /**
  * Plan de etapas de plataforma a partir del plan de multibranchFlow y de la detección
  * de cambios. Es la única fuente de verdad para los `when` de estas etapas.
  *
  * config:
  *   - forceTerraform (boolean): corre plan/apply aunque no cambie infra/terraform.
+ *   - deployPlatform (String): parámetro DEPLOY_PLATFORM.
+ *   - configuredPlatform (String): variable global CG_DEPLOY_PLATFORM.
+ *   - k8sOverlaysPresent (boolean): existen los overlays de US-21.
  *   - enableTrivy (boolean): ENABLE_TRIVY_GATE (por defecto true).
  */
 Map planPlatform(Map plan, Map detection, Map config = [:]) {
@@ -56,7 +93,14 @@ Map planPlatform(Map plan, Map detection, Map config = [:]) {
     boolean autoDeploy = (plan?.autoDeployDev ?: false) as boolean
 
     List<String> terraformFiles = changed.findAll { isTerraformChange(it) }
+    List<String> k8sFiles = changed.findAll { isKubernetesChange(it) }
     boolean terraformChanged = forceTerraform || !terraformFiles.isEmpty()
+
+    Map platform = resolveDeployPlatform(
+        (config.deployPlatform ?: 'default') as String,
+        (config.configuredPlatform ?: '') as String,
+        (config.k8sOverlaysPresent ?: false) as boolean
+    )
 
     // US-22 CA1: plan en cada PR (y en main) que modifique infra/terraform.
     boolean runTerraformPlan = terraformChanged && (heavy || forceTerraform)
@@ -86,11 +130,14 @@ Map planPlatform(Map plan, Map detection, Map config = [:]) {
         terraformEnvs     : TERRAFORM_ENVS,
         runTerraformPlan  : runTerraformPlan,
         terraformApply    : terraformApply,
+        k8sChanged        : !k8sFiles.isEmpty(),
         runTrivyConfig    : runTrivyConfig,
         runTrivyImages    : runTrivyImages,
         trivySeverity     : TRIVY_BLOCKING_SEVERITY,
         trivyTargets      : ['infra/terraform', 'deploy/k8s'],
         releaseImages     : RELEASE_IMAGES,
+        deployPlatform    : platform.platform,
+        deployPlatformFrom: platform.source,
         stages            : stages
     ]
 }
@@ -124,11 +171,53 @@ Map terraformApplyDecision(Map platformPlan, String envName, Map gates = [:]) {
         : [env: envName, apply: false, reason: 'prod espera la aprobación manual de US-31; sin ella no se aplica.']
 }
 
+/**
+ * US-28: rollback manual pedido con los parámetros ROLLBACK_ENV / ROLLBACK_TARGET_VERSION.
+ * Solo main puede restaurar un ambiente; la versión, si se da, debe ser SemVer (nunca 'latest').
+ * Vacío = revisión anterior (k8s) o última versión estable registrada (compose).
+ */
+Map rollbackRequest(Map context, String envName, String targetVersion) {
+    String target = (envName ?: 'none').trim().toLowerCase()
+    String version = (targetVersion ?: '').trim()
+    if (target == 'none') {
+        return [requested: false, allowed: false, env: 'none', version: '', reason: 'No se pidió rollback.']
+    }
+    if (!TERRAFORM_ENVS.contains(target)) {
+        throw new IllegalArgumentException("ROLLBACK_ENV='${envName}' no es válido. Valores: none, ${TERRAFORM_ENVS.join(', ')}.")
+    }
+    if (version && !(version ==~ /^\d+\.\d+\.\d+(-rc\.\d+)?$/)) {
+        throw new IllegalArgumentException("ROLLBACK_TARGET_VERSION='${version}' no es SemVer X.Y.Z (y nunca 'latest').")
+    }
+    boolean isMain = ((context?.isMainBranch ?: false) as boolean) && !((context?.isPullRequest ?: false) as boolean)
+    if (!isMain) {
+        return [requested: true, allowed: false, env: target, version: version,
+                reason: "Bloqueado: solo main puede hacer rollback; '${context?.branchName ?: 'desconocida'}' no está autorizada."]
+    }
+    return [requested: true, allowed: true, env: target, version: version, requiresApproval: target == 'prod',
+            reason: "Rollback de ${target} a ${version ?: 'la versión anterior'}" + (target == 'prod' ? ' (requiere aprobación de US-31).' : '.')]
+}
+
+/**
+ * US-28: una ejecución de rollback no construye, no publica ni despliega una versión nueva.
+ * Devuelve copias del plan y del plan de plataforma con todo eso apagado.
+ */
+Map rollbackOnlyPlans(Map plan, Map platformPlan) {
+    Map p = new LinkedHashMap(plan ?: [:])
+    ['runHeavyBuild', 'runBackendBuild', 'runMobileBuild', 'runSonarAnalysis', 'runQualityGate',
+     'autoDeployDev', 'promoteToStage', 'prodRelease', 'deploymentAllowed'].each { p[it] = false }
+    p.rollbackOnly = true
+    Map pf = new LinkedHashMap(platformPlan ?: [:])
+    ['runTerraformPlan', 'terraformApply', 'runTrivyConfig', 'runTrivyImages'].each { pf[it] = false }
+    pf.stages = ['Manual Rollback']
+    return [plan: p, platform: pf]
+}
+
 String formatPlatformSummary(Map p) {
     return [
-        '=== Plan de plataforma (US-22 / US-38) ===',
+        '=== Plan de plataforma (US-22 / US-38 / US-39) ===',
         "Terraform: cambios=${p.terraformChanged} plan=${p.runTerraformPlan} apply=${p.terraformApply} archivos=${p.terraformFiles}",
         "Trivy: config=${p.runTrivyConfig} imágenes=${p.runTrivyImages} severidad=${p.trivySeverity}",
+        "Despliegue: plataforma=${p.deployPlatform} (${p.deployPlatformFrom})",
         "Etapas: ${p.stages}"
     ].join('\n')
 }
