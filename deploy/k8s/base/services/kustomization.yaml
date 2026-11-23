@@ -1,4 +1,4 @@
-# CircleGuard — Microservicios en Kubernetes (US-37)
+# CircleGuard — Los 8 microservicios en Kubernetes (US-37)
 #
 # Un Deployment y un Service (ClusterIP) por microservicio, con el mismo nombre y
 # puerto que en compose. La configuración no va en la imagen:
@@ -27,6 +27,10 @@ resources:
   - promotion-service.yaml
   - form-service.yaml
   - gateway-service.yaml
+  - notification-service.yaml
+  - dashboard-service.yaml
+  - file-service.yaml
+  - ingress.yaml
 
 configMapGenerator:
   - name: services-config
@@ -60,8 +64,21 @@ configMapGenerator:
   - name: gateway-service-config
     literals:
       - SERVER_PORT=8087
+  - name: notification-service-config
+    literals:
+      - SERVER_PORT=8082
+      - AUTH_API_URL=http://auth-service:8180
+      - IDENTITY_API_URL=http://identity-service:8083
+  - name: dashboard-service-config
+    literals:
+      - SERVER_PORT=8084
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/circleguard_dashboard
+      - CIRCLEGUARD_PROMOTIONSERVICE_URL=http://promotion-service:8088
+  - name: file-service-config
+    literals:
+      - SERVER_PORT=8085
 
-# Lo común a los Deployments. El usuario no root y el disco de solo lectura van
+# Lo común a los 8 Deployments. El usuario no root y el disco de solo lectura van
 # en cada archivo porque Trivy revisa cada YAML tal cual, sin aplicar estos parches.
 # Aquí: actualización sin pods extra para no pasar la ResourceQuota (un pod nuevo por
 # servicio duplicaría lo pedido), sin token ni variables de enlace, /tmp escribible
@@ -87,3 +104,12 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/resources
         value: {requests: {cpu: 100m, memory: 384Mi}, limits: {cpu: 500m, memory: 768Mi}}
+  # file-service guarda los archivos en /app/uploads: volumen persistente propio.
+  - target: {kind: Deployment, name: file-service}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value: {name: uploads, persistentVolumeClaim: {claimName: file-uploads}}
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: {name: uploads, mountPath: /app/uploads}

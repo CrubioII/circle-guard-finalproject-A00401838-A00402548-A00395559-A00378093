@@ -32,3 +32,11 @@ configMapGenerator:
       - SPRING_PROFILES_ACTIVE=dev
       - CG_ENVIRONMENT=dev
       - LOGGING_LEVEL_COM_CIRCLEGUARD=DEBUG
+
+patches:
+  # Host del Ingress de este ambiente (US-37).
+  - target: {kind: Ingress, name: circleguard-api}
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: api.dev.circleguard.edu
