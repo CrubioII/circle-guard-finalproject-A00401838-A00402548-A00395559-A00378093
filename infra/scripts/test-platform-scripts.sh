@@ -49,13 +49,14 @@ export REPORT_DIR="${WORK}/tf" TF_STATE_BUCKET="bucket-prueba"
 bash "${ROOT}/infra/terraform/scripts/tf-pipeline.sh" plan --env stage >/dev/null
 grep -q -- "-backend-config=bucket=bucket-prueba" "${STUB_LOG}" || die "init no usa TF_STATE_BUCKET"
 grep -q -- "-backend-config=key=envs/stage/platform.tfstate" "${STUB_LOG}" || die "la key del estado no es la de stage"
-grep -q -- "-backend-config=dynamodb_table=circleguard-terraform-locks" "${STUB_LOG}" || die "falta la tabla de bloqueo"
+grep -q -- "-backend-config=use_lockfile=true" "${STUB_LOG}" || die "falta el bloqueo nativo de S3"
+if grep -q -- "dynamodb_table" "${STUB_LOG}"; then die "no debe usar la tabla DynamoDB (obsoleta)"; fi
 grep -q -- "plan -no-color -lock-timeout=5m -detailed-exitcode -out=${WORK}/tf/stage.tfplan" "${STUB_LOG}" || die "plan no guarda stage.tfplan"
 [[ -s "${WORK}/tf/stage-plan.txt" && -s "${WORK}/tf/stage-plan.json" ]] || die "faltan los reportes del plan"
 if command -v jq >/dev/null 2>&1; then
   jq -e '.hasChanges == true and (.create | length) == 1' "${WORK}/tf/stage-summary.json" >/dev/null || die "resumen del plan incorrecto"
 fi
-pass "plan: backend S3 + DynamoDB por ambiente, plan guardado y reportes txt/json (exit 2 = con cambios no falla)"
+pass "plan: backend S3 con bloqueo nativo por ambiente, plan guardado y reportes txt/json (exit 2 = con cambios no falla)"
 
 bash "${ROOT}/infra/terraform/scripts/tf-pipeline.sh" apply --env stage >/dev/null
 grep -q -- "apply -no-color -lock-timeout=5m -auto-approve ${WORK}/tf/stage.tfplan" "${STUB_LOG}" || die "apply no usa el plan guardado"
