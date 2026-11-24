@@ -40,11 +40,12 @@
 | 15 | `Deploy to dev` | `deploy/scripts/environment.sh deploy --env dev`: SCP y SSH, luego `docker compose pull` y `up -d --wait` | — |
 | 16 | `Verify dev health` | Los 12 contenedores `healthy`, la imagen exacta `X.Y.Z` y readiness `UP` | `reports/ci/health-dev.json` |
 | 17 | `E2E against dev` | `deploy/scripts/run-e2e.sh` corre por túneles SSH los flujos `@us17` y `@smoke` y los contratos `@deployed` | `e2e/reports/dev/` |
-| 18 | `Promote to stage` | `promotionDecision` exige `SUCCESS` en 15, 16 y 17, y despliega la misma versión en stage | — |
-| 19 | `Verify stage health` | La misma verificación de salud, en stage | `health-stage.json` y `promotion-stage.json` |
-| 20 | `Approve prod release` | `input` restringido a `CG_PROD_APPROVERS` (`jrubio,jpordonez`). Solo ofrece la versión validada y exige un comentario o RFC | `prod-approval.json` |
-| 21 | `Deploy to prod` | Solo corre con `APPROVED` | — |
-| 22 | `Verify prod health` | Salud de prod publicada como JUnit (`circleguard.prod.health`) | Pestaña **Tests** del build |
+| 18 | `ZAP Baseline against dev` | `infra/scripts/zap-scan.sh` corre el escaneo pasivo de OWASP ZAP contra web, auth y gateway de dev (US-44). Si hay alertas altas o el escaneo falla, el build queda en UNSTABLE, sin bloquear la promoción | `reports/zap/dev/` y el reporte HTML **OWASP ZAP (dev)** |
+| 19 | `Promote to stage` | `promotionDecision` exige `SUCCESS` en 15, 16 y 17, y despliega la misma versión en stage | — |
+| 20 | `Verify stage health` | La misma verificación de salud, en stage | `health-stage.json` y `promotion-stage.json` |
+| 21 | `Approve prod release` | `input` restringido a `CG_PROD_APPROVERS` (`jrubio,jpordonez`). Solo ofrece la versión validada y exige un comentario o RFC | `prod-approval.json` |
+| 22 | `Deploy to prod` | Solo corre con `APPROVED` | — |
+| 23 | `Verify prod health` | Salud de prod publicada como JUnit (`circleguard.prod.health`) | Pestaña **Tests** del build |
 | — | `Release Gate` | Revalida el contexto cuando se pide `TARGET_ENV` manualmente | Descripción del build |
 | — | `post { always }` | Estado final en GitHub, `junit`, JaCoCo, `archiveArtifacts reports/**` y descripción del build | — |
 | — | `post { cleanup }` | `notifyPipeline` (US-14) publica el resultado en el canal `#pipeline` de Discord: rama, commit, autor, versión, etapa fallida y enlace al log. Un error al notificar nunca cambia el resultado del build | `reports/ci/discord-notification.json` |
