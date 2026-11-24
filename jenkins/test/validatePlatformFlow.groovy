@@ -203,6 +203,7 @@ String jf = jenkinsfile.getText('UTF-8')
     "./deploy/scripts/k8s-deploy.sh deploy --env stage --version '\${version}'",
     "./deploy/scripts/k8s-deploy.sh deploy --env prod --version '\${prodApproval.version}'",
     './deploy/scripts/k8s-deploy.sh verify --env', "sh './deploy/scripts/run-e2e.sh --env dev --k8s'",
+    "script: './infra/scripts/zap-scan.sh --env dev --k8s'",  // US-44
     // US-28
     "./infra/scripts/rollback.sh rollback '\${envName}' --platform k8s",
     "stage('Manual Rollback')", "name: 'ROLLBACK_ENV'", "name: 'ROLLBACK_TARGET_VERSION'",
@@ -215,7 +216,7 @@ String jf = jenkinsfile.getText('UTF-8')
 List<Integer> order = [
     "stage('Terraform Plan')", "stage('Trivy IaC Scan')", "stage('Build Images')", "stage('Trivy Image Scan')",
     "stage('Publish Images to Nexus')", "stage('Terraform Apply dev')", "stage('Deploy to dev')",
-    "stage('E2E against dev')", "stage('Terraform Apply stage')", "stage('Promote to stage')",
+    "stage('E2E against dev')", "stage('ZAP Baseline against dev')", "stage('Terraform Apply stage')", "stage('Promote to stage')",
     "stage('Approve prod release')", "stage('Terraform Apply prod')", "stage('Deploy to prod')"
 ].collect { jf.indexOf(it) }
 assert !order.contains(-1) && order == order.sort(false) : "Orden de etapas incorrecto: ${order}"
