@@ -728,6 +728,34 @@ pipeline {
             }
         }
 
+        // US-44: escaneo pasivo de OWASP ZAP contra dev. Deja el build en UNSTABLE si hay hallazgos;
+        // no es compuerta de promotionDecision, así que no bloquea la promoción a stage.
+        stage('ZAP Baseline against dev') {
+            when {
+                expression { plan?.autoDeployDev == true }
+            }
+            steps {
+                script {
+                    runZapBaselineAgainstDevStage()
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'reports/zap/dev/junit/*.xml'
+                    publishHTML(target: [
+                        reportName           : 'OWASP ZAP (dev)',
+                        reportDir            : 'reports/zap/dev',
+                        reportFiles          : 'web.html,auth.html,gateway.html',
+                        reportTitles         : 'web,auth,gateway',
+                        keepAll              : true,
+                        alwaysLinkToLastBuild: true,
+                        allowMissing         : true
+                    ])
+                    archiveArtifacts artifacts: 'reports/zap/dev/**', allowEmptyArchive: true
+                }
+            }
+        }
+
         // US-22 CA2: apply automático en stage, con la misma compuerta que la aplicación (dev + E2E).
         stage('Terraform Apply stage') {
             when {
@@ -1186,6 +1214,30 @@ void runE2EAgainstDevStage() {
         }
     }
     deployResults.e2eDev = 'SUCCESS'
+}
+
+// US-44: ZAP baseline contra los servicios reales de dev (docs/operaciones/SEGURIDAD_ZAP_US44.md).
+// Código 1 = alertas altas por encima de ZAP_MAX_HIGH; 2 o 3 = el escaneo no se completó. En ambos
+// casos la etapa y el build quedan en UNSTABLE: el escaneo informa, no detiene la entrega.
+void runZapBaselineAgainstDevStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    Integer rc = null
+    catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE', message: '[US-44] No se pudo ejecutar el escaneo ZAP contra dev.') {
+        if (platform?.deployPlatform == 'k8s') {
+            withKubeconfig('dev') {
+                rc = sh(returnStatus: true, script: './infra/scripts/zap-scan.sh --env dev --k8s')
+            }
+        } else {
+            withEnvironmentCredentials {
+                rc = sh(returnStatus: true, script: "./infra/scripts/zap-scan.sh --env dev --host '${env.DEV_HOST}'")
+            }
+        }
+    }
+    if (rc == 1) {
+        unstable("[US-44] ZAP encontró alertas de riesgo alto en dev por encima del umbral; ver el reporte 'OWASP ZAP (dev)'.")
+    } else if (rc != null && rc != 0) {
+        unstable("[US-44] ZAP no pudo completar el escaneo de dev (código ${rc}); ver reports/zap/dev.")
+    }
 }
 
 void runTerraformApplyStageStage() {
