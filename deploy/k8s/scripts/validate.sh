@@ -185,6 +185,45 @@ for env in "${ENVS[@]}"; do
          ($p.enableServiceLinks | tostring), ($p.automountServiceAccountToken | tostring),
          ($p.securityContext.runAsNonRoot | tostring), (.securityContext.readOnlyRootFilesystem | tostring)] | join("|")' "${out}")
 
+    # US-38: sondas de Actuator en cada microservicio.
+    while IFS='|' read -r owner startup live ready; do
+        [[ -n "${owner}" ]] || continue
+        check "$([[ "${startup}" == "/actuator/health/liveness" && "${live}" == "/actuator/health/liveness" && "${ready}" == "/actuator/health/readiness" ]] && echo true)" \
+            "${env}: ${owner} necesita startupProbe y livenessProbe en /actuator/health/liveness y readinessProbe en /actuator/health/readiness."
+    done < <(q 'select(.kind == "Deployment") | .metadata.name as $o | .spec.template.spec.containers[0] |
+        [$o, (.startupProbe.httpGet.path // ""), (.livenessProbe.httpGet.path // ""), (.readinessProbe.httpGet.path // "")] | join("|")' "${out}")
+
+    # US-38: cada HPA apunta a un Deployment que existe y que no fija spec.replicas
+    # (si lo fijara, cada kubectl apply devolvería el servicio a esas réplicas).
+    declare -A HPA_MAX=()
+    while IFS='|' read -r hpa kind target min max; do
+        [[ -n "${hpa}" ]] || continue
+        check "$([[ "${kind}" == "Deployment" && " ${deps}" == *" ${target} "* ]] && echo true)" \
+            "${env}: el HPA ${hpa} apunta a ${kind}/${target}, que no es un Deployment del overlay."
+        check "$([[ "${min}" -ge 1 && "${max}" -ge "${min}" ]] && echo true)" "${env}: el HPA ${hpa} tiene minReplicas=${min} y maxReplicas=${max}."
+        fixed="$(q "select(.kind == \"Deployment\" and .metadata.name == \"${target}\") | .spec.replicas // \"\"" "${out}")"
+        check "$([[ -z "${fixed}" ]] && echo true)" "${env}: ${target} tiene HPA y no debe declarar spec.replicas (${fixed})."
+        HPA_MAX[${target}]="${max}"
+    done < <(q 'select(.kind == "HorizontalPodAutoscaler") |
+        [.metadata.name, .spec.scaleTargetRef.kind, .spec.scaleTargetRef.name, (.spec.minReplicas // 1), .spec.maxReplicas] | join("|")' "${out}")
+
+    # US-38: el peor caso (StatefulSets y cada HPA en su máximo) cabe en la cuota.
+    req_cpu=0; req_mem=0
+    while IFS='|' read -r kind name replicas cpu mem; do
+        [[ -n "${name}" ]] || continue
+        n="${replicas}"
+        [[ "${kind}" == "Deployment" && -n "${HPA_MAX[${name}]:-}" ]] && n="${HPA_MAX[${name}]}"
+        req_cpu="$(awk -v t="${req_cpu}" -v n="${n}" -v c="${cpu}" 'BEGIN { v = (c ~ /m$/) ? substr(c, 1, length(c) - 1) : c * 1000; printf "%d", t + n * v }')"
+        req_mem="$(awk -v t="${req_mem}" -v n="${n}" -v g="$(to_gi "${mem}")" 'BEGIN { printf "%g", t + n * g }')"
+    done < <(q 'select(.kind == "StatefulSet" or .kind == "Deployment") | .kind as $k | .metadata.name as $n | (.spec.replicas // 1) as $r |
+        .spec.template.spec.containers[] | [$k, $n, $r, .resources.requests.cpu, .resources.requests.memory] | join("|")' "${out}")
+    unset HPA_MAX
+    quota_cpu="$(q 'select(.kind == "ResourceQuota") | .spec.hard["requests.cpu"]' "${out}")"
+    quota_mem="$(q 'select(.kind == "ResourceQuota") | .spec.hard["requests.memory"]' "${out}")"
+    quota_cpu_m="$(awk -v c="${quota_cpu}" 'BEGIN { printf "%d", (c ~ /m$/) ? substr(c, 1, length(c) - 1) : c * 1000 }')"
+    check "$(awk -v a="${req_cpu}" -v b="${quota_cpu_m}" -v x="${req_mem}" -v y="$(to_gi "${quota_mem}")" 'BEGIN { print (a <= b && x <= y) ? "true" : "false" }')" \
+        "${env}: con los HPA al máximo se piden ${req_cpu}m de CPU y ${req_mem} Gi de memoria; la cuota es ${quota_cpu} y ${quota_mem}."
+
     # Almacenamiento: los volúmenes deben caber en la cuota del namespace.
     pvc_total=0
     while read -r size; do

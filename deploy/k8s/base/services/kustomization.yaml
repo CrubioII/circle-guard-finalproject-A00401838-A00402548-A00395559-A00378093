@@ -11,7 +11,7 @@
 # nombre y los pods se reinician solos con la configuración nueva.
 # La imagen circleguard/<servicio>:0.1.0 es la del último release; deploy/scripts/k8s-deploy.sh
 # la cambia por <registro>/circleguard/<servicio>:<versión> en cada despliegue (US-39).
-# Probes y autoscaling: US-38.
+# Probes (patch de abajo) y autoscaling (autoscaling.yaml): US-38.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -27,6 +27,7 @@ resources:
   - promotion-service.yaml
   - form-service.yaml
   - gateway-service.yaml
+  - autoscaling.yaml
 
 configMapGenerator:
   - name: services-config
@@ -38,27 +39,34 @@ configMapGenerator:
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - SPRING_DATA_REDIS_HOST=redis
       - SPRING_DATA_REDIS_PORT=6379
+  # MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE (US-38): lo mismo que en compose,
+  # la readiness de cada servicio mira solo las dependencias que usa.
   - name: auth-service-config
     literals:
+      - MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE=readinessState,db,ldap
       - SERVER_PORT=8180
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/circleguard_auth
       - SPRING_LDAP_URLS=ldap://openldap:389
       - IDENTITY_SERVICE_URL=http://identity-service:8083
   - name: identity-service-config
     literals:
+      - MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE=readinessState,db
       - SERVER_PORT=8083
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/circleguard_identity
   - name: promotion-service-config
     literals:
+      - MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE=readinessState,db,neo4j,redis
       - SERVER_PORT=8088
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/circleguard_promotion
       - SPRING_NEO4J_URI=bolt://neo4j:7687
   - name: form-service-config
     literals:
+      - MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE=readinessState,db
       - SERVER_PORT=8086
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/circleguard_form
   - name: gateway-service-config
     literals:
+      - MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE=readinessState,redis
       - SERVER_PORT=8087
 
 # Lo común a los Deployments. El usuario no root y el disco de solo lectura van
@@ -87,3 +95,21 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/resources
         value: {requests: {cpu: 100m, memory: 384Mi}, limits: {cpu: 500m, memory: 768Mi}}
+      # US-38: sondas de Actuator en el puerto http de cada servicio (los grupos ya están
+      # activos con MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED y no piden token).
+      # - startup: la JVM con 500m de CPU tarda en arrancar; hasta 5 minutos (30 x 10s)
+      #   antes de que empiecen las otras dos, igual que el timeout de k8s-deploy.sh verify.
+      # - liveness: solo el estado interno de la app. Si falla 3 veces seguidas (1 minuto),
+      #   kubelet reinicia el contenedor. No mira la base de datos para no reiniciar todos
+      #   los pods cuando cae el middleware.
+      # - readiness: la app y sus dependencias. Mientras falle, el Service deja de mandarle
+      #   tráfico, el rollout no avanza y el HPA no cuenta su CPU.
+      - op: add
+        path: /spec/template/spec/containers/0/startupProbe
+        value: {httpGet: {path: /actuator/health/liveness, port: http}, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 30}
+      - op: add
+        path: /spec/template/spec/containers/0/livenessProbe
+        value: {httpGet: {path: /actuator/health/liveness, port: http}, periodSeconds: 20, timeoutSeconds: 5, failureThreshold: 3}
+      - op: add
+        path: /spec/template/spec/containers/0/readinessProbe
+        value: {httpGet: {path: /actuator/health/readiness, port: http}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3}
