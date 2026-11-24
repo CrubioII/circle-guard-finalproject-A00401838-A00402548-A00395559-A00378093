@@ -1,0 +1,8 @@
+# US-44 (SCRUM-127): reglas de OWASP ZAP baseline para CircleGuard (zap-baseline.py -c).
+# Formato: <id de la regla>\t<IGNORE|INFO|WARN|FAIL>\t(<nombre>)  — separado por tabuladores.
+# El umbral general lo aplica infra/scripts/zap-scan.sh: cualquier alerta de riesgo ALTO falla.
+# Aquí solo se ajustan reglas puntuales, cada una con su justificación y fecha de revisión,
+# igual que las excepciones de Trivy en .trivyignore. Hoy no hay ninguna excepción.
+#
+# Ejemplo (no activo):
+# 10096	IGNORE	(Timestamp Disclosure)	# Justificación: ... Responsable: ... Revisar: AAAA-MM-DD
