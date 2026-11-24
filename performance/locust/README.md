@@ -44,3 +44,7 @@ Los reportes quedan en `reports/locust/<ambiente>/<perfil>/`: `report.html` y lo
 
 - Corre solo contra dev o stage, nunca contra prod. `SurveyUser` crea cuestionarios con IDs anónimos nuevos y sin síntomas, así que no cerca a nadie, pero sí deja datos de prueba (marcados con `"source": "locust-us27"`).
 - Mientras corre la prueba, el dashboard de Grafana de US-24 muestra cómo responde cada servicio. Para el análisis conviene cruzar el p95 de Locust con el p95 por servicio.
+
+## Resultados
+
+La corrida contra dev del 24 de noviembre (versión 0.4.0) y su análisis están en [`docs/operaciones/RENDIMIENTO_LOCUST_US27.md`](../../docs/operaciones/RENDIMIENTO_LOCUST_US27.md). Resumen: la carga esperada cumple los umbrales y el punto de quiebre es el login de auth-service, por el pool de conexiones a PostgreSQL.
