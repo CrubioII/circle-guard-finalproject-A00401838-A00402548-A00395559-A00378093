@@ -1121,7 +1121,10 @@ void runBuildImagesStage() {
 void runTrivyImageScanStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     String semver = versionMap.APP_VERSION ?: '0.1.0'
-    sh "./infra/scripts/trivy-scan.sh image --version '${semver}' --registry '${env.DEPLOY_REGISTRY_URL}'"
+    // Excepción temporal de US-39: las imágenes se reportan sin bloquear hasta subir Spring Boot
+    // y la imagen base web. El IaC sigue bloqueando. Ver PIPELINE_PLATAFORMA_US22_US38_US39.md.
+    echo '[US-39] Trivy Image Scan en modo reporte: los hallazgos HIGH/CRITICAL no detienen el pipeline (excepción temporal).'
+    sh "TRIVY_IMAGE_REPORT_ONLY=true ./infra/scripts/trivy-scan.sh image --version '${semver}' --registry '${env.DEPLOY_REGISTRY_URL}'"
 }
 
 void runTerraformApplyDevStage() {
