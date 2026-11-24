@@ -4,7 +4,8 @@
 #   infra/terraform/scripts/tf-pipeline.sh (US-22)
 #   infra/scripts/trivy-scan.sh            (US-38)
 #   deploy/scripts/k8s-deploy.sh           (US-39 / US-28)
-# Usa binarios simulados (terraform, trivy, kubectl) que registran sus argumentos.
+#   infra/scripts/zap-scan.sh              (US-44)
+# Usa binarios simulados (terraform, trivy, kubectl, docker) que registran sus argumentos.
 # =============================================================================
 set -euo pipefail
 
@@ -143,5 +144,41 @@ set +e; bash "${ROOT}/deploy/scripts/k8s-deploy.sh" deploy --env dev --version l
 set +e; K8S_OVERLAY_DIR="${WORK}/nada" bash "${ROOT}/deploy/scripts/k8s-deploy.sh" deploy --env dev --version 1.4.0 --dry-run >/dev/null 2>&1; rc=$?; set -e
 [[ ${rc} -eq 2 ]] || die "sin overlay debería salir con 2 (obtuvo ${rc})"
 pass "rechaza 'latest' (1) y un overlay inexistente (2)"
+
+echo "== zap-scan.sh (US-44)"
+# docker simulado: el cp desde /zap/wrk deja un reporte JSON; ZAP_STUB_HIGH marca un objetivo con riesgo alto.
+cat > "${WORK}/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "docker $*" >> "${STUB_LOG}"
+if [[ "$1" == cp && "$2" == *:/zap/wrk/. ]]; then
+  t="${2#zap-us44-*-}"; t="${t%%-*}"; risk=1
+  [[ "${t}" == "${ZAP_STUB_HIGH:-}" ]] && risk=3
+  printf '{"site":[{"alerts":[{"riskcode": "%s"},{"riskcode": "2"}]}]}' "${risk}" > "$3/${t}.json"
+fi
+exit 0
+STUB
+chmod +x "${WORK}/bin/docker"
+: > "${STUB_LOG}"
+ZAP="${ROOT}/infra/scripts/zap-scan.sh"
+REPORT_DIR="${WORK}/zap" ZAP_DOCKER_NETWORK=host bash "${ZAP}" --env dev --local >/dev/null 2>&1 || die "sin alertas altas debería salir con 0"
+grep -q 'zap-baseline.py -t http://127.0.0.1:8080/ -m 2 -I -r web.html -J web.json -w web.md' "${STUB_LOG}" || die "no escanea el cliente web de dev"
+grep -q -- '-t http://127.0.0.1:8180/' "${STUB_LOG}" && grep -q -- '-t http://127.0.0.1:8087/' "${STUB_LOG}" || die "no escanea auth y gateway"
+grep -q 'docker cp .*/.zap/baseline-rules.tsv' "${STUB_LOG}" || die "no usa .zap/baseline-rules.tsv"
+grep -q '"result": "PASS"' "${WORK}/zap/summary.json" || die "summary.json no reporta PASS"
+[[ -s "${WORK}/zap/junit/web.xml" ]] || die "falta el JUnit de web"
+pass "local: escanea web, auth y gateway con las reglas del repo y deja summary.json y JUnit"
+
+set +e; ZAP_STUB_HIGH=gateway REPORT_DIR="${WORK}/zap-high" ZAP_DOCKER_NETWORK=host bash "${ZAP}" --env stage --local >/dev/null 2>&1; rc=$?; set -e
+[[ ${rc} -eq 1 ]] || die "una alerta de riesgo alto debería salir con 1 (obtuvo ${rc})"
+grep -q -- '-t http://127.0.0.1:9087/' "${STUB_LOG}" || die "stage no usa los puertos con offset 1000"
+grep -q 'failures="1"' "${WORK}/zap-high/junit/gateway.xml" || die "el JUnit no marca el hallazgo alto"
+ZAP_STUB_HIGH=gateway ZAP_MAX_HIGH=1 REPORT_DIR="${WORK}/zap-max" ZAP_DOCKER_NETWORK=host bash "${ZAP}" --env stage --local >/dev/null 2>&1 || die "ZAP_MAX_HIGH=1 debería tolerar una alerta alta"
+pass "política: riesgo alto sobre ZAP_MAX_HIGH sale con 1; stage usa los puertos con offset"
+
+out="$(DRY_RUN=1 SSH_KEY=/llave REPORT_DIR="${WORK}/zap-ssh" bash "${ZAP}" --env dev --host 10.0.0.5 2>&1)"
+[[ "${out}" == *"-L 127.0.0.1:38080:127.0.0.1:8080"* && "${out}" == *"ec2-user@10.0.0.5"* ]] || die "no arma el túnel SSH hacia el nodo"
+set +e; bash "${ZAP}" --env prod --local >/dev/null 2>&1; rc=$?; set -e
+[[ ${rc} -eq 2 ]] || die "prod debería rechazarse (2)"
+pass "remoto: túnel SSH como run-e2e.sh; prod se rechaza (2)"
 
 echo "=== RESULTADO: OK — ${PASS} pruebas de plataforma superadas ==="
