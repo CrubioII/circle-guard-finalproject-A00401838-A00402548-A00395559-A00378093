@@ -92,6 +92,26 @@ grep -q "reg:5000/circleguard/mobile:1.4.0" "${STUB_LOG}" || die "no escaneó el
 grep -q '"target":"image-gateway","kind":"image","result":"FAIL"' "${WORK}/trivy/summary-image.json" || die "el resumen no marca gateway como FAIL"
 pass "image: escanea las 9 imágenes, termina el reporte y sale con 1 si una tiene HIGH/CRITICAL"
 
+rm -f "${WORK}/trivy/image-gateway.json"
+set +e
+TRIVY_STUB_FAIL="gateway" TRIVY_IMAGE_REPORT_ONLY=true \
+  bash "${ROOT}/infra/scripts/trivy-scan.sh" image --version 1.4.0 --registry reg:5000 >/dev/null 2>&1
+rc=$?
+set -e
+[[ ${rc} -eq 0 ]] || die "con TRIVY_IMAGE_REPORT_ONLY=true las imágenes no deberían romper el build (obtuvo ${rc})"
+[[ -f "${WORK}/trivy/image-gateway.json" ]] || die "en modo reporte también debe generarse el JSON"
+grep -q '"enforced":false' "${WORK}/trivy/summary-image.json" || die "el resumen debería marcar enforced=false"
+grep -q '"target":"image-gateway","kind":"image","result":"FAIL"' "${WORK}/trivy/summary-image.json" || die "el resumen debería seguir marcando gateway como FAIL"
+pass "image: TRIVY_IMAGE_REPORT_ONLY=true reporta los hallazgos sin bloquear"
+
+set +e
+TRIVY_STUB_FAIL="terraform" TRIVY_IMAGE_REPORT_ONLY=true \
+  bash "${ROOT}/infra/scripts/trivy-scan.sh" config --target infra/terraform >/dev/null 2>&1
+rc=$?
+set -e
+[[ ${rc} -eq 1 ]] || die "el escaneo IaC debe seguir bloqueando aunque TRIVY_IMAGE_REPORT_ONLY=true (obtuvo ${rc})"
+pass "config: sigue bloqueando con TRIVY_IMAGE_REPORT_ONLY=true"
+
 set +e; bash "${ROOT}/infra/scripts/trivy-scan.sh" image --version latest >/dev/null 2>&1; rc=$?; set -e
 [[ ${rc} -ne 0 ]] || die "'latest' debería rechazarse"
 pass "image: rechaza 'latest'"
