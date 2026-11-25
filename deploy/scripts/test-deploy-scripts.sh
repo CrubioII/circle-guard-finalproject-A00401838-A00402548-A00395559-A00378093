@@ -65,6 +65,10 @@ expect_in "verify ejecuta verify-env-health.sh remoto" "/opt/circleguard/dev/com
 echo "[4/6] run-e2e.sh valida argumentos"
 expect_fail "run-e2e --env inválido"           bash "${S}/run-e2e.sh" --env qa --local
 expect_fail "run-e2e requiere --host"          bash "${S}/run-e2e.sh" --env dev
+# US-22: el agente de Jenkins puede no tener kubectl; --k8s usa el binario fijo de lib.sh.
+src="$(cat "${S}/run-e2e.sh")"
+expect_in "run-e2e --k8s descarga kubectl si falta"     'ensure_tool kubectl' "${src}"
+expect_in "run-e2e --k8s usa ese kubectl en port-forward" '"${KUBECTL}" -n "${namespace}" port-forward' "${src}"
 
 echo "[5/6] Puertos del runner E2E == puertos publicados por compose"
 for pair in dev:0 stage:1000 prod:2000; do
