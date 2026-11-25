@@ -78,6 +78,13 @@ port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 if ${K8S}; then
   # US-39: mismos puertos locales que el túnel SSH, pero con kubectl port-forward a los Services.
   namespace="${K8S_NAMESPACE:-circleguard-${ENV_NAME}}"
+  # Sin kubectl en el PATH (imagen de Jenkins sin reconstruir) se usa la versión fija y verificada
+  # de deploy/k8s/scripts/lib.sh, igual que en k8s-deploy.sh.
+  KUBECTL="${KUBECTL:-kubectl}"
+  if ! command -v "${KUBECTL}" >/dev/null 2>&1; then
+    KUBECTL="$(bash -c 'source "$1" && ensure_tool kubectl' _ "${ROOT_DIR}/deploy/k8s/scripts/lib.sh")" \
+      || { log "ERROR: kubectl no está instalado y no se pudo descargar"; exit 2; }
+  fi
   declare -A K8S_SVC=(
     [AUTH]="${K8S_SVC_AUTH:-auth-service}" [IDENTITY]="${K8S_SVC_IDENTITY:-identity-service}"
     [PROMOTION]="${K8S_SVC_PROMOTION:-promotion-service}" [FORM]="${K8S_SVC_FORM:-form-service}"
@@ -88,7 +95,7 @@ if ${K8S}; then
     [FORM]="${K8S_PORT_FORM:-8086}" [GATEWAY]="${K8S_PORT_GATEWAY:-8087}" [WEB]="${K8S_PORT_WEB:-8080}"
   )
   for svc in AUTH IDENTITY PROMOTION FORM GATEWAY WEB; do
-    kubectl -n "${namespace}" port-forward "svc/${K8S_SVC[$svc]}" "${LOCAL_PORT[$svc]}:${K8S_PORT[$svc]}" >/dev/null 2>&1 &
+    "${KUBECTL}" -n "${namespace}" port-forward "svc/${K8S_SVC[$svc]}" "${LOCAL_PORT[$svc]}:${K8S_PORT[$svc]}" >/dev/null 2>&1 &
     PF_PIDS+=("$!")
   done
   for svc in AUTH IDENTITY PROMOTION FORM GATEWAY; do export "E2E_${svc}_URL=http://127.0.0.1:${LOCAL_PORT[$svc]}"; done
