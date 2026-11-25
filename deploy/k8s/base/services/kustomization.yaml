@@ -1,4 +1,4 @@
-# CircleGuard — Los 8 microservicios en Kubernetes (US-37)
+# CircleGuard — Los 8 microservicios y el cliente web en Kubernetes (US-37)
 #
 # Un Deployment y un Service (ClusterIP) por microservicio, con el mismo nombre y
 # puerto que en compose. La configuración no va en la imagen:
@@ -31,6 +31,8 @@ resources:
   - dashboard-service.yaml
   - file-service.yaml
   - ingress.yaml
+  # Cliente web: lo usan los E2E de la compuerta de promoción (run-e2e.sh --k8s).
+  - web-client.yaml
 
 configMapGenerator:
   - name: services-config
@@ -78,7 +80,7 @@ configMapGenerator:
     literals:
       - SERVER_PORT=8085
 
-# Lo común a los 8 Deployments. El usuario no root y el disco de solo lectura van
+# Lo común a los 9 Deployments. El usuario no root y el disco de solo lectura van
 # en cada archivo porque Trivy revisa cada YAML tal cual, sin aplicar estos parches.
 # Aquí: actualización sin pods extra para no pasar la ResourceQuota (un pod nuevo por
 # servicio duplicaría lo pedido), sin token ni variables de enlace, /tmp escribible
@@ -113,3 +115,10 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/volumeMounts/-
         value: {name: uploads, mountPath: /app/uploads}
+  # web-client es nginx con archivos estáticos: no necesita la memoria de Spring.
+  # Con los 384 Mi del parche común, stage y prod pasarían los 6 Gi de la cuota.
+  - target: {kind: Deployment, name: web-client}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 200m, memory: 128Mi}}

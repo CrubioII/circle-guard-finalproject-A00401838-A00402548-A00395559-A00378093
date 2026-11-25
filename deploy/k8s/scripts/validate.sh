@@ -144,11 +144,13 @@ for env in "${ENVS[@]}"; do
     check "$([[ "${ingresses}" == "circleguard-api@api.${env}.circleguard.edu " ]] && echo true)" \
         "${env}: se espera solo el Ingress circleguard-api con host api.${env}.circleguard.edu; encontrados: ${ingresses}"
     backends="$(q 'select(.kind == "Ingress") | .spec.rules[].http.paths[].backend.service.name' "${out}" | sort -u | tr '\n' ' ')"
+    # notification-service no tiene API pública y web-client solo se usa por port-forward (E2E).
+    internal=" notification-service web-client "
     for b in ${backends}; do
-        check "$([[ " ${SERVICES[*]} " == *" ${b} "* && "${b}" != "notification-service" ]] && echo true)" "${env}: el Ingress no debe publicar ${b}."
+        check "$([[ " ${SERVICES[*]} " == *" ${b} "* && "${internal}" != *" ${b} "* ]] && echo true)" "${env}: el Ingress no debe publicar ${b}."
     done
-    check "$([[ "$(wc -w <<< "${backends}" | tr -d ' ')" == "$(( ${#SERVICES[@]} - 1 ))" ]] && echo true)" \
-        "${env}: el Ingress debe publicar los microservicios con API (todos menos notification-service): ${backends}"
+    check "$([[ "$(wc -w <<< "${backends}" | tr -d ' ')" == "$(( ${#SERVICES[@]} - $(wc -w <<< "${internal}") ))" ]] && echo true)" \
+        "${env}: el Ingress debe publicar los microservicios con API (todos menos${internal% }): ${backends}"
     risky="$(q 'select(.kind == "StatefulSet" or .kind == "Deployment") | select(.spec.template.spec.hostNetwork == true or .spec.template.spec.hostPID == true or ([.spec.template.spec.volumes[]? | select(has("hostPath"))] | length) > 0 or ([.spec.template.spec.containers[].securityContext.privileged] | any)) | .metadata.name' "${out}")"
     check "$([[ -z "${risky}" ]] && echo true)" "${env}: pods con hostNetwork, hostPID, hostPath o privileged: ${risky}"
 

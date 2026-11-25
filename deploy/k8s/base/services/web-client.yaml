@@ -1,0 +1,46 @@
+# web-client (8080): cliente web (Expo/React Native Web) servido por nginx sin privilegios (US-07).
+# El entrypoint escribe /runtime-config.js en /tmp, que es el emptyDir que agrega el parche común
+# de kustomization.yaml; por eso el disco puede ser de solo lectura. Las URL de las APIs quedan en
+# localhost como en la imagen: los E2E (run-e2e.sh --k8s) reescriben runtime-config.js con sus
+# port-forward, y no hay Ingress todavía.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web-client
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web-client
+    spec:
+      # UID 101 = usuario nginx de nginxinc/nginx-unprivileged (mobile/Dockerfile).
+      securityContext: {runAsNonRoot: true, runAsUser: 101, runAsGroup: 101, fsGroup: 101, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: web-client
+          image: circleguard/web-client:0.1.0
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          ports:
+            - {name: http, containerPort: 8080}
+          env:
+            - {name: APP_ENV, valueFrom: {configMapKeyRef: {name: services-config, key: CG_ENVIRONMENT}}}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-client
+spec:
+  selector:
+    app.kubernetes.io/name: web-client
+  ports:
+    - {name: http, port: 8080, targetPort: http}
