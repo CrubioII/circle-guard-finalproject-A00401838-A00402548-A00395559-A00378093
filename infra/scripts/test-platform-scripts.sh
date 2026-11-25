@@ -68,6 +68,14 @@ set +e; bash "${ROOT}/infra/terraform/scripts/tf-pipeline.sh" plan --env qa >/de
 [[ ${rc} -eq 1 ]] || die "ambiente inválido debería salir con 1"
 pass "apply sin plan revisado se rechaza (3) y un ambiente inválido también (1)"
 
+# Jenkins sin CG_TF_STATE_BUCKET dejaba el texto "null"; el bucket debe salir de la cuenta.
+printf '#!/usr/bin/env bash\necho 123456789012\n' > "${WORK}/bin/aws"; chmod +x "${WORK}/bin/aws"
+: > "${STUB_LOG}"
+TF_STATE_BUCKET="null" bash "${ROOT}/infra/terraform/scripts/tf-pipeline.sh" plan --env dev >/dev/null
+grep -q -- "-backend-config=bucket=circleguard-terraform-state-123456789012" "${STUB_LOG}" \
+  || die "con TF_STATE_BUCKET=null debe deducir el bucket de la cuenta"
+pass "plan: TF_STATE_BUCKET vacío o 'null' usa circleguard-terraform-state-<ID_CUENTA>"
+
 echo "== trivy-scan.sh (US-38)"
 export REPORT_DIR="${WORK}/trivy" TRIVY_TEMPLATES_DIR="${WORK}/tpl"
 mkdir -p "${TRIVY_TEMPLATES_DIR}" && : > "${TRIVY_TEMPLATES_DIR}/junit.tpl"
@@ -163,5 +171,16 @@ set +e; bash "${ROOT}/deploy/scripts/k8s-deploy.sh" deploy --env dev --version l
 set +e; K8S_OVERLAY_DIR="${WORK}/nada" bash "${ROOT}/deploy/scripts/k8s-deploy.sh" deploy --env dev --version 1.4.0 --dry-run >/dev/null 2>&1; rc=$?; set -e
 [[ ${rc} -eq 2 ]] || die "sin overlay debería salir con 2 (obtuvo ${rc})"
 pass "rechaza 'latest' (1) y un overlay inexistente (2)"
+
+# Sin kubectl en el PATH usa el binario fijo de lib.sh (aquí uno simulado ya descargado).
+TOOLS="${WORK}/tools"; mkdir -p "${TOOLS}" "${WORK}/nobin"
+printf '#!/usr/bin/env bash\necho "kubectl-cache $*" >> "%s"\n' "${STUB_LOG}" > "${TOOLS}/kubectl-v1.32.2"
+chmod +x "${TOOLS}/kubectl-v1.32.2"
+for t in bash cat dirname uname tail sed mkdir; do ln -sf "$(command -v "$t")" "${WORK}/nobin/$t"; done
+: > "${STUB_LOG}"
+PATH="${WORK}/nobin" CG_TOOLS_DIR="${TOOLS}" KUBECONFIG="${WORK}/kubeconfig" \
+  bash "${ROOT}/deploy/scripts/k8s-deploy.sh" status --env dev >/dev/null
+grep -q "kubectl-cache -n circleguard-dev get" "${STUB_LOG}" || die "sin kubectl en el PATH no usa el de lib.sh"
+pass "deploy/verify: sin kubectl en el PATH usa la versión fija de deploy/k8s/scripts/lib.sh"
 
 echo "=== RESULTADO: OK — ${PASS} pruebas de plataforma superadas ==="
