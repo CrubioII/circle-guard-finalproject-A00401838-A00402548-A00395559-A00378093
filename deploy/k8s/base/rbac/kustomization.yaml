@@ -1,0 +1,15 @@
+# CircleGuard — RBAC del namespace (US-26)
+#
+#   service-accounts.yaml  Una cuenta de servicio por microservicio, sin token y sin
+#                          ningún permiso: ninguno usa la API de Kubernetes.
+#   jenkins-deployer.yaml  Cuenta con la que Jenkins despliega en este namespace, con
+#                          los permisos justos de k8s-deploy.sh y sin acceso a Secrets.
+# Todo es namespaced: el mismo overlay de cada ambiente lo crea en circleguard-<env>.
+# El kubeconfig de Jenkins con el token de jenkins-deployer lo genera
+# deploy/k8s/scripts/create-deployer-kubeconfig.sh.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - service-accounts.yaml
+  - jenkins-deployer.yaml

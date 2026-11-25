@@ -13,6 +13,8 @@
 #   US-37 Comprueba los 8 microservicios: Deployment y Service por cada uno, imagen
 #        circleguard/<servicio> con versión, recursos, usuario no root, disco de solo
 #        lectura, contraseñas solo desde Secrets y un único Ingress hacia sus APIs.
+#   US-26 Comprueba el RBAC: cada microservicio con su propia cuenta de servicio sin
+#        token, y jenkins-deployer sin comodines, sin Secrets y sin pods/exec.
 #   +    Valida el esquema de cada recurso con kubeconform (-strict), revisa que
 #        el volumen pedido quepa en la cuota y busca credenciales en texto plano.
 #
@@ -162,6 +164,19 @@ for env in "${ENVS[@]}"; do
         "${env}: las contraseñas deben salir solo de ${APP_SECRET_NAME} y ${SECRET_NAME}; referencias: ${secret_refs}"
     literal="$(q 'select(.kind == "StatefulSet" or .kind == "Deployment") | .spec.template.spec.containers[].env[]? | select(has("value") and (.name | test("PASSWORD|SECRET|TOKEN|AUTH"))) | .name' "${out}")"
     check "$([[ -z "${literal}" ]] && echo true)" "${env}: variables sensibles con valor literal: ${literal}"
+
+    # US-26: RBAC. Una cuenta por microservicio, ninguna con token, y el Role de Jenkins
+    # sin comodines, sin Secrets ni pods/exec. Nada a nivel de clúster.
+    sa_mismatch="$(q 'select(.kind == "Deployment" and .spec.template.spec.serviceAccountName != .metadata.name) | .metadata.name' "${out}")"
+    check "$([[ -z "${sa_mismatch}" ]] && echo true)" "${env}: estos Deployments deben usar la cuenta de servicio con su nombre: ${sa_mismatch}"
+    sa_token="$(q 'select(.kind == "ServiceAccount" and .automountServiceAccountToken != false) | .metadata.name' "${out}")"
+    check "$([[ -z "${sa_token}" ]] && echo true)" "${env}: cuentas de servicio que montan token: ${sa_token}"
+    cluster_rbac="$(q 'select(.kind == "ClusterRole" or .kind == "ClusterRoleBinding") | .metadata.name' "${out}")"
+    check "$([[ -z "${cluster_rbac}" ]] && echo true)" "${env}: el overlay no debe crear RBAC de clúster: ${cluster_rbac}"
+    role_rules="$(q 'select(.kind == "Role" and .metadata.name == "jenkins-deployer") | .rules[] | (.resources + .verbs + .apiGroups)[]' "${out}")"
+    check "$([[ -n "${role_rules}" ]] && echo true)" "${env}: falta el Role jenkins-deployer."
+    check "$(grep -qxE '\*|secrets|pods/exec|pods/portforward|escalate|bind|impersonate' <<< "${role_rules}" || echo true)" \
+        "${env}: el Role jenkins-deployer no debe usar comodines ni dar Secrets, pods/exec, port-forward, escalate, bind o impersonate."
 
     # Contenedores: imagen fija e igual a compose, probes y recursos.
     while IFS='|' read -r owner container image ready live rcpu rmem lcpu lmem links token; do
