@@ -157,11 +157,13 @@ void withEnvironmentCredentials(Closure body) {
 }
 
 // US-22: credencial AWS de Terraform. Nunca se imprime; tf-pipeline.sh usa la cadena estándar de AWS.
+// Jenkins no guarda variables vacías: sin CG_TF_STATE_BUCKET, env.TF_STATE_BUCKET es null y se pasa
+// vacío para que tf-pipeline.sh deduzca el bucket de la cuenta (antes llegaba el texto "null").
 void withTerraformCredentials(Closure body) {
     withCredentials([usernamePassword(credentialsId: env.AWS_TERRAFORM_CREDENTIALS_ID,
                                       usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
         withEnv(["AWS_DEFAULT_REGION=${env.TF_STATE_REGION}", "TF_STATE_REGION=${env.TF_STATE_REGION}",
-                 "TF_STATE_BUCKET=${env.TF_STATE_BUCKET}"]) {
+                 "TF_STATE_BUCKET=${env.TF_STATE_BUCKET ?: ''}"]) {
             body()
         }
     }
