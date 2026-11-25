@@ -5,12 +5,12 @@ Manifiestos de Kustomize para el clúster k3s de cada ambiente (US-20). Cada ove
 | Carpeta | Contenido |
 |---|---|
 | `base/namespace/` | `Namespace` con Pod Security `baseline`, `ResourceQuota`, `LimitRange` y `NetworkPolicy` (niega la entrada y solo permite el tráfico del mismo namespace) |
-| `base/services/` | Los 8 microservicios (US-37): un `Deployment` y un `Service` por cada uno, sus ConfigMaps y el `Ingress` `circleguard-api` (Traefik) |
+| `base/services/` | Los 8 microservicios (US-37): un `Deployment` y un `Service` por cada uno, sus ConfigMaps y el `Ingress` `circleguard-api` (Traefik), con HTTPS de cert-manager y redirección desde HTTP (US-26) |
 | `base/rbac/` | Una `ServiceAccount` sin token por microservicio y la cuenta `jenkins-deployer`, con la que Jenkins despliega solo en su namespace (US-26) |
 | `base/middleware/` | Un `StatefulSet` y un `Service` headless por componente, con las imágenes de `deploy/compose`, probes, recursos y volumen persistente. Incluye una copia de `init-db.sql` |
 | `components/prod-sizing/` | Límites de `docker-compose.prod.yml` y memoria de las JVM, compartidos por stage y prod |
 | `overlays/{dev,stage,prod}/` | Namespace, etiqueta de ambiente, parámetros (dominio LDAP, retención de Kafka) y tamaño de los discos |
-| `scripts/` | `validate.sh`, `get-kubeconfig.sh`, `create-secrets.sh`, `create-deployer-kubeconfig.sh`, `deploy-middleware.sh` y `lib.sh` |
+| `scripts/` | `validate.sh`, `get-kubeconfig.sh`, `create-secrets.sh`, `create-deployer-kubeconfig.sh`, `install-cert-manager.sh`, `deploy-middleware.sh` y `lib.sh` |
 
 ## Uso
 
@@ -33,7 +33,7 @@ Los microservicios (US-37) viven en el mismo namespace y usan los mismos nombres
 ```bash
 REGISTRY_URL=<registro> bash deploy/scripts/k8s-deploy.sh deploy --env dev --version X.Y.Z
 bash deploy/scripts/k8s-deploy.sh verify --env dev --version X.Y.Z
-curl -H 'Host: api.dev.circleguard.edu' http://<IP del nodo>/api/v1/...
+curl --cacert circleguard-dev-ca.crt https://api.dev.circleguard.edu/api/v1/...   # CA: ver US-26 §5
 ```
 
 Jenkins no usa el kubeconfig de administrador. Un administrador genera la credencial `kubeconfig-<env>` con el token de `jenkins-deployer` (US-26):

@@ -41,6 +41,14 @@ rules:
   - apiGroups: [autoscaling]
     resources: [horizontalpodautoscalers]
     verbs: [get, list, watch, create, patch, update, delete]
+  # TLS del Ingress (US-26): Issuers y Certificates de cert-manager y el Middleware de
+  # Traefik. El Secret con la llave lo escribe cert-manager, no Jenkins.
+  - apiGroups: [cert-manager.io]
+    resources: [issuers, certificates]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: [traefik.io]
+    resources: [middlewares]
+    verbs: [get, list, watch, create, patch, update, delete]
   # El propio RBAC del namespace va en el overlay. Kubernetes no deja que una cuenta
   # otorgue permisos que no tiene, así que no puede ampliarse a sí misma.
   - apiGroups: [rbac.authorization.k8s.io]

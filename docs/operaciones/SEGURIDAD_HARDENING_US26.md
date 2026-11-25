@@ -10,7 +10,7 @@ La historia en Jira (SCRUM-95) no trae criterios de aceptación. Se trabajó con
 | CA1 Secretos | Ningún secreto en Git ni en ConfigMaps; los Secrets se crean fuera del repo, cifrados en reposo, y se revisa el código en busca de credenciales | §4 |
 | CA2 RBAC en Kubernetes | Una cuenta por microservicio sin token, y Jenkins con una cuenta limitada a su namespace en lugar del administrador del clúster | §2 (este PR) |
 | CA3 RBAC en Jenkins | Roles por matriz (administrador, equipo, solo lectura) y aprobación de prod restringida | §3 |
-| CA4 TLS | El Ingress sirve HTTPS y redirige HTTP a HTTPS | Siguiente PR |
+| CA4 TLS | El Ingress sirve HTTPS y redirige HTTP a HTTPS | §5 |
 
 ## 1. Punto de partida
 
@@ -86,3 +86,53 @@ Se cubrió en US-31 y se mantiene ([`JENKINS_SEGURIDAD_US31.md`](JENKINS_SEGURID
 | Cifrado en reposo | k3s con `--secrets-encryption` (US-20) |
 | Acceso | Solo administradores del clúster; Jenkins ya no los lee (§2) y cada pod recibe únicamente las llaves que usa |
 | Revisión de credenciales en el código | GitGuardian revisa cada PR en GitHub |
+
+## 5. TLS en el Ingress (CA4)
+
+```text
+deploy/k8s/base/services/tls.yaml          Issuers, Certificates y Middleware redirect-https
+deploy/k8s/base/services/ingress.yaml      tls + anotación router.middlewares
+deploy/k8s/overlays/<env>/kustomization.yaml  host, nombre de la CA y del Middleware por ambiente
+deploy/k8s/scripts/install-cert-manager.sh cert-manager v1.21.3, manifiesto verificado con SHA-256
+```
+
+**Certificados.** [cert-manager](https://cert-manager.io) emite y renueva los certificados dentro del clúster. Cada ambiente tiene su propia CA (`CircleGuard <env> CA`, ECDSA P-256, 5 años), creada con un `Issuer` autofirmado. Con ella, el `Issuer` `circleguard-ca` firma `circleguard-api-tls` para `api.<env>.circleguard.edu`: 90 días de vigencia, renovación 30 días antes y llave nueva en cada renovación. El Ingress usa ese Secret.
+
+Los dominios `*.circleguard.edu` no son públicos, así que Let's Encrypt no puede validarlos. Con un dominio real solo hay que cambiar el `Issuer` `circleguard-ca` por uno ACME; el Ingress y el Certificate no cambian. Mientras tanto, los clientes confían en la CA del ambiente:
+
+```bash
+kubectl -n circleguard-dev get secret circleguard-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > circleguard-dev-ca.crt
+curl --cacert circleguard-dev-ca.crt https://api.dev.circleguard.edu/api/v1/analytics/summary
+```
+
+**HTTP → HTTPS.** El `Middleware` `redirect-https` de Traefik responde `301` hacia `https://` a cualquier petición por el puerto 80. Cada overlay pone en el Ingress la anotación `circleguard-<env>-redirect-https@kubernetescrd`. Los ejemplos con `curl http://...` del documento de US-37 ahora reciben ese `301`.
+
+**Permisos.** `jenkins-deployer` puede crear y cambiar `Issuers`, `Certificates` y `Middlewares`, pero no lee los Secrets donde cert-manager guarda las llaves (`circleguard-ca` y `circleguard-api-tls`).
+
+**Validación.** `validate.sh` exige que el Ingress sirva TLS para el host del ambiente con `circleguard-api-tls`, que el `Certificate` cubra ese host con el `Issuer` `circleguard-ca` y que la anotación apunte al `Middleware` del namespace. `kubeconform` revisa los recursos de cert-manager y Traefik con los esquemas del catálogo de CRDs de datree, sin omitir ninguno.
+
+### 5.1 Puesta en marcha en cada clúster
+
+Antes del primer despliegue con este cambio, porque `kubectl apply` rechaza un `Certificate` si cert-manager no está instalado:
+
+```bash
+export KUBECONFIG=~/.kube/circleguard-dev.yaml          # administrador
+bash deploy/k8s/scripts/install-cert-manager.sh
+bash deploy/k8s/scripts/create-deployer-kubeconfig.sh --env dev   # Role con los permisos de TLS
+# Reemplazar la credencial kubeconfig-dev en Jenkins (§2.1)
+```
+
+### 5.2 Prueba en k3s local (k3d)
+
+| Paso | Resultado |
+|---|---|
+| `install-cert-manager.sh` | Manifiesto verificado, 3 Deployments listos, webhook respondiendo |
+| `k8s-deploy.sh deploy` con el token de `jenkins-deployer` | Issuers, Certificates y Middleware creados, sin `Forbidden` |
+| `kubectl get certificate` | `circleguard-ca` y `circleguard-api-tls` en `READY True` |
+| `curl http://` + `Host: api.dev.circleguard.edu` | `301` → `https://api.dev.circleguard.edu/...` |
+| `curl --cacert <CA> https://api.dev.circleguard.edu/api/v1/analytics/summary` | `200` |
+| Lo mismo sin `--cacert` | Error 60: certificado no confiable |
+| `POST https://.../api/v1/auth/login` con credenciales inválidas | `401` de auth-service |
+| `https://.../actuator/health` | `404`: sigue sin publicarse |
+| Certificado servido | Emisor `CN=CircleGuard dev CA`, SAN `DNS:api.dev.circleguard.edu`, vence en 90 días |
+| `validate.sh` (3 ambientes) | 64 recursos por ambiente, esquema válido (64 de 64) |
