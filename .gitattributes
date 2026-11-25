@@ -6,3 +6,6 @@ Dockerfile      text eol=lf
 .dockerignore   text eol=lf
 gradlew         text eol=lf
 *.sql           text eol=lf
+# Plantillas de user_data de Terraform (US-20/US-22): con CRLF, un apply desde Windows
+# cambia el user_data y Jenkins (LF) lo ve como diferencia y reinicia el nodo.
+*.tftpl         text eol=lf

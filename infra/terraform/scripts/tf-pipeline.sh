@@ -73,7 +73,8 @@ run() {
 tf() { run "${TERRAFORM_BIN}" -chdir="${ENV_DIR}" "$@"; }
 
 resolve_state_bucket() {
-    if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
+    # "null" es lo que deja Groovy al interpolar una variable de Jenkins que no existe.
+    if [[ -n "${TF_STATE_BUCKET:-}" && "${TF_STATE_BUCKET}" != "null" ]]; then
         printf '%s' "${TF_STATE_BUCKET}"
         return
     fi
