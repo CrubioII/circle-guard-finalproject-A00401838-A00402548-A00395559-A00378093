@@ -1,0 +1,43 @@
+# file-service (8085): Carga de archivos; los guarda en el volumen file-uploads.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: file-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: file-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: file-service
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: file-service
+          image: circleguard/file-service:0.1.0
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          ports:
+            - {name: http, containerPort: 8085}
+          envFrom:
+            - configMapRef: {name: services-config}
+            - configMapRef: {name: file-service-config}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: file-service
+spec:
+  selector:
+    app.kubernetes.io/name: file-service
+  ports:
+    - {name: http, port: 8085, targetPort: http}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: file-uploads
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources: {requests: {storage: 1Gi}}

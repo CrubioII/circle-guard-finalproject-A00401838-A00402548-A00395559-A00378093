@@ -38,4 +38,10 @@ configMapGenerator:
       - LOGGING_LEVEL_COM_CIRCLEGUARD=INFO
 
 patches:
+  # Host del Ingress de este ambiente (US-37).
+  - target: {kind: Ingress, name: circleguard-api}
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: api.prod.circleguard.edu
   - path: storage.yaml
