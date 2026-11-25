@@ -28,7 +28,7 @@ deploy/k8s/base/rbac/
 deploy/k8s/scripts/create-deployer-kubeconfig.sh
 ```
 
-**Microservicios.** Cada `Deployment` usa una cuenta con su mismo nombre (`auth-service`, ...). Ninguno llama a la API de Kubernetes, así que no tienen `Role` y no montan token. La cuenta `default` del namespace también queda sin token, para que un pod nuevo sin `serviceAccountName` no reciba credenciales. Con una identidad por servicio, los eventos de auditoría y cualquier permiso futuro quedan separados por servicio.
+**Microservicios.** Cada `Deployment` usa una cuenta con su mismo nombre (`auth-service`, ..., `web-client`). Ninguno llama a la API de Kubernetes, así que no tienen `Role` y no montan token. La cuenta `default` del namespace también queda sin token, para que un pod nuevo sin `serviceAccountName` no reciba credenciales. Con una identidad por servicio, los eventos de auditoría y cualquier permiso futuro quedan separados por servicio.
 
 **Jenkins (`jenkins-deployer`).** El `Role` tiene solo lo que hace `deploy/scripts/k8s-deploy.sh`:
 
@@ -38,10 +38,11 @@ deploy/k8s/scripts/create-deployer-kubeconfig.sh
 | `configmaps`, `services`, `serviceaccounts`, `persistentvolumeclaims` | + create, delete | `apply -k` |
 | `deployments`, `statefulsets` | + create, delete | `apply -k`, `rollout status`, `rollout undo` |
 | `replicasets`, `controllerrevisions`, `pods`, `events` | get, list, watch | historial de rollout y diagnóstico |
+| `pods/portforward` | create | túneles de `run-e2e.sh --k8s`, los E2E de la compuerta de promoción (US-39) |
 | `ingresses`, `networkpolicies`, `horizontalpodautoscalers` | + create, delete | `apply -k` (el HPA es de US-38) |
 | `roles`, `rolebindings` | get, list, watch, create, patch, update | el propio RBAC va en el overlay. Kubernetes no deja otorgar permisos que no se tienen, así que la cuenta no puede ampliarse |
 
-No tiene `secrets`, `pods/exec`, `pods/portforward`, ni nada fuera de `circleguard-<env>`. Los Secrets los sigue creando un administrador con `create-secrets.sh`. `validate.sh` falla si el `Role` gana comodines, `secrets`, `pods/exec`, `pods/portforward`, `escalate`, `bind` o `impersonate`, si un `Deployment` no usa su propia cuenta, si una cuenta monta token o si el overlay crea RBAC de clúster.
+No tiene `secrets`, `pods/exec` ni `pods/attach`, ni nada fuera de `circleguard-<env>`. El `port-forward` solo llega a pods del propio namespace, y conectarse al middleware sigue pidiendo las contraseñas que la cuenta no puede leer. Los Secrets los sigue creando un administrador con `create-secrets.sh`. `validate.sh` falla si el `Role` gana comodines, `secrets`, `pods/exec`, `pods/attach`, `escalate`, `bind` o `impersonate`, si un `Deployment` no usa su propia cuenta, si una cuenta monta token o si el overlay crea RBAC de clúster.
 
 ### 2.1 Generar la credencial de Jenkins
 
@@ -64,10 +65,12 @@ Clúster `k3d` con el overlay dev y los 8 microservicios (el mismo de US-37):
 
 | Paso | Resultado |
 |---|---|
-| `create-deployer-kubeconfig.sh --env dev` | RBAC aplicado y las 8 comprobaciones de `can-i` correctas |
+| `create-deployer-kubeconfig.sh --env dev` | RBAC aplicado y las 9 comprobaciones de `can-i` correctas |
 | `k8s-deploy.sh deploy --env dev --version 0.1.0` con ese kubeconfig | `apply -k` completo, sin `Forbidden` |
-| `k8s-deploy.sh verify` | `Rollout completo: 14 recursos listos con la versión 0.1.0` |
+| `k8s-deploy.sh verify` | `Rollout completo: 15 recursos listos con la versión 0.1.0` (con el web-client de #78) |
 | `k8s-deploy.sh rollback` | `rollout undo` completado |
+| `kubectl port-forward svc/web-client` y `svc/auth-service` (como `run-e2e.sh --k8s`) | `200` en `/healthz` y en `/actuator/health` |
+| `kubectl exec deploy/auth-service` | `Forbidden` |
 | `kubectl get secrets` | `Forbidden` |
 | `kubectl -n kube-system get pods` | `Forbidden` |
 | Pod de `auth-service` | `serviceAccountName: auth-service`, `Running` |

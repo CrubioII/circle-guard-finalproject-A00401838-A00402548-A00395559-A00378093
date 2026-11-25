@@ -6,8 +6,9 @@
 #   deploy    kubectl apply -k del overlay (todos los tipos que genera Kustomize)
 #   verify    kubectl rollout status
 #   rollback  kubectl rollout undo / rollout history (ReplicaSets y ControllerRevisions)
+#   E2E       run-e2e.sh --k8s abre kubectl port-forward a los Services (compuerta de promoción)
 # No puede leer ni cambiar Secrets (los crea un administrador con create-secrets.sh),
-# ni abrir shells en los pods (pods/exec), ni hacer port-forward, ni salir del namespace.
+# ni abrir shells en los pods (pods/exec), ni salir del namespace.
 # Las reglas sobre "namespaces" solo aplican al namespace del Role, el del ambiente.
 apiVersion: v1
 kind: ServiceAccount
@@ -29,6 +30,10 @@ rules:
   - apiGroups: [""]
     resources: [pods, events]
     verbs: [get, list, watch]
+  # Solo para los túneles de los E2E contra el ambiente (run-e2e.sh --k8s).
+  - apiGroups: [""]
+    resources: [pods/portforward]
+    verbs: [create]
   - apiGroups: [apps]
     resources: [deployments, statefulsets]
     verbs: [get, list, watch, create, patch, update, delete]

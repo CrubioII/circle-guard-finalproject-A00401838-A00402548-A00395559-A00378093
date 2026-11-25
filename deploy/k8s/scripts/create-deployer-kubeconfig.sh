@@ -120,8 +120,9 @@ expect() {   # expect <yes|no> <verbo> <recurso> [-n namespace]
 expect yes patch deployments.apps
 expect yes create configmaps
 expect yes patch namespaces/"${NAMESPACE}"
+expect yes create pods --subresource=portforward
 expect no get secrets
-expect no create pods/exec
+expect no create pods --subresource=exec
 expect no get pods -n kube-system
 for other in "${ALL_ENVS[@]}"; do
     [[ "${other}" == "${ENV_NAME}" ]] || expect no patch deployments.apps -n "$(namespace_for "${other}")"

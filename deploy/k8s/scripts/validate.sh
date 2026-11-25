@@ -175,8 +175,8 @@ for env in "${ENVS[@]}"; do
     check "$([[ -z "${cluster_rbac}" ]] && echo true)" "${env}: el overlay no debe crear RBAC de clúster: ${cluster_rbac}"
     role_rules="$(q 'select(.kind == "Role" and .metadata.name == "jenkins-deployer") | .rules[] | (.resources + .verbs + .apiGroups)[]' "${out}")"
     check "$([[ -n "${role_rules}" ]] && echo true)" "${env}: falta el Role jenkins-deployer."
-    check "$(grep -qxE '\*|secrets|pods/exec|pods/portforward|escalate|bind|impersonate' <<< "${role_rules}" || echo true)" \
-        "${env}: el Role jenkins-deployer no debe usar comodines ni dar Secrets, pods/exec, port-forward, escalate, bind o impersonate."
+    check "$(grep -qxE '\*|secrets|pods/exec|pods/attach|escalate|bind|impersonate' <<< "${role_rules}" || echo true)" \
+        "${env}: el Role jenkins-deployer no debe usar comodines ni dar Secrets, pods/exec, pods/attach, escalate, bind o impersonate."
 
     # Contenedores: imagen fija e igual a compose, probes y recursos.
     while IFS='|' read -r owner container image ready live rcpu rmem lcpu lmem links token; do
