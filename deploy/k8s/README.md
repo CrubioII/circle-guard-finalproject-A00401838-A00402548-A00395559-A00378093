@@ -1,4 +1,4 @@
-# Kubernetes — namespaces, middleware y microservicios (US-21, US-37)
+# Kubernetes — namespaces, middleware y microservicios (US-21, US-37, US-26)
 
 Manifiestos de Kustomize para el clúster k3s de cada ambiente (US-20). Cada overlay crea el namespace `circleguard-<env>` con sus políticas y despliega el middleware de CircleGuard: PostgreSQL, Neo4j, Zookeeper, Kafka, Redis y OpenLDAP.
 
@@ -6,10 +6,11 @@ Manifiestos de Kustomize para el clúster k3s de cada ambiente (US-20). Cada ove
 |---|---|
 | `base/namespace/` | `Namespace` con Pod Security `baseline`, `ResourceQuota`, `LimitRange` y `NetworkPolicy` (niega la entrada y solo permite el tráfico del mismo namespace) |
 | `base/services/` | Los 8 microservicios (US-37): un `Deployment` y un `Service` por cada uno, sus ConfigMaps y el `Ingress` `circleguard-api` (Traefik) |
+| `base/rbac/` | Una `ServiceAccount` sin token por microservicio y la cuenta `jenkins-deployer`, con la que Jenkins despliega solo en su namespace (US-26) |
 | `base/middleware/` | Un `StatefulSet` y un `Service` headless por componente, con las imágenes de `deploy/compose`, probes, recursos y volumen persistente. Incluye una copia de `init-db.sql` |
 | `components/prod-sizing/` | Límites de `docker-compose.prod.yml` y memoria de las JVM, compartidos por stage y prod |
 | `overlays/{dev,stage,prod}/` | Namespace, etiqueta de ambiente, parámetros (dominio LDAP, retención de Kafka) y tamaño de los discos |
-| `scripts/` | `validate.sh`, `get-kubeconfig.sh`, `create-secrets.sh`, `deploy-middleware.sh` y `lib.sh` |
+| `scripts/` | `validate.sh`, `get-kubeconfig.sh`, `create-secrets.sh`, `create-deployer-kubeconfig.sh`, `deploy-middleware.sh` y `lib.sh` |
 
 ## Uso
 
@@ -34,6 +35,14 @@ REGISTRY_URL=<registro> bash deploy/scripts/k8s-deploy.sh deploy --env dev --ver
 bash deploy/scripts/k8s-deploy.sh verify --env dev --version X.Y.Z
 curl -H 'Host: api.dev.circleguard.edu' http://<IP del nodo>/api/v1/...
 ```
+
+Jenkins no usa el kubeconfig de administrador. Un administrador genera la credencial `kubeconfig-<env>` con el token de `jenkins-deployer` (US-26):
+
+```bash
+bash deploy/k8s/scripts/create-deployer-kubeconfig.sh --env dev            # --rotate para cambiar el token
+```
+
+Hardening de seguridad: [`docs/operaciones/SEGURIDAD_HARDENING_US26.md`](../../docs/operaciones/SEGURIDAD_HARDENING_US26.md).
 
 Diseño y prueba de los microservicios: [`docs/arquitectura/DESPLIEGUE_SERVICIOS_K8S_US37.md`](../../docs/arquitectura/DESPLIEGUE_SERVICIOS_K8S_US37.md).
 
