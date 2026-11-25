@@ -27,7 +27,7 @@ bash deploy/k8s/scripts/deploy-middleware.sh --env dev --env-file /tmp/cg-dev.en
 
 Las contraseñas no están en Git: `create-secrets.sh` crea los Secrets `circleguard-middleware` y `circleguard-app` (llaves de JWT, QR y la bóveda) a partir del `.env` del inyector (US-05) o de variables de entorno.
 
-Los microservicios (US-37) viven en el mismo namespace y usan los mismos nombres que en compose: `postgres:5432`, `neo4j:7687`, `kafka:29092`, `redis:6379` y `openldap:389`. Su imagen y versión las fija el release:
+Los microservicios (US-37) viven en el mismo namespace y usan los mismos nombres que en compose: `postgres:5432`, `neo4j:7687`, `kafka:29092`, `redis:6379` y `openldap:389`. El cliente web (`web-client:8080`) también está en el namespace porque lo usan los E2E de la compuerta de promoción (`run-e2e.sh --k8s`), que reescriben su `runtime-config.js` con los port-forward. No va en el Ingress `circleguard-api`, que solo publica las APIs: se llega a él con `kubectl port-forward`. Su imagen y versión las fija el release:
 
 ```bash
 REGISTRY_URL=<registro> bash deploy/scripts/k8s-deploy.sh deploy --env dev --version X.Y.Z
