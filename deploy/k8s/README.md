@@ -1,11 +1,11 @@
-# Kubernetes — namespaces, middleware y microservicios (US-21, US-37)
+# Kubernetes — namespaces, middleware y microservicios (US-21, US-37, US-38)
 
 Manifiestos de Kustomize para el clúster k3s de cada ambiente (US-20). Cada overlay crea el namespace `circleguard-<env>` con sus políticas y despliega el middleware de CircleGuard: PostgreSQL, Neo4j, Zookeeper, Kafka, Redis y OpenLDAP.
 
 | Carpeta | Contenido |
 |---|---|
 | `base/namespace/` | `Namespace` con Pod Security `baseline`, `ResourceQuota`, `LimitRange` y `NetworkPolicy` (niega la entrada y solo permite el tráfico del mismo namespace) |
-| `base/services/` | Microservicios (US-37): un `Deployment` y un `Service` por cada uno y sus ConfigMaps |
+| `base/services/` | Microservicios (US-37): un `Deployment` y un `Service` por cada uno y sus ConfigMaps. Sondas de Actuator y HPA de gateway, auth y promotion (US-38, [diseño](../../docs/arquitectura/AUTOSCALING_PROBES_K8S_US38.md)) |
 | `base/middleware/` | Un `StatefulSet` y un `Service` headless por componente, con las imágenes de `deploy/compose`, probes, recursos y volumen persistente. Incluye una copia de `init-db.sql` |
 | `components/prod-sizing/` | Límites de `docker-compose.prod.yml` y memoria de las JVM, compartidos por stage y prod |
 | `overlays/{dev,stage,prod}/` | Namespace, etiqueta de ambiente, parámetros (dominio LDAP, retención de Kafka) y tamaño de los discos |

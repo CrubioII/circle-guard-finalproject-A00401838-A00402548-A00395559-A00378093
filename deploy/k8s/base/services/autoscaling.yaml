@@ -1,0 +1,78 @@
+# CircleGuard — Autoscaling de los microservicios (US-38)
+#
+# Solo escalan los tres servicios del camino caliente: gateway-service (validación del
+# QR en cada ingreso), auth-service (login y emisión del QR) y promotion-service
+# (estado de salud que consulta el resto). Los demás quedan en una réplica.
+#
+# Por qué máximo 2 y solo tres servicios: la ResourceQuota del namespace permite
+# 1800m de CPU y 6Gi de memoria pedidos. Con el middleware de stage/prod (800m /
+# 2880Mi) y los 5 servicios actuales en una réplica (500m / 1920Mi) quedan 500m y
+# 1344Mi, es decir, 3 pods extra de 100m/384Mi. scripts/validate.sh suma el peor
+# caso (cada HPA en su máximo) y falla si no cabe: cuando lleguen dashboard, file y
+# notification (US-37) habrá que subir la cuota o bajar requests en stage/prod.
+#
+# La métrica es el uso de CPU sobre lo pedido (requests 100m). 150 % son 150m, un
+# tercio del límite (500m): la JVM ya está ocupada pero no estrangulada. La memoria
+# no sirve como señal porque el heap de la JVM no baja al terminar la carga.
+# k3s trae metrics-server, que alimenta estos HPA (US-20 no lo deshabilita).
+#
+# Los Deployments no declaran spec.replicas: si lo hicieran, cada kubectl apply
+# del pipeline (US-39) devolvería el servicio a una réplica en medio de la carga.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gateway-service
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: gateway-service}
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 150}}
+  # Sube un pod por minuto como mucho y espera 5 minutos sin carga antes de bajar,
+  # para no reiniciar JVMs por un pico corto.
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies: [{type: Pods, value: 1, periodSeconds: 60}]
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies: [{type: Pods, value: 1, periodSeconds: 120}]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: auth-service
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: auth-service}
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 150}}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies: [{type: Pods, value: 1, periodSeconds: 60}]
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies: [{type: Pods, value: 1, periodSeconds: 120}]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: promotion-service
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: promotion-service}
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 150}}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies: [{type: Pods, value: 1, periodSeconds: 60}]
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies: [{type: Pods, value: 1, periodSeconds: 120}]

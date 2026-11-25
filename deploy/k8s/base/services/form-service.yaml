@@ -4,7 +4,6 @@ kind: Deployment
 metadata:
   name: form-service
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: form-service
