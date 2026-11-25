@@ -2,13 +2,19 @@
 # Un solo host por ambiente (cada overlay pone el suyo) y una ruta por cada prefijo de
 # API de los controladores. Solo se publican las rutas /api/v1/...: /actuator, el
 # middleware y notification-service (no tiene API) quedan dentro del clúster.
-# TLS y certificados: US-26.
+# HTTPS (US-26): certificado de cert-manager (tls.yaml) y redirección de HTTP a HTTPS
+# con el Middleware redirect-https; cada overlay pone su host y el nombre del Middleware.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: circleguard-api
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: circleguard-dev-redirect-https@kubernetescrd
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts: [api.dev.circleguard.edu]
+      secretName: circleguard-api-tls
   rules:
     - host: api.dev.circleguard.edu
       http:

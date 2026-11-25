@@ -14,7 +14,9 @@
 #        circleguard/<servicio> con versión, recursos, usuario no root, disco de solo
 #        lectura, contraseñas solo desde Secrets y un único Ingress hacia sus APIs.
 #   US-26 Comprueba el RBAC: cada microservicio con su propia cuenta de servicio sin
-#        token, y jenkins-deployer sin comodines, sin Secrets y sin pods/exec.
+#        token, y jenkins-deployer sin comodines, sin Secrets y sin pods/exec. Y el
+#        TLS: el Ingress sirve HTTPS con el certificado de cert-manager del host del
+#        ambiente y redirige HTTP a HTTPS.
 #   +    Valida el esquema de cada recurso con kubeconform (-strict), revisa que
 #        el volumen pedido quepa en la cuota y busca credenciales en texto plano.
 #
@@ -48,6 +50,10 @@ KUBECTL="$(ensure_tool kubectl)"
 YQ="$(ensure_tool yq)"
 KUBECONFORM=""
 [[ "${SKIP_SCHEMA}" == "true" ]] || KUBECONFORM="$(ensure_tool kubeconform)"
+# Esquemas de Kubernetes y, para los recursos de cert-manager y Traefik (US-26), los del
+# catálogo de CRDs de datree.
+KUBECONFORM_SCHEMAS=(-schema-location default
+    -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json')
 
 REPORT_DIR="${ROOT_DIR}/reports/k8s"
 mkdir -p "${REPORT_DIR}"
@@ -153,6 +159,16 @@ for env in "${ENVS[@]}"; do
     done
     check "$([[ "$(wc -w <<< "${backends}" | tr -d ' ')" == "$(( ${#SERVICES[@]} - $(wc -w <<< "${internal}") ))" ]] && echo true)" \
         "${env}: el Ingress debe publicar los microservicios con API (todos menos${internal% }): ${backends}"
+    # US-26: HTTPS en el Ingress con el certificado del host y redirección desde HTTP.
+    host="api.${env}.circleguard.edu"
+    tls="$(q 'select(.kind == "Ingress") | .spec.tls[] | .secretName + "@" + (.hosts | join(","))' "${out}")"
+    check "$([[ "${tls}" == "circleguard-api-tls@${host}" ]] && echo true)" "${env}: el Ingress debe servir TLS para ${host} con el Secret circleguard-api-tls: ${tls}"
+    cert="$(q 'select(.kind == "Certificate" and .spec.secretName == "circleguard-api-tls") | .spec.issuerRef.name + "@" + (.spec.dnsNames | join(","))' "${out}")"
+    check "$([[ "${cert}" == "circleguard-ca@${host}" ]] && echo true)" "${env}: el Certificate circleguard-api-tls debe cubrir ${host} con el Issuer circleguard-ca: ${cert}"
+    redirect="$(q 'select(.kind == "Ingress") | .metadata.annotations["traefik.ingress.kubernetes.io/router.middlewares"]' "${out}")"
+    scheme="$(q 'select(.kind == "Middleware" and .metadata.name == "redirect-https") | .spec.redirectScheme.scheme' "${out}")"
+    check "$([[ "${redirect}" == "${ns}-redirect-https@kubernetescrd" && "${scheme}" == "https" ]] && echo true)" \
+        "${env}: el Ingress debe redirigir HTTP a HTTPS con ${ns}-redirect-https@kubernetescrd: ${redirect}"
     risky="$(q 'select(.kind == "StatefulSet" or .kind == "Deployment") | select(.spec.template.spec.hostNetwork == true or .spec.template.spec.hostPID == true or ([.spec.template.spec.volumes[]? | select(has("hostPath"))] | length) > 0 or ([.spec.template.spec.containers[].securityContext.privileged] | any)) | .metadata.name' "${out}")"
     check "$([[ -z "${risky}" ]] && echo true)" "${env}: pods con hostNetwork, hostPID, hostPath o privileged: ${risky}"
 
@@ -224,7 +240,7 @@ for env in "${ENVS[@]}"; do
 
     # Esquema de Kubernetes.
     if [[ -n "${KUBECONFORM}" ]]; then
-        if schema_out="$("${KUBECONFORM}" -strict -summary -output text "${out}" 2>&1)"; then
+        if schema_out="$("${KUBECONFORM}" -strict -summary -output text "${KUBECONFORM_SCHEMAS[@]}" "${out}" 2>&1)"; then
             ok "${env}: esquema válido (${schema_out//$'\n'/ })."
         else
             printf '%s\n' "${schema_out}" >&2

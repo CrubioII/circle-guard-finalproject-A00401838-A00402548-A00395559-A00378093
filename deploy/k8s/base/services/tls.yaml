@@ -1,0 +1,60 @@
+# TLS del Ingress circleguard-api (US-26).
+#
+# cert-manager (scripts/install-cert-manager.sh, una vez por clúster) emite y renueva
+# el certificado. Cada ambiente tiene su propia CA, que solo existe en su namespace:
+#   selfsigned-bootstrap  ->  Certificate circleguard-ca (CA, 5 años)
+#   Issuer circleguard-ca ->  Certificate circleguard-api-tls (host del ambiente, 90 días,
+#                             se renueva 30 días antes), Secret que usa el Ingress.
+# Los dominios *.circleguard.edu no son públicos, así que Let's Encrypt no puede validarlos.
+# Con un dominio real basta con cambiar el Issuer circleguard-ca por uno ACME.
+# La llave privada de la CA vive solo en el Secret circleguard-ca: Jenkins no puede leerlo.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: circleguard-ca
+spec:
+  isCA: true
+  commonName: CircleGuard dev CA
+  secretName: circleguard-ca
+  duration: 43800h
+  privateKey: {algorithm: ECDSA, size: 256}
+  issuerRef: {name: selfsigned-bootstrap, kind: Issuer}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: circleguard-ca
+spec:
+  ca:
+    secretName: circleguard-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: circleguard-api-tls
+spec:
+  secretName: circleguard-api-tls
+  dnsNames: [api.dev.circleguard.edu]
+  duration: 2160h
+  renewBefore: 720h
+  privateKey: {algorithm: ECDSA, size: 256, rotationPolicy: Always}
+  usages: [server auth, digital signature, key encipherment]
+  issuerRef: {name: circleguard-ca, kind: Issuer}
+---
+# HTTP -> HTTPS. Traefik lo aplica a las rutas del Ingress por la anotación
+# router.middlewares que pone cada overlay (<namespace>-redirect-https@kubernetescrd).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true

@@ -33,6 +33,7 @@ resources:
   - ingress.yaml
   # Cliente web: lo usan los E2E de la compuerta de promoción (run-e2e.sh --k8s).
   - web-client.yaml
+  - tls.yaml
 
 configMapGenerator:
   - name: services-config
