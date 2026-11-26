@@ -111,6 +111,26 @@ if bash "${J}" "${TMP}/noreply.json" "${TMP}/noreply.xml" 2>/dev/null; then
 else ko "conversión de un reporte sin servicios"; fi
 expect_fail "JUnit: rechaza un reporte inexistente"  bash "${J}" "${TMP}/missing.json" "${TMP}/x.xml"
 
+# US-22: reporte de 'k8s-deploy.sh verify --report' (sin "services").
+cat >"${TMP}/k8s-ok.json" <<'EOF'
+{"env":"prod","namespace":"circleguard-prod","version":"0.5.0","platform":"k8s","ready":["deployment.apps/auth-service","statefulset.apps/postgres"],"notReady":[],"wrongImages":[],"healthy":true}
+EOF
+cat >"${TMP}/k8s-fail.json" <<'EOF'
+{"env":"stage","namespace":"circleguard-stage","version":"0.5.0","platform":"k8s","ready":["deployment.apps/auth-service"],"notReady":["deployment.apps/form-service"],"wrongImages":["gateway-service=r/circleguard/gateway-service:0.4.1"],"healthy":false}
+EOF
+if bash "${J}" "${TMP}/k8s-ok.json" "${TMP}/k8s-ok.xml" 2>/dev/null; then
+  x="$(cat "${TMP}/k8s-ok.xml")"
+  expect_in "JUnit k8s: un caso por recurso listo, sin fallos"   'tests="2" failures="0"' "${x}"
+  expect_in "JUnit k8s: nombre del recurso como caso"            'name="statefulset.apps/postgres"' "${x}"
+  expect_in "JUnit k8s: versión desplegada como propiedad"       'name="expectedTag" value="0.5.0"' "${x}"
+else ko "conversión de un reporte k8s sano"; fi
+if bash "${J}" "${TMP}/k8s-fail.json" "${TMP}/k8s-fail.xml" 2>/dev/null; then
+  x="$(cat "${TMP}/k8s-fail.xml")"
+  expect_in "JUnit k8s: no listo e imagen con otra versión fallan" 'tests="3" failures="2"' "${x}"
+  expect_in "JUnit k8s: rollout incompleto como <failure>"         'name="deployment.apps/form-service"><failure message="rollout incompleto"' "${x}"
+  expect_in "JUnit k8s: imagen con otra versión"                   'image=r/circleguard/gateway-service:0.4.1' "${x}"
+else ko "conversión de un reporte k8s con fallos"; fi
+
 echo
 if [[ ${fail} -eq 0 ]]; then
   echo "=== RESULTADO: OK — ${pass} pruebas superadas ==="
