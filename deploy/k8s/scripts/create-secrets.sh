@@ -14,6 +14,13 @@
 #   JWT_SECRET=... QR_SECRET=... VAULT_SECRET=... VAULT_SALT=... VAULT_HASH_SALT=... \
 #     bash deploy/k8s/scripts/create-secrets.sh --env dev
 # Opciones: --context <contexto>, --dry-run (muestra las claves, nunca los valores).
+#   --generate    genera un valor aleatorio para cada clave que no venga en el .env ni en
+#                 el entorno (P3: ambiente nuevo sin .env). Nadie necesita conocer esos
+#                 valores: los servicios los leen del Secret.
+#   --if-missing  no toca un Secret que ya existe (no cambia claves de un ambiente vivo).
+#   Ambiente nuevo: bash deploy/k8s/scripts/create-secrets.sh --env stage --generate --if-missing
+# Lo corre un administrador del clúster: la cuenta jenkins-deployer no puede leer ni
+# escribir Secrets (US-26), así que el pipeline solo avisa si faltan (k8s-deploy.sh verify).
 #
 # circleguard-middleware: POSTGRES_USER, POSTGRES_PASSWORD, NEO4J_USER, NEO4J_PASSWORD,
 # NEO4J_AUTH (usuario/clave), REDIS_PASSWORD y LDAP_ADMIN_PASSWORD.
@@ -28,13 +35,17 @@ ENV_NAME=""
 ENV_FILE=""
 CONTEXT=""
 DRY_RUN=false
+GENERATE=false
+IF_MISSING=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --env) ENV_NAME="${2:?--env necesita un valor}"; shift ;;
         --env-file) ENV_FILE="${2:?--env-file necesita un valor}"; shift ;;
         --context) CONTEXT="${2:?--context necesita un valor}"; shift ;;
         --dry-run) DRY_RUN=true ;;
-        -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+        --generate) GENERATE=true ;;
+        --if-missing) IF_MISSING=true ;;
+        -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
         *) fail "Opción desconocida: $1" ;;
     esac
     shift
@@ -70,6 +81,12 @@ declare -A SECRETS=(
 )
 APP_KEYS=(JWT_SECRET QR_SECRET VAULT_SECRET VAULT_SALT VAULT_HASH_SALT)
 for key in "${APP_KEYS[@]}"; do SECRETS[${key}]="$(read_key "${key}")"; done
+if [[ "${GENERATE}" == "true" ]]; then
+    for key in "${!SECRETS[@]}"; do
+        # 32 caracteres alfanuméricos: sirven en URLs JDBC, en NEO4J_AUTH y en LDAP.
+        [[ -n "${SECRETS[${key}]}" ]] || SECRETS[${key}]="$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 || true)"
+    done
+fi
 for key in "${!SECRETS[@]}"; do
     value="${SECRETS[${key}]}"
     [[ -n "${value}" ]] || fail "Falta ${key} (en --env-file o como variable de entorno)."
@@ -103,6 +120,8 @@ fi
 "${KCTL[@]}" get namespace "${NAMESPACE}" >/dev/null 2>&1 \
     || fail "No existe el namespace ${NAMESPACE}. Aplica antes el overlay (deploy-middleware.sh)."
 
+secret_exists() { "${KCTL[@]}" -n "${NAMESPACE}" get secret "$1" >/dev/null 2>&1; }
+
 apply_secret() {   # apply_secret <nombre> <archivo .env>
     "${KCTL[@]}" create secret generic "$1" --namespace "${NAMESPACE}" \
             --from-env-file="$2" --dry-run=client -o yaml \
@@ -111,5 +130,11 @@ apply_secret() {   # apply_secret <nombre> <archivo .env>
         | "${KCTL[@]}" apply -f - >/dev/null
     ok "Secret $1 actualizado en ${NAMESPACE} ($(wc -l < "$2" | tr -d ' ') claves, valores ocultos)."
 }
-apply_secret "${SECRET_NAME}" "${TMP}"
-apply_secret "${APP_SECRET_NAME}" "${TMP_APP}"
+for pair in "${SECRET_NAME}:${TMP}" "${APP_SECRET_NAME}:${TMP_APP}"; do
+    name="${pair%%:*}"
+    if [[ "${IF_MISSING}" == "true" ]] && secret_exists "${name}"; then
+        ok "Secret ${name} ya existe en ${NAMESPACE}; no se modifica (--if-missing)."
+        continue
+    fi
+    apply_secret "${name}" "${pair#*:}"
+done

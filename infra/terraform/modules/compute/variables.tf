@@ -153,6 +153,12 @@ variable "ingress_allowed_cidrs" {
   }
 }
 
+variable "insecure_registries" {
+  description = "Registros host:puerto que sirven por HTTP (Nexus). Se escriben en /etc/rancher/k3s/registries.yaml de cada nodo nuevo (P2). El server existente ignora cambios del launch template, así que no se reinicia."
+  type        = list(string)
+  default     = []
+}
+
 variable "node_labels" {
   description = "Etiquetas adicionales de Kubernetes para todos los nodos (clave = valor)."
   type        = map(string)

@@ -11,7 +11,7 @@
 # nombre y los pods se reinician solos con la configuración nueva.
 # La imagen circleguard/<servicio>:0.1.0 es la del último release; deploy/scripts/k8s-deploy.sh
 # la cambia por <registro>/circleguard/<servicio>:<versión> en cada despliegue (US-39).
-# Probes y autoscaling: US-38.
+# Probes y autoscaling: US-38 (sondas de Actuator en el parche de abajo y hpa.yaml).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -34,6 +34,8 @@ resources:
   # Cliente web: lo usan los E2E de la compuerta de promoción (run-e2e.sh --k8s).
   - web-client.yaml
   - tls.yaml
+  # Autoscaling horizontal de los servicios con más tráfico (US-38).
+  - hpa.yaml
 
 configMapGenerator:
   - name: services-config
@@ -123,3 +125,19 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/resources
         value: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 200m, memory: 128Mi}}
+  # Sondas de los 8 servicios Spring (US-38), con los grupos de Actuator que activa
+  # MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED. startupProbe da hasta 5 min al arranque
+  # de la JVM; mientras no pasa, liveness y readiness no corren y el pod no se reinicia.
+  # readiness solo mira el estado de la aplicación: si cae la base de datos el pod deja
+  # de recibir tráfico, pero liveness no lo reinicia en bucle.
+  - target: {kind: Deployment, name: ".*-service"}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/startupProbe
+        value: {httpGet: {path: /actuator/health/liveness, port: http}, periodSeconds: 10, failureThreshold: 30}
+      - op: add
+        path: /spec/template/spec/containers/0/livenessProbe
+        value: {httpGet: {path: /actuator/health/liveness, port: http}, periodSeconds: 20, timeoutSeconds: 3, failureThreshold: 3}
+      - op: add
+        path: /spec/template/spec/containers/0/readinessProbe
+        value: {httpGet: {path: /actuator/health/readiness, port: http}, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3}

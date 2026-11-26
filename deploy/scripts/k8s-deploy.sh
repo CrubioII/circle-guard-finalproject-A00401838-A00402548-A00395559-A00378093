@@ -199,7 +199,19 @@ json.dump({
 PY
     fi
     [[ -z "${bad}" ]] || fail "Imágenes con otra versión distinta de ${version}: ${bad//$'\n'/, }" 3
-    [[ ${#failed[@]} -eq 0 ]] || fail "Rollout incompleto en ${NAMESPACE}: ${failed[*]}" 3
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        # P3: un ambiente nuevo sin Secrets deja los pods en CreateContainerConfigError.
+        # Jenkins no puede crearlos (US-26); se dice qué falta y cómo resolverlo.
+        local no_config
+        no_config="$("${KUBECTL}" -n "${NAMESPACE}" get pods \
+            -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[*].state.waiting.reason}{"\n"}{end}' 2>/dev/null \
+            | awk '/CreateContainerConfigError/ {print $1}' | paste -sd ' ' -)"
+        if [[ -n "${no_config}" ]]; then
+            printf '[k8s-deploy] Pods sin configuración (falta un Secret o una clave): %s\n' "${no_config}" >&2
+            printf '[k8s-deploy] Un administrador debe correr: deploy/k8s/scripts/create-secrets.sh --env %s --generate --if-missing\n' "${ENV_NAME}" >&2
+        fi
+        fail "Rollout incompleto en ${NAMESPACE}: ${failed[*]}" 3
+    fi
     log "Rollout completo: ${#ok[@]} recursos listos con la versión ${version}."
 }
 

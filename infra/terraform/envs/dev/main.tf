@@ -37,6 +37,7 @@ module "compute" {
   ingress_allowed_cidrs         = var.compute_ingress_allowed_cidrs
   enable_detailed_monitoring    = var.compute_enable_detailed_monitoring
   enable_termination_protection = var.compute_enable_termination_protection
+  insecure_registries           = var.compute_insecure_registries
 }
 
 module "registry" {

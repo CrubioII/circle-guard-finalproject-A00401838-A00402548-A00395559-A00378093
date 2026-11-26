@@ -203,3 +203,9 @@ variable "observability_alarm_email_endpoints" {
   type        = list(string)
   default     = []
 }
+
+variable "compute_insecure_registries" {
+  description = "Registros que los nodos k3s usan por HTTP (P2). Por defecto, el Nexus del servidor de CI."
+  type        = list(string)
+  default     = ["18.117.90.15:5000"]
+}
