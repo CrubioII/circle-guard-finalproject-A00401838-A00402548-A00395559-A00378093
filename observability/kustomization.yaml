@@ -1,5 +1,6 @@
 # Base de observabilidad (US-24 / SCRUM-93): Prometheus + Grafana.
-#   kubectl apply -k observability/overlays/<dev|stage|prod>
+# Logs centralizados (US-42 / SCRUM-123): Loki.
+#   kubectl apply -k deploy/observability/<dev|stage|prod>
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -8,6 +9,7 @@ resources:
   - prometheus.yaml
   - grafana.yaml
   - allow-prometheus-scrape.yaml
+  - loki.yaml
 
 generatorOptions:
   disableNameSuffixHash: false
@@ -18,6 +20,10 @@ configMapGenerator:
     files:
       - prometheus.yml=prometheus/prometheus.yml
       - alertas-criticas.yml=prometheus/rules/alertas-criticas.yml
+  - name: loki-config
+    namespace: circleguard-observability
+    files:
+      - loki.yaml=loki/loki.yaml
   - name: grafana-datasources
     namespace: circleguard-observability
     files:

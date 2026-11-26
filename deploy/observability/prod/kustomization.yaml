@@ -1,10 +1,12 @@
 # Observabilidad del ambiente prod (US-24 / SCRUM-93).
-#   kubectl apply -k observability/overlays/prod
+#   kubectl apply -k deploy/observability/prod
+# Está fuera de observability/ porque kustomize no acepta una base que contenga
+# a sus propios overlays (con overlays/ adentro, el render fallaba por ciclo).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../..
+  - ../../../observability
 
 patches:
   # La política de scrape vive en el namespace de la aplicación del ambiente.
@@ -15,6 +17,14 @@ patches:
       - op: replace
         path: /metadata/namespace
         value: circleguard-prod
+  # Retención de logs: 30 días, igual que los log groups de CloudWatch del ambiente.
+  - target:
+      kind: StatefulSet
+      name: loki
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: 720h
 
 labels:
   - pairs:

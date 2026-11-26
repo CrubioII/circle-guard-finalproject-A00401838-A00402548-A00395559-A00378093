@@ -49,7 +49,6 @@ observability/
 ├── prometheus.yaml                  ServiceAccount, RBAC de solo lectura, Deployment y Service
 ├── grafana.yaml                     Deployment y Service (contraseña desde el Secret grafana-admin)
 ├── allow-prometheus-scrape.yaml     NetworkPolicy para entrar al namespace del ambiente
-├── overlays/{dev,stage,prod}/       namespace de la NetworkPolicy y etiqueta de ambiente
 ├── prometheus/prometheus.yml        configuración para Kubernetes (descubrimiento de pods)
 ├── prometheus/prometheus-compose.yml configuración para los ambientes en Docker Compose
 ├── grafana/provisioning/            datasource y proveedor de dashboards
@@ -57,6 +56,8 @@ observability/
 ├── docker-compose.observability.yml Prometheus + Grafana junto a un compose
 └── scripts/                         validación y creación del Secret de Grafana
 ```
+
+Los overlays de cada ambiente están en `deploy/observability/{dev,stage,prod}/`: el namespace de la NetworkPolicy y la etiqueta de ambiente. Van fuera de `observability/` porque kustomize no acepta una base que contenga a sus propios overlays.
 
 ## 4. Contrato para los manifiestos de los servicios (`US-37`)
 
@@ -92,7 +93,7 @@ El namespace del ambiente niega toda entrada que no venga del mismo namespace (`
 
 ```bash
 GRAFANA_ADMIN_PASSWORD='<contraseña>' bash observability/scripts/create-grafana-secret.sh
-kubectl apply -k observability/overlays/dev       # o stage / prod
+kubectl apply -k deploy/observability/dev        # o stage / prod
 kubectl -n circleguard-observability rollout status deploy/prometheus deploy/grafana
 kubectl -n circleguard-observability port-forward svc/grafana 3000:3000
 kubectl -n circleguard-observability port-forward svc/prometheus 9090:9090

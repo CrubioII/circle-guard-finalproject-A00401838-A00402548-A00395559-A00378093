@@ -71,11 +71,11 @@ check "contraseña de Grafana fuera del repositorio (Secret)" grep -q 'name: gra
 
 echo "== Kubernetes"
 for env in dev stage prod; do
-    check "overlay ${env}: NetworkPolicy en circleguard-${env}" grep -q "value: circleguard-${env}" "${OBS}/overlays/${env}/kustomization.yaml"
+    check "overlay ${env}: NetworkPolicy en circleguard-${env}" grep -q "value: circleguard-${env}" "${ROOT}/deploy/observability/${env}/kustomization.yaml"
 done
 if command -v kubectl >/dev/null 2>&1; then
     for env in dev stage prod; do
-        check "kubectl kustomize overlays/${env}" kubectl kustomize "${OBS}/overlays/${env}"
+        check "kubectl kustomize deploy/observability/${env}" kubectl kustomize "${ROOT}/deploy/observability/${env}"
     done
 else
     echo "  [SKIP] kubectl no disponible"
