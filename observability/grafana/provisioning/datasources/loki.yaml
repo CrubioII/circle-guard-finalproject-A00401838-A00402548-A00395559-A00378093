@@ -1,0 +1,13 @@
+# Datasource de Loki (US-42 / SCRUM-123): logs centralizados del ambiente.
+# Loki corre en el mismo namespace que Grafana (observability/loki.yaml).
+apiVersion: 1
+datasources:
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki.circleguard-observability.svc:3100
+    isDefault: false
+    jsonData:
+      maxLines: 1000
+      timeout: 60

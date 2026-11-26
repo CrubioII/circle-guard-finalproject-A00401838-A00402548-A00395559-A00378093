@@ -47,6 +47,26 @@ El apply crea infraestructura real con costo (unos 98 a 111 recursos por ambient
 
 Para separar construcción y publicación, [`publish-docker-images.sh`](../../infra/scripts/publish-docker-images.sh) acepta `DO_PUSH=false` (solo construye) y `PUSH_ONLY=true` (solo publica lo ya construido y escaneado). `ENABLE_TRIVY_GATE=false` desactiva el escaneo en una ejecución manual.
 
+### Excepción temporal: Trivy Image Scan en modo reporte
+
+El primer escaneo real en main encontró unas 480 vulnerabilidades HIGH/CRITICAL en las imágenes. Casi todas vienen de Spring Boot 3.2.4, que ya no tiene soporte, y unas pocas de paquetes Alpine viejos en la imagen del cliente web (`nginxinc/nginx-unprivileged:1.27-alpine`). Con la etapa bloqueando, main no llega a desplegar en dev, y sin dev no se pueden tomar las capturas de Prometheus y Grafana ni correr Locust y ZAP.
+
+| Campo | Valor |
+| :--- | :--- |
+| Alcance | Solo `Trivy Image Scan`. `Trivy IaC Scan` sigue bloqueando con HIGH/CRITICAL |
+| Mecanismo | `runTrivyImageScanStage()` llama a `trivy-scan.sh image` con `TRIVY_IMAGE_REPORT_ONLY=true`. El script escanea las 9 imágenes, genera los mismos reportes (`.txt`, `.json`, JUnit) y deja `"enforced":false` en `summary-image.json`, pero sale con 0. El modo `config` ignora la variable |
+| Motivo | La corrección exige subir de versión Spring Boot en los 8 servicios y la imagen base web, un cambio que no cabe antes de las pruebas de dev |
+| Responsable | Juan Rubio (US-39) |
+| Fecha de revisión | 2026-12-08 |
+
+Deuda registrada para cerrar la excepción:
+
+1. Subir Spring Boot de 3.2.4 a una versión con soporte (`build.gradle.kts`, plugin y BOM) y volver a pasar las pruebas de los servicios.
+2. Subir la imagen base del cliente web (`NGINX_IMAGE` y `NODE_IMAGE` en `mobile/Dockerfile`) a una versión Alpine con los paquetes corregidos.
+3. Volver a escanear, pasar a `.trivyignore` lo que quede sin parche o no aplique (con las reglas de ese archivo) y quitar `TRIVY_IMAGE_REPORT_ONLY=true` del Jenkinsfile para que la etapa vuelva a bloquear.
+
+Mientras dure la excepción, una imagen con hallazgos sí llega a Nexus. Los reportes de cada build quedan archivados en `reports/trivy/image-*`.
+
 ## US-39: despliegue y promoción en Kubernetes
 
 | Criterio | Cómo se cumple |
@@ -91,4 +111,5 @@ sudo bash /opt/circleguard-ci/infra/bootstrap/bootstrap-ci.sh --mode jenkins --p
 - Reconstruir la imagen de Jenkins y crear las credenciales `aws-terraform` y `kubeconfig-<env>`.
 - Primera ejecución real: plan archivado de un PR de Terraform, un apply en prod con aprobación y un despliegue k8s de dev a stage. Las capturas van en `docs/informe/capturas/`.
 - Triage del primer escaneo real de Trivy. Las excepciones que se acepten se agregan a `.trivyignore` con su justificación.
+- Cerrar la excepción temporal de `Trivy Image Scan` (Spring Boot, imagen base web y volver a bloquear) antes del 2026-12-08.
 - US-39 depende de los manifiestos de los 8 servicios en `deploy/k8s` (US-21 / US-37). La rama de US-21 tiene hoy el namespace y el middleware.

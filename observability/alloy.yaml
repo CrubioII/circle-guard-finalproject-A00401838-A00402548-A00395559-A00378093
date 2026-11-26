@@ -1,0 +1,115 @@
+# Grafana Alloy (US-42 / SCRUM-123): recolector de logs del ambiente.
+# Solo puede leer pods y sus logs en el namespace de la aplicación (Role, no
+# ClusterRole). El overlay de cada ambiente le pone el namespace circleguard-<env>
+# al Role y al RoleBinding, y las variables CG_APP_NAMESPACE y CG_ENVIRONMENT.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy
+  namespace: circleguard-observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: circleguard-alloy-logs
+  namespace: circleguard
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: circleguard-alloy-logs
+  namespace: circleguard
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: circleguard-alloy-logs
+subjects:
+  - kind: ServiceAccount
+    name: alloy
+    namespace: circleguard-observability
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy
+  namespace: circleguard-observability
+  labels:
+    app.kubernetes.io/name: alloy
+    app.kubernetes.io/part-of: circleguard-observability
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alloy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alloy
+        app.kubernetes.io/part-of: circleguard-observability
+    spec:
+      serviceAccountName: alloy
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 473
+        runAsGroup: 473
+        fsGroup: 473
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: alloy
+          image: grafana/alloy:v1.21.3
+          args:
+            - run
+            - /etc/alloy/config.alloy
+            - --storage.path=/var/lib/alloy/data
+            - --server.http.listen-addr=0.0.0.0:12345
+            - --disable-reporting
+          env:
+            - name: CG_APP_NAMESPACE
+              value: circleguard
+            - name: CG_ENVIRONMENT
+              value: local
+          ports:
+            - name: http
+              containerPort: 12345
+          readinessProbe:
+            httpGet: { path: /-/ready, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /-/healthy, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 300m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+            - name: data
+              mountPath: /var/lib/alloy/data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap: { name: alloy-config }
+        # Posición de lectura de cada log: si el pod se reinicia, vuelve a leer los
+        # últimos minutos y Loki descarta las líneas repetidas.
+        - name: data
+          emptyDir: { sizeLimit: 128Mi }
+        - name: tmp
+          emptyDir: { sizeLimit: 32Mi }

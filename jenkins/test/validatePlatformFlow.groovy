@@ -193,6 +193,7 @@ String jf = jenkinsfile.getText('UTF-8')
     'terraformCredentials : terraformCredentialsPresent()',
     "TERRAFORM_APPLY_ENABLED = \"\${env.CG_TERRAFORM_APPLY ?: 'false'}\"",
     "terraformApplyEnabled: env.TERRAFORM_APPLY_ENABLED == 'true'",
+    "\"TF_STATE_BUCKET=\${env.TF_STATE_BUCKET ?: ''}\"",
     // US-38
     "stage('Trivy IaC Scan')", './infra/scripts/trivy-scan.sh config --target infra/terraform --target deploy/k8s',
     "stage('Build Images')", "stage('Trivy Image Scan')", './infra/scripts/trivy-scan.sh image --version',

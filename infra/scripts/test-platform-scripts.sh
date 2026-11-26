@@ -69,6 +69,14 @@ set +e; bash "${ROOT}/infra/terraform/scripts/tf-pipeline.sh" plan --env qa >/de
 [[ ${rc} -eq 1 ]] || die "ambiente inválido debería salir con 1"
 pass "apply sin plan revisado se rechaza (3) y un ambiente inválido también (1)"
 
+# Jenkins sin CG_TF_STATE_BUCKET dejaba el texto "null"; el bucket debe salir de la cuenta.
+printf '#!/usr/bin/env bash\necho 123456789012\n' > "${WORK}/bin/aws"; chmod +x "${WORK}/bin/aws"
+: > "${STUB_LOG}"
+TF_STATE_BUCKET="null" bash "${ROOT}/infra/terraform/scripts/tf-pipeline.sh" plan --env dev >/dev/null
+grep -q -- "-backend-config=bucket=circleguard-terraform-state-123456789012" "${STUB_LOG}" \
+  || die "con TF_STATE_BUCKET=null debe deducir el bucket de la cuenta"
+pass "plan: TF_STATE_BUCKET vacío o 'null' usa circleguard-terraform-state-<ID_CUENTA>"
+
 echo "== trivy-scan.sh (US-38)"
 export REPORT_DIR="${WORK}/trivy" TRIVY_TEMPLATES_DIR="${WORK}/tpl"
 mkdir -p "${TRIVY_TEMPLATES_DIR}" && : > "${TRIVY_TEMPLATES_DIR}/junit.tpl"
@@ -92,6 +100,26 @@ grep -q -- "--image-src docker,remote --ignore-unfixed --insecure" "${STUB_LOG}"
 grep -q "reg:5000/circleguard/mobile:1.4.0" "${STUB_LOG}" || die "no escaneó el cliente web"
 grep -q '"target":"image-gateway","kind":"image","result":"FAIL"' "${WORK}/trivy/summary-image.json" || die "el resumen no marca gateway como FAIL"
 pass "image: escanea las 9 imágenes, termina el reporte y sale con 1 si una tiene HIGH/CRITICAL"
+
+rm -f "${WORK}/trivy/image-gateway.json"
+set +e
+TRIVY_STUB_FAIL="gateway" TRIVY_IMAGE_REPORT_ONLY=true \
+  bash "${ROOT}/infra/scripts/trivy-scan.sh" image --version 1.4.0 --registry reg:5000 >/dev/null 2>&1
+rc=$?
+set -e
+[[ ${rc} -eq 0 ]] || die "con TRIVY_IMAGE_REPORT_ONLY=true las imágenes no deberían romper el build (obtuvo ${rc})"
+[[ -f "${WORK}/trivy/image-gateway.json" ]] || die "en modo reporte también debe generarse el JSON"
+grep -q '"enforced":false' "${WORK}/trivy/summary-image.json" || die "el resumen debería marcar enforced=false"
+grep -q '"target":"image-gateway","kind":"image","result":"FAIL"' "${WORK}/trivy/summary-image.json" || die "el resumen debería seguir marcando gateway como FAIL"
+pass "image: TRIVY_IMAGE_REPORT_ONLY=true reporta los hallazgos sin bloquear"
+
+set +e
+TRIVY_STUB_FAIL="terraform" TRIVY_IMAGE_REPORT_ONLY=true \
+  bash "${ROOT}/infra/scripts/trivy-scan.sh" config --target infra/terraform >/dev/null 2>&1
+rc=$?
+set -e
+[[ ${rc} -eq 1 ]] || die "el escaneo IaC debe seguir bloqueando aunque TRIVY_IMAGE_REPORT_ONLY=true (obtuvo ${rc})"
+pass "config: sigue bloqueando con TRIVY_IMAGE_REPORT_ONLY=true"
 
 set +e; bash "${ROOT}/infra/scripts/trivy-scan.sh" image --version latest >/dev/null 2>&1; rc=$?; set -e
 [[ ${rc} -ne 0 ]] || die "'latest' debería rechazarse"
@@ -180,5 +208,16 @@ out="$(DRY_RUN=1 SSH_KEY=/llave REPORT_DIR="${WORK}/zap-ssh" bash "${ZAP}" --env
 set +e; bash "${ZAP}" --env prod --local >/dev/null 2>&1; rc=$?; set -e
 [[ ${rc} -eq 2 ]] || die "prod debería rechazarse (2)"
 pass "remoto: túnel SSH como run-e2e.sh; prod se rechaza (2)"
+
+# Sin kubectl en el PATH usa el binario fijo de lib.sh (aquí uno simulado ya descargado).
+TOOLS="${WORK}/tools"; mkdir -p "${TOOLS}" "${WORK}/nobin"
+printf '#!/usr/bin/env bash\necho "kubectl-cache $*" >> "%s"\n' "${STUB_LOG}" > "${TOOLS}/kubectl-v1.32.2"
+chmod +x "${TOOLS}/kubectl-v1.32.2"
+for t in bash cat dirname uname tail sed mkdir; do ln -sf "$(command -v "$t")" "${WORK}/nobin/$t"; done
+: > "${STUB_LOG}"
+PATH="${WORK}/nobin" CG_TOOLS_DIR="${TOOLS}" KUBECONFIG="${WORK}/kubeconfig" \
+  bash "${ROOT}/deploy/scripts/k8s-deploy.sh" status --env dev >/dev/null
+grep -q "kubectl-cache -n circleguard-dev get" "${STUB_LOG}" || die "sin kubectl en el PATH no usa el de lib.sh"
+pass "deploy/verify: sin kubectl en el PATH usa la versión fija de deploy/k8s/scripts/lib.sh"
 
 echo "=== RESULTADO: OK — ${PASS} pruebas de plataforma superadas ==="

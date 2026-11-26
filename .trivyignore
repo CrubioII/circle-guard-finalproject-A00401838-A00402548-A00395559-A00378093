@@ -26,3 +26,6 @@ AWS-0031
 
 # AWS-0132: es el bucket destino de los logs de acceso de S3, que AWS solo permite cifrar con SSE-S3 (AES256), no con SSE-KMS; los demás buckets usan KMS. Responsable: Esteban Cuéllar. Revisar: 2027-05-31.
 AWS-0132
+
+# KSV-0056: solo lo dispara el Role jenkins-deployer (deploy/k8s/base/rbac, US-26). Para hacer kubectl apply -k del overlay, Jenkins tiene que crear y actualizar los Services, el Ingress y las NetworkPolicies de su propio namespace; ese es el permiso que marca la regla. El Role no sale del namespace, no lee Secrets ni abre exec, y validate.sh falla si gana comodines o esos permisos. Antes Jenkins usaba el kubeconfig de administrador del clúster. Responsable: Santiago Castillo. Revisar: 2027-05-31.
+KSV-0056

@@ -1,0 +1,39 @@
+# dashboard-service (8084): Analítica agregada para administradores.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dashboard-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dashboard-service
+    spec:
+      serviceAccountName: dashboard-service
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: dashboard-service
+          image: circleguard/dashboard-service:0.1.0
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          ports:
+            - {name: http, containerPort: 8084}
+          envFrom:
+            - configMapRef: {name: services-config}
+            - configMapRef: {name: dashboard-service-config}
+          env:
+            - {name: SPRING_DATASOURCE_USERNAME, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: POSTGRES_USER}}}
+            - {name: SPRING_DATASOURCE_PASSWORD, valueFrom: {secretKeyRef: {name: circleguard-middleware, key: POSTGRES_PASSWORD}}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-service
+spec:
+  selector:
+    app.kubernetes.io/name: dashboard-service
+  ports:
+    - {name: http, port: 8084, targetPort: http}

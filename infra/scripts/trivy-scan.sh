@@ -17,12 +17,16 @@
 # Se escanean TODOS los objetivos y al final sale con 1 si alguno falló, para que el
 # reporte quede completo.
 #
+# Excepción temporal (US-39): con TRIVY_IMAGE_REPORT_ONLY=true el modo image genera los
+# mismos reportes pero sale con 0 aunque haya hallazgos. El modo config sigue bloqueando
+# siempre. Ver "Excepción temporal" en docs/arquitectura/PIPELINE_PLATAFORMA_US22_US38_US39.md.
+#
 # Reportes (US-38 CA3) en reports/trivy/:
 #   <objetivo>.txt    tabla legible           <objetivo>.json  salida completa
 #   junit/<obj>.xml   JUnit para Jenkins      summary.json     resultado por objetivo
 #
 # Variables: TRIVY_BIN, TRIVY_SEVERITY (HIGH,CRITICAL), TRIVY_TEMPLATES_DIR,
-#   TRIVY_IGNORE_UNFIXED (true), REGISTRY_USER / REGISTRY_PASSWORD (registro Nexus),
+#   TRIVY_IGNORE_UNFIXED (true), TRIVY_IMAGE_REPORT_ONLY (false), REGISTRY_USER / REGISTRY_PASSWORD (registro Nexus),
 #   DRY_RUN=1 (muestra los comandos).
 # =============================================================================
 set -euo pipefail
@@ -34,6 +38,7 @@ SEVERITY="${TRIVY_SEVERITY:-HIGH,CRITICAL}"
 TEMPLATES_DIR="${TRIVY_TEMPLATES_DIR:-/usr/local/share/trivy/templates}"
 IGNORE_FILE="${TRIVY_IGNORE_FILE:-${ROOT_DIR}/.trivyignore}"
 IGNORE_UNFIXED="${TRIVY_IGNORE_UNFIXED:-true}"
+IMAGE_REPORT_ONLY="${TRIVY_IMAGE_REPORT_ONLY:-false}"
 REGISTRY_URL="${REGISTRY_URL:-18.117.90.15:5000}"
 NAMESPACE="${REGISTRY_NAMESPACE:-circleguard}"
 DRY_RUN="${DRY_RUN:-0}"
@@ -41,7 +46,7 @@ ALL_IMAGES=(auth identity promotion notification form file gateway dashboard mob
 
 log()  { printf '[trivy-us38] %s\n' "$*"; }
 fail() { printf '[trivy-us38][ERROR] %s\n' "$*" >&2; exit "${2:-2}"; }
-usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; }
 
 MODE="${1:-}"; shift || true
 TARGETS=(); IMAGES=(); VERSION=""
@@ -146,12 +151,21 @@ case "${MODE}" in
     image) scan_images ;;
 esac
 
+# Solo el modo image admite reportar sin bloquear; el IaC siempre bloquea.
+ENFORCED=true
+[[ "${MODE}" == "image" && "${IMAGE_REPORT_ONLY}" == "true" ]] && ENFORCED=false
+
 {
-    printf '{"mode":"%s","severity":"%s","failed":%s,"results":[' "${MODE}" "${SEVERITY}" "$([[ ${FAILED} -eq 1 ]] && echo true || echo false)"
+    printf '{"mode":"%s","severity":"%s","enforced":%s,"failed":%s,"results":[' "${MODE}" "${SEVERITY}" "${ENFORCED}" "$([[ ${FAILED} -eq 1 ]] && echo true || echo false)"
     (IFS=,; printf '%s' "${SUMMARY[*]:-}")
     printf ']}\n'
 } > "${REPORT_DIR}/summary-${MODE}.json"
 
+if [[ ${FAILED} -eq 1 && "${ENFORCED}" == "false" ]]; then
+    log "AVISO Resultado: hay hallazgos ${SEVERITY} en las imágenes, pero TRIVY_IMAGE_REPORT_ONLY=true."
+    log "AVISO Excepción temporal de US-39: se reporta sin bloquear. Revisar reports/trivy/image-*.txt."
+    exit 0
+fi
 if [[ ${FAILED} -eq 1 ]]; then
     log "Resultado: hay hallazgos ${SEVERITY} sin excepción en .trivyignore. El pipeline se detiene."
     exit 1
