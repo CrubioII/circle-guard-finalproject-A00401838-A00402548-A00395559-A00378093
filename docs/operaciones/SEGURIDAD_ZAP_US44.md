@@ -10,6 +10,7 @@ ZAP baseline revisa la aplicación **desplegada**: recorre el sitio con la arañ
 | Reglas y excepciones | `.zap/baseline-rules.tsv` |
 | Pruebas del script | `infra/scripts/test-platform-scripts.sh` (sección US-44) |
 | Etapa de Jenkins | `ZAP Baseline against dev` (parte 2 de la historia) |
+| Informe consolidado (Sonar, E2E, Locust y ZAP) | [`INFORME_CALIDAD_CONSOLIDADO_US44.md`](INFORME_CALIDAD_CONSOLIDADO_US44.md) (parte 3) |
 
 ## 1. Qué se escanea
 
@@ -27,7 +28,7 @@ Los puertos son los que publica `deploy/compose/docker-compose.<env>.yml`. El sc
 
 **prod se rechaza:** la araña genera tráfico y peticiones de prueba.
 
-ZAP corre en Docker, con la imagen `zaproxy/zap-stable:2.17.0` fijada por versión, igual que Trivy. En Jenkins, el contenedor de ZAP comparte la red del contenedor del agente, así ve los túneles en `127.0.0.1`. Los reportes salen con `docker cp`, porque las rutas del workspace de Jenkins no existen en el host de Docker.
+ZAP corre en Docker, con la imagen `zaproxy/zap-stable:2.17.0` fijada por versión, igual que Trivy. En Jenkins, el contenedor de ZAP comparte la red del contenedor del agente, así ve los túneles en `127.0.0.1`. Los reportes salen con `docker cp`, porque las rutas del workspace de Jenkins no existen en el host de Docker. Antes de arrancar ZAP, el script copia al contenedor una carpeta `/zap/wrk` con dueño `1000:1000` (el usuario `zap`): la imagen no la trae, y si Docker la crea sola queda de `root` y ZAP no puede escribir los reportes.
 
 ## 2. Política y umbral (CA2)
 

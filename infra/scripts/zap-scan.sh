@@ -153,7 +153,13 @@ for t in "${TARGETS[@]}"; do
   # Sin montar carpetas del agente: /zap/wrk es un volumen anónimo y los reportes se copian con
   # docker cp (las rutas del workspace de Jenkins no existen en el host de Docker).
   run docker create --name "${name}" "${docker_net[@]}" -v /zap/wrk "${ZAP_IMAGE}" "${zap_args[@]}" >/dev/null
-  [[ -f "${RULES_FILE}" ]] && run docker cp "${RULES_FILE}" "${name}:/zap/wrk/baseline-rules.tsv"
+  # La imagen no trae /zap/wrk: Docker crea el volumen como root y el usuario zap (1000) no puede
+  # escribir los reportes. Se copia una carpeta wrk de 1000:1000 (con las reglas, si hay) con -a.
+  wrk_tmp="$(mktemp -d)"; mkdir "${wrk_tmp}/wrk"
+  [[ -f "${RULES_FILE}" ]] && cp "${RULES_FILE}" "${wrk_tmp}/wrk/baseline-rules.tsv"
+  if [[ "${DRY_RUN}" == 1 ]]; then run docker cp -a - "${name}:/zap/"
+  else tar --owner=1000 --group=1000 --numeric-owner -C "${wrk_tmp}" -cf - wrk | docker cp -a - "${name}:/zap/"; fi
+  rm -rf "${wrk_tmp}"
   rc=0
   run docker start -a "${name}" >&2 || rc=$?
   run docker cp "${name}:/zap/wrk/." "${REPORT_DIR}/" || true

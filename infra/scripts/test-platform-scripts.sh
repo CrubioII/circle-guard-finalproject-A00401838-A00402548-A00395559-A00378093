@@ -178,6 +178,8 @@ echo "== zap-scan.sh (US-44)"
 cat > "${WORK}/bin/docker" <<'STUB'
 #!/usr/bin/env bash
 echo "docker $*" >> "${STUB_LOG}"
+# cp -a - <contenedor>:/zap/ recibe la carpeta wrk como tar por stdin: se guarda su listado.
+[[ "$1" == cp && "$2" == -a && "$3" == - ]] && tar -tvf - >> "${STUB_LOG}.tar"
 if [[ "$1" == cp && "$2" == *:/zap/wrk/. ]]; then
   t="${2#zap-us44-*-}"; t="${t%%-*}"; risk=1
   [[ "${t}" == "${ZAP_STUB_HIGH:-}" ]] && risk=3
@@ -186,15 +188,17 @@ fi
 exit 0
 STUB
 chmod +x "${WORK}/bin/docker"
-: > "${STUB_LOG}"
+: > "${STUB_LOG}"; : > "${STUB_LOG}.tar"
 ZAP="${ROOT}/infra/scripts/zap-scan.sh"
 REPORT_DIR="${WORK}/zap" ZAP_DOCKER_NETWORK=host bash "${ZAP}" --env dev --local >/dev/null 2>&1 || die "sin alertas altas debería salir con 0"
 grep -q 'zap-baseline.py -t http://127.0.0.1:8080/ -m 2 -I -r web.html -J web.json -w web.md' "${STUB_LOG}" || die "no escanea el cliente web de dev"
 grep -q -- '-t http://127.0.0.1:8180/' "${STUB_LOG}" && grep -q -- '-t http://127.0.0.1:8087/' "${STUB_LOG}" || die "no escanea auth y gateway"
-grep -q 'docker cp .*/.zap/baseline-rules.tsv' "${STUB_LOG}" || die "no usa .zap/baseline-rules.tsv"
+grep -q 'docker cp -a - zap-us44-dev-web-.*:/zap/' "${STUB_LOG}" || die "no copia la carpeta wrk al contenedor"
+grep -Eq '1000 +1000 .* wrk/baseline-rules.tsv|1000/1000 .* wrk/baseline-rules.tsv' "${STUB_LOG}.tar" \
+  || die "wrk no lleva .zap/baseline-rules.tsv con dueño 1000:1000 (el usuario zap no podría escribir)"
 grep -q '"result": "PASS"' "${WORK}/zap/summary.json" || die "summary.json no reporta PASS"
 [[ -s "${WORK}/zap/junit/web.xml" ]] || die "falta el JUnit de web"
-pass "local: escanea web, auth y gateway con las reglas del repo y deja summary.json y JUnit"
+pass "local: escanea web, auth y gateway con las reglas del repo en un wrk de 1000:1000 y deja summary.json y JUnit"
 
 set +e; ZAP_STUB_HIGH=gateway REPORT_DIR="${WORK}/zap-high" ZAP_DOCKER_NETWORK=host bash "${ZAP}" --env stage --local >/dev/null 2>&1; rc=$?; set -e
 [[ ${rc} -eq 1 ]] || die "una alerta de riesgo alto debería salir con 1 (obtuvo ${rc})"
