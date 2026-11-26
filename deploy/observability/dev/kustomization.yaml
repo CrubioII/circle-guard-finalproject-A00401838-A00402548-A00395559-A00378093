@@ -17,6 +17,14 @@ patches:
       - op: replace
         path: /metadata/namespace
         value: circleguard-dev
+  # Retención de logs: 7 días, igual que los log groups de CloudWatch del ambiente.
+  - target:
+      kind: StatefulSet
+      name: loki
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: 168h
 
 labels:
   - pairs:
