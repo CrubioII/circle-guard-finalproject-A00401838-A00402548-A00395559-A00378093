@@ -6,6 +6,8 @@
 # en un reporte JUnit con un caso por contenedor, para que el resultado de la
 # verificación quede visible en Jenkins (pestaña "Tests" vía el paso `junit`).
 # Si el nodo no respondió (JSON sin "services"), genera un único caso fallido con el motivo.
+# También lee el JSON de 'k8s-deploy.sh verify --report' (platform: k8s, US-22): un caso
+# por Deployment o StatefulSet listo o no listo, y uno fallido por imagen con otra versión.
 #
 # Uso: deploy/scripts/health-report-to-junit.sh reports/ci/health-prod.json reports/ci/junit/health-prod.xml
 # Requiere jq (incluido en la imagen de Jenkins); si falta usa la imagen ghcr.io/jqlang/jq:1.7.1.
@@ -24,7 +26,21 @@ fi
 
 mkdir -p "$(dirname "${OUTPUT}")"
 jqx -r '
-  (.env // "unknown") as $env
+  # Reporte de Kubernetes: se pasa al formato de compose antes de armar el JUnit.
+  (if .platform == "k8s" then
+     . as $r
+     | .expectedTag = (.expectedTag // .version)
+     | .status = (.status // (if .healthy == true then "PASS" else "FAIL" end))
+     | .host = (.host // .namespace)
+     | .services = (
+         [($r.ready // [])[] | {service: ., ok: true, health: "ready", image: "", probe: "rollout status"}]
+         + [($r.notReady // [])[] | {service: ., ok: false, health: "not-ready", image: "", probe: "rollout status",
+                                     reason: "rollout incompleto"}]
+         + [($r.wrongImages // [])[] | split("=") as $p
+            | {service: ("imagen " + $p[0]), ok: false, health: "", image: ($p[1:] | join("=")), probe: "n/a",
+               reason: ("la imagen no usa la versión " + ($r.version // ""))}])
+   else . end)
+  | (.env // "unknown") as $env
   | (.expectedTag // "") as $tag
   | ("circleguard." + $env + ".health") as $class
   | (.services // []) as $svcs
