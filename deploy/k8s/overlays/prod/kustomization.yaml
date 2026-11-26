@@ -38,10 +38,26 @@ configMapGenerator:
       - LOGGING_LEVEL_COM_CIRCLEGUARD=INFO
 
 patches:
-  # Host del Ingress de este ambiente (US-37).
+  # Host del Ingress de este ambiente (US-37), su certificado y la redirección a HTTPS (US-26).
   - target: {kind: Ingress, name: circleguard-api}
     patch: |-
       - op: replace
         path: /spec/rules/0/host
         value: api.prod.circleguard.edu
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: api.prod.circleguard.edu
+      - op: replace
+        path: /metadata/annotations/traefik.ingress.kubernetes.io~1router.middlewares
+        value: circleguard-prod-redirect-https@kubernetescrd
+  - target: {kind: Certificate, name: circleguard-api-tls}
+    patch: |-
+      - op: replace
+        path: /spec/dnsNames/0
+        value: api.prod.circleguard.edu
+  - target: {kind: Certificate, name: circleguard-ca}
+    patch: |-
+      - op: replace
+        path: /spec/commonName
+        value: CircleGuard prod CA
   - path: storage.yaml
