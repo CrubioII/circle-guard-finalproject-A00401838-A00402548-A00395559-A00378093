@@ -220,4 +220,11 @@ PATH="${WORK}/nobin" CG_TOOLS_DIR="${TOOLS}" KUBECONFIG="${WORK}/kubeconfig" \
 grep -q "kubectl-cache -n circleguard-dev get" "${STUB_LOG}" || die "sin kubectl en el PATH no usa el de lib.sh"
 pass "deploy/verify: sin kubectl en el PATH usa la versión fija de deploy/k8s/scripts/lib.sh"
 
+# Solo importa el port-forward: el resto del DRY_RUN necesita herramientas que nobin no tiene.
+out="$(PATH="${WORK}/nobin" CG_TOOLS_DIR="${TOOLS}" DRY_RUN=1 REPORT_DIR="${WORK}/zap-k8s" \
+  bash "${ROOT}/infra/scripts/zap-scan.sh" --env dev --k8s 2>&1 || true)"
+[[ "${out}" == *"kubectl-v1.32.2 -n circleguard-dev port-forward svc/gateway-service 38087:8087"* ]] \
+  || die "zap-scan.sh --k8s sin kubectl en el PATH no usa el de lib.sh"
+pass "zap-scan.sh --k8s: sin kubectl en el PATH usa la versión fija de lib.sh (agente de Jenkins)"
+
 echo "=== RESULTADO: OK — ${PASS} pruebas de plataforma superadas ==="
