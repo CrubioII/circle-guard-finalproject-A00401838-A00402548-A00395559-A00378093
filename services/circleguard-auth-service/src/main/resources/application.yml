@@ -89,3 +89,5 @@ management:
       enabled: true
     readinessstate:
       enabled: true
+
+# Prueba de humo del pipeline (2026-11-26): fuerza el build de auth-service en Jenkins.
