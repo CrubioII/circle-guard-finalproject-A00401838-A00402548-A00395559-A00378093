@@ -1,10 +1,12 @@
-# Observabilidad del ambiente dev (US-24 / SCRUM-93).
-#   kubectl apply -k observability/overlays/dev
+# Observabilidad del ambiente stage (US-24 / SCRUM-93).
+#   kubectl apply -k deploy/observability/stage
+# Está fuera de observability/ porque kustomize no acepta una base que contenga
+# a sus propios overlays (con overlays/ adentro, el render fallaba por ciclo).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../..
+  - ../../../observability
 
 patches:
   # La política de scrape vive en el namespace de la aplicación del ambiente.
@@ -14,10 +16,10 @@ patches:
     patch: |-
       - op: replace
         path: /metadata/namespace
-        value: circleguard-dev
+        value: circleguard-stage
 
 labels:
   - pairs:
-      circleguard.io/environment: dev
+      circleguard.io/environment: stage
     includeSelectors: false
     includeTemplates: true

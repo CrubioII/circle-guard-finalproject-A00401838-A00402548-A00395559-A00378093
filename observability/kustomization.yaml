@@ -1,5 +1,5 @@
 # Base de observabilidad (US-24 / SCRUM-93): Prometheus + Grafana.
-#   kubectl apply -k observability/overlays/<dev|stage|prod>
+#   kubectl apply -k deploy/observability/<dev|stage|prod>
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
