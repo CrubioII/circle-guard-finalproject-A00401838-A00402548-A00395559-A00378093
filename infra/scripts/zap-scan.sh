@@ -113,12 +113,19 @@ case "${MODE}" in
     fi ;;
   k8s)
     namespace="${K8S_NAMESPACE:-circleguard-${ENV_NAME}}"
+    # Sin kubectl en el PATH (agente de Jenkins) se usa la versión fija y verificada de
+    # deploy/k8s/scripts/lib.sh, igual que run-e2e.sh y k8s-deploy.sh.
+    KUBECTL="${KUBECTL:-kubectl}"
+    if ! command -v "${KUBECTL}" >/dev/null 2>&1; then
+      KUBECTL="$(bash -c 'source "$1" && ensure_tool kubectl' _ "${ROOT_DIR}/deploy/k8s/scripts/lib.sh")" \
+        || fail "kubectl no está instalado y no se pudo descargar" 3
+    fi
     for t in "${TARGETS[@]}"; do
       SCAN_PORT[$t]="${LOCAL_PORT[$t]}"
       if [[ "${DRY_RUN}" == 1 ]]; then
-        run kubectl -n "${namespace}" port-forward "svc/${K8S_SVC[$t]}" "${LOCAL_PORT[$t]}:${K8S_PORT[$t]}"
+        run "${KUBECTL}" -n "${namespace}" port-forward "svc/${K8S_SVC[$t]}" "${LOCAL_PORT[$t]}:${K8S_PORT[$t]}"
       else
-        kubectl -n "${namespace}" port-forward "svc/${K8S_SVC[$t]}" "${LOCAL_PORT[$t]}:${K8S_PORT[$t]}" >/dev/null 2>&1 &
+        "${KUBECTL}" -n "${namespace}" port-forward "svc/${K8S_SVC[$t]}" "${LOCAL_PORT[$t]}:${K8S_PORT[$t]}" >/dev/null 2>&1 &
         BG_PIDS+=("$!")
       fi
     done
