@@ -8,7 +8,7 @@
 # =============================================================================
 
 ARG NODE_IMAGE=node:20-alpine
-ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.27-alpine
+ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31.7-alpine3.24
 
 # -----------------------------------------------------------------------------
 # Stage 1 - build: install locked dependencies with npm ci and export web bundle
@@ -52,6 +52,11 @@ FROM ${NGINX_IMAGE} AS runtime
 
 ARG APP_UID=101
 ARG APP_GID=101
+
+# Alpine security fixes published after the base image (nginx, zlib, musl, curl...).
+# Trivy reports them as HIGH/CRITICAL otherwise. USER goes back to 101 below.
+USER root
+RUN apk upgrade --no-cache
 
 LABEL org.opencontainers.image.title="circleguard-web-client" \
       org.opencontainers.image.description="CircleGuard Web Client (Expo React Native Web) served by unprivileged Nginx." \
