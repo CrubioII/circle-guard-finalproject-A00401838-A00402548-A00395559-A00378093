@@ -37,6 +37,7 @@ check "prometheus.yml: descubre pods de Kubernetes" grep -q 'role: pod' "${PROM}
 check "prometheus.yml: solo namespaces circleguard-<env>" grep -q 'circleguard-(dev|stage|prod)' "${PROM}"
 check "prometheus.yml: respeta la anotación prometheus.io/scrape" grep -q '__meta_kubernetes_pod_annotation_prometheus_io_scrape' "${PROM}"
 check "prometheus.yml: etiqueta environment desde el pod" grep -q 'target_label: environment' "${PROM}"
+check "prometheus.yml: application de up igual a la de Micrometer (circleguard-<servicio>)" grep -q 'replacement: circleguard-\$1' "${PROM}"
 check "prometheus-compose.yml: recoge /actuator/prometheus" grep -q 'metrics_path: /actuator/prometheus' "${OBS}/prometheus/prometheus-compose.yml"
 if command -v promtool >/dev/null 2>&1; then
     check "promtool check config (Kubernetes)" promtool check config "${PROM}"
