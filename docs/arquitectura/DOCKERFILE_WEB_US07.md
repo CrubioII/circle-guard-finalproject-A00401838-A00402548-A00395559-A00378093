@@ -18,7 +18,7 @@ El cliente web de CircleGuard (Expo / React Native Web) se empaqueta mediante [`
    - Copia primero [`mobile/package.json`](../../mobile/package.json) y [`mobile/package-lock.json`](../../mobile/package-lock.json) e instala dependencias bloqueadas con `npm ci --no-audit --no-fund` empleando caché BuildKit (`--mount=type=cache`).
    - Copia el código fuente filtrado por [`mobile/.dockerignore`](../../mobile/.dockerignore) (excluyendo `node_modules/`, `dist/`, `.expo/`, llaves y archivos `.env*`).
    - Ejecuta `npx expo export --platform web` y valida la existencia de `/app/dist/index.html`.
-2. Etapa `runtime` (`nginxinc/nginx-unprivileged:1.27-alpine`):
+2. Etapa `runtime` (`nginxinc/nginx-unprivileged:1.31.7-alpine3.24`):
    - Corre bajo el usuario sin privilegios `101:101` (`nginx`), nunca como `root`.
    - Expone el puerto no privilegiado `8080/tcp`.
    - Incorpora [`mobile/nginx.conf`](../../mobile/nginx.conf) en `/etc/nginx/conf.d/default.conf`, el generador de configuración dinámica [`mobile/docker-entrypoint.d/40-circleguard-runtime-config.sh`](../../mobile/docker-entrypoint.d/40-circleguard-runtime-config.sh) en `/docker-entrypoint.d/` y los artefactos estáticos de `/app/dist` en `/usr/share/nginx/html`.
