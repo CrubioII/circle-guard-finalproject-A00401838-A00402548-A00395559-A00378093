@@ -33,6 +33,7 @@ configMapGenerator:
     namespace: circleguard-observability
     files:
       - prometheus.yaml=grafana/provisioning/datasources/prometheus.yaml
+      - loki.yaml=grafana/provisioning/datasources/loki.yaml
   - name: grafana-dashboard-providers
     namespace: circleguard-observability
     files:
@@ -42,3 +43,4 @@ configMapGenerator:
     files:
       - circleguard-servicios-tecnico.json=grafana/dashboards/circleguard-servicios-tecnico.json
       - circleguard-negocio.json=grafana/dashboards/circleguard-negocio.json
+      - circleguard-logs.json=grafana/dashboards/circleguard-logs.json
