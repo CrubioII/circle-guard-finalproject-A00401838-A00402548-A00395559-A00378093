@@ -1,0 +1,18 @@
+# Configuración de gitleaks (US-26). Usa las reglas por defecto y solo excluye
+# falsos positivos revisados uno por uno. No agregar rutas de código de producción.
+title = "CircleGuard"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Valores fijos de pruebas: no protegen nada real"
+paths = [
+  '''(^|/)src/test/''',
+  '''(^|/)bin/test/''',
+]
+
+[[allowlists]]
+description = "configure-jenkins-credentials.sh comprueba si SonarQube sigue con admin/admin para obligar a cambiarla"
+paths = ['''^infra/bootstrap/configure-jenkins-credentials\.sh$''']
+regexes = ['''-u admin:admin''']
