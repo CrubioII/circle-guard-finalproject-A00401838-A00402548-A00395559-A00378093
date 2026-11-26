@@ -1,0 +1,77 @@
+// Grafana Alloy (US-42 / SCRUM-123): lee por la API de Kubernetes los logs de todos
+// los pods del namespace del ambiente (servicios y middleware) y los envía a Loki.
+// No usa hostPath: el namespace de observabilidad sigue con Pod Security baseline.
+// CG_APP_NAMESPACE y CG_ENVIRONMENT los fija el overlay de cada ambiente.
+
+discovery.kubernetes "pods" {
+	role = "pod"
+
+	namespaces {
+		names = [sys.env("CG_APP_NAMESPACE")]
+	}
+}
+
+// Etiquetas para filtrar en Loki: environment, namespace, service, component,
+// pod y container. El servicio sale de app.kubernetes.io/name (US-37).
+discovery.relabel "pods" {
+	targets = discovery.kubernetes.pods.targets
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_phase"]
+		regex         = "Pending|Succeeded|Failed|Unknown"
+		action        = "drop"
+	}
+
+	rule {
+		target_label = "environment"
+		replacement  = sys.env("CG_ENVIRONMENT")
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_namespace"]
+		target_label  = "namespace"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_component"]
+		target_label  = "component"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_name"]
+		target_label  = "pod"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_container_name"]
+		target_label  = "container"
+	}
+}
+
+loki.source.kubernetes "pods" {
+	targets    = discovery.relabel.pods.output
+	forward_to = [loki.process.pods.receiver]
+}
+
+// Nivel del log (Spring Boot, Kafka, Neo4j...) como etiqueta "level".
+loki.process "pods" {
+	stage.regex {
+		expression = "(?:^|\\s|\\[)(?P<level>TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL)(?:\\s|\\]|:)"
+	}
+
+	stage.labels {
+		values = {level = ""}
+	}
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki.circleguard-observability.svc:3100/loki/api/v1/push"
+	}
+}

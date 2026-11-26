@@ -87,7 +87,12 @@ k() { run "${KUBECTL}" -n "${NAMESPACE}" "$@"; }
 
 require_tools() {
     [[ "${DRY_RUN}" == "1" ]] && return 0
-    command -v "${KUBECTL}" >/dev/null 2>&1 || fail "kubectl no está instalado." 2
+    # Sin kubectl en el PATH (imagen de Jenkins sin reconstruir) se usa la versión fija y
+    # verificada de deploy/k8s/scripts/lib.sh, la misma que descarga validate.sh.
+    if ! command -v "${KUBECTL}" >/dev/null 2>&1; then
+        KUBECTL="$(bash -c 'source "$1" && ensure_tool kubectl' _ "${ROOT_DIR}/deploy/k8s/scripts/lib.sh")" \
+            || fail "kubectl no está instalado y no se pudo descargar." 2
+    fi
     [[ -n "${KUBECONFIG:-}" || -f "${HOME}/.kube/config" ]] || fail "No hay KUBECONFIG para el clúster de ${ENV_NAME}." 2
 }
 

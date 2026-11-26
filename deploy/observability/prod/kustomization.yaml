@@ -1,0 +1,57 @@
+# Observabilidad del ambiente prod (US-24 / SCRUM-93).
+#   kubectl apply -k deploy/observability/prod
+# Está fuera de observability/ porque kustomize no acepta una base que contenga
+# a sus propios overlays (con overlays/ adentro, el render fallaba por ciclo).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../observability
+
+patches:
+  # La política de scrape vive en el namespace de la aplicación del ambiente.
+  - target:
+      kind: NetworkPolicy
+      name: allow-prometheus-scrape
+    patch: |-
+      - op: replace
+        path: /metadata/namespace
+        value: circleguard-prod
+  # Alloy solo lee los logs del namespace de la aplicación del ambiente (US-42).
+  - target:
+      kind: Role
+      name: circleguard-alloy-logs
+    patch: |-
+      - op: replace
+        path: /metadata/namespace
+        value: circleguard-prod
+  - target:
+      kind: RoleBinding
+      name: circleguard-alloy-logs
+    patch: |-
+      - op: replace
+        path: /metadata/namespace
+        value: circleguard-prod
+  - target:
+      kind: Deployment
+      name: alloy
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - {name: CG_APP_NAMESPACE, value: circleguard-prod}
+          - {name: CG_ENVIRONMENT, value: prod}
+  # Retención de logs: 30 días, igual que los log groups de CloudWatch del ambiente.
+  - target:
+      kind: StatefulSet
+      name: loki
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: 720h
+
+labels:
+  - pairs:
+      circleguard.io/environment: prod
+    includeSelectors: false
+    includeTemplates: true

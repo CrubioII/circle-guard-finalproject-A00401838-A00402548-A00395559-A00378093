@@ -1,0 +1,73 @@
+# Cuenta con la que Jenkins despliega en este namespace (US-26).
+#
+# Antes, la credencial kubeconfig-<env> era el kubeconfig de administrador de k3s: un
+# build de dev podía tocar stage, prod o kube-system. Ahora es el token de esta cuenta,
+# que solo puede lo que hace deploy/scripts/k8s-deploy.sh en su propio namespace:
+#   deploy    kubectl apply -k del overlay (todos los tipos que genera Kustomize)
+#   verify    kubectl rollout status
+#   rollback  kubectl rollout undo / rollout history (ReplicaSets y ControllerRevisions)
+#   E2E       run-e2e.sh --k8s abre kubectl port-forward a los Services (compuerta de promoción)
+# No puede leer ni cambiar Secrets (los crea un administrador con create-secrets.sh),
+# ni abrir shells en los pods (pods/exec), ni salir del namespace.
+# Las reglas sobre "namespaces" solo aplican al namespace del Role, el del ambiente.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jenkins-deployer
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jenkins-deployer
+rules:
+  - apiGroups: [""]
+    resources: [namespaces, resourcequotas, limitranges]
+    verbs: [get, list, watch, patch, update]
+  - apiGroups: [""]
+    resources: [configmaps, services, serviceaccounts, persistentvolumeclaims]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: [""]
+    resources: [pods, events]
+    verbs: [get, list, watch]
+  # Solo para los túneles de los E2E contra el ambiente (run-e2e.sh --k8s).
+  - apiGroups: [""]
+    resources: [pods/portforward]
+    verbs: [create]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: [apps]
+    resources: [replicasets, controllerrevisions]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, networkpolicies]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch, create, patch, update, delete]
+  # TLS del Ingress (US-26): Issuers y Certificates de cert-manager y el Middleware de
+  # Traefik. El Secret con la llave lo escribe cert-manager, no Jenkins.
+  - apiGroups: [cert-manager.io]
+    resources: [issuers, certificates]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: [traefik.io]
+    resources: [middlewares]
+    verbs: [get, list, watch, create, patch, update, delete]
+  # El propio RBAC del namespace va en el overlay. Kubernetes no deja que una cuenta
+  # otorgue permisos que no tiene, así que no puede ampliarse a sí misma.
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
+    verbs: [get, list, watch, create, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-deployer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jenkins-deployer
+subjects:
+  - kind: ServiceAccount
+    name: jenkins-deployer

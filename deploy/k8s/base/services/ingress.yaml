@@ -1,0 +1,73 @@
+# Entrada HTTP del ambiente por Traefik, el controlador de Ingress que trae k3s.
+# Un solo host por ambiente (cada overlay pone el suyo) y una ruta por cada prefijo de
+# API de los controladores. Solo se publican las rutas /api/v1/...: /actuator, el
+# middleware y notification-service (no tiene API) quedan dentro del clúster.
+# HTTPS (US-26): certificado de cert-manager (tls.yaml) y redirección de HTTP a HTTPS
+# con el Middleware redirect-https; cada overlay pone su host y el nombre del Middleware.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: circleguard-api
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: circleguard-dev-redirect-https@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [api.dev.circleguard.edu]
+      secretName: circleguard-api-tls
+  rules:
+    - host: api.dev.circleguard.edu
+      http:
+        paths:
+          # auth-service
+          - {path: /api/v1/auth, pathType: Prefix, backend: {service: {name: auth-service, port: {name: http}}}}
+          - {path: /api/v1/users, pathType: Prefix, backend: {service: {name: auth-service, port: {name: http}}}}
+          # identity-service
+          - {path: /api/v1/identities, pathType: Prefix, backend: {service: {name: identity-service, port: {name: http}}}}
+          # promotion-service
+          - {path: /api/v1/access-points, pathType: Prefix, backend: {service: {name: promotion-service, port: {name: http}}}}
+          - {path: /api/v1/admin/settings, pathType: Prefix, backend: {service: {name: promotion-service, port: {name: http}}}}
+          - {path: /api/v1/buildings, pathType: Prefix, backend: {service: {name: promotion-service, port: {name: http}}}}
+          - {path: /api/v1/circles, pathType: Prefix, backend: {service: {name: promotion-service, port: {name: http}}}}
+          - {path: /api/v1/encounters, pathType: Prefix, backend: {service: {name: promotion-service, port: {name: http}}}}
+          - {path: /api/v1/floors, pathType: Prefix, backend: {service: {name: promotion-service, port: {name: http}}}}
+          - {path: /api/v1/health, pathType: Prefix, backend: {service: {name: promotion-service, port: {name: http}}}}
+          - {path: /api/v1/health-status, pathType: Prefix, backend: {service: {name: promotion-service, port: {name: http}}}}
+          - {path: /api/v1/location, pathType: Prefix, backend: {service: {name: promotion-service, port: {name: http}}}}
+          - {path: /api/v1/mesh, pathType: Prefix, backend: {service: {name: promotion-service, port: {name: http}}}}
+          - {path: /api/v1/sessions, pathType: Prefix, backend: {service: {name: promotion-service, port: {name: http}}}}
+          # form-service
+          - {path: /api/v1/attachments, pathType: Prefix, backend: {service: {name: form-service, port: {name: http}}}}
+          - {path: /api/v1/certificates, pathType: Prefix, backend: {service: {name: form-service, port: {name: http}}}}
+          - {path: /api/v1/questionnaires, pathType: Prefix, backend: {service: {name: form-service, port: {name: http}}}}
+          - {path: /api/v1/surveys, pathType: Prefix, backend: {service: {name: form-service, port: {name: http}}}}
+          # gateway-service
+          - {path: /api/v1/gate, pathType: Prefix, backend: {service: {name: gateway-service, port: {name: http}}}}
+          # dashboard-service
+          - {path: /api/v1/analytics, pathType: Prefix, backend: {service: {name: dashboard-service, port: {name: http}}}}
+          # file-service
+          - {path: /api/v1/files, pathType: Prefix, backend: {service: {name: file-service, port: {name: http}}}}
+---
+# default-deny-ingress (US-21) bloquea todo lo que viene de otro namespace, también
+# a Traefik (kube-system). Esta política solo deja pasar a Traefik hacia el puerto
+# http de los microservicios.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: http

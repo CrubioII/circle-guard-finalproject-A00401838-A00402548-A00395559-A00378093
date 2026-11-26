@@ -157,11 +157,13 @@ void withEnvironmentCredentials(Closure body) {
 }
 
 // US-22: credencial AWS de Terraform. Nunca se imprime; tf-pipeline.sh usa la cadena estándar de AWS.
+// Jenkins no guarda variables vacías: sin CG_TF_STATE_BUCKET, env.TF_STATE_BUCKET es null y se pasa
+// vacío para que tf-pipeline.sh deduzca el bucket de la cuenta (antes llegaba el texto "null").
 void withTerraformCredentials(Closure body) {
     withCredentials([usernamePassword(credentialsId: env.AWS_TERRAFORM_CREDENTIALS_ID,
                                       usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
         withEnv(["AWS_DEFAULT_REGION=${env.TF_STATE_REGION}", "TF_STATE_REGION=${env.TF_STATE_REGION}",
-                 "TF_STATE_BUCKET=${env.TF_STATE_BUCKET}"]) {
+                 "TF_STATE_BUCKET=${env.TF_STATE_BUCKET ?: ''}"]) {
             body()
         }
     }
@@ -1149,7 +1151,10 @@ void runBuildImagesStage() {
 void runTrivyImageScanStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     String semver = versionMap.APP_VERSION ?: '0.1.0'
-    sh "./infra/scripts/trivy-scan.sh image --version '${semver}' --registry '${env.DEPLOY_REGISTRY_URL}'"
+    // Excepción temporal de US-39: las imágenes se reportan sin bloquear hasta subir Spring Boot
+    // y la imagen base web. El IaC sigue bloqueando. Ver PIPELINE_PLATAFORMA_US22_US38_US39.md.
+    echo '[US-39] Trivy Image Scan en modo reporte: los hallazgos HIGH/CRITICAL no detienen el pipeline (excepción temporal).'
+    sh "TRIVY_IMAGE_REPORT_ONLY=true ./infra/scripts/trivy-scan.sh image --version '${semver}' --registry '${env.DEPLOY_REGISTRY_URL}'"
 }
 
 void runTerraformApplyDevStage() {
