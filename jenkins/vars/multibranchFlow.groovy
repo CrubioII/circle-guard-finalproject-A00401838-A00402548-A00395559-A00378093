@@ -11,8 +11,9 @@ import groovy.transform.Field
 @Field final String STATUS_CONTEXT_PR = 'continuous-integration/jenkins/pr-head'
 @Field final String STATUS_CONTEXT_MAIN = 'continuous-integration/jenkins/main'
 // US-13: etapas del despliegue automático a dev y de la promoción condicionada a stage.
+// US-44: el escaneo ZAP corre tras los E2E; informa, pero no es compuerta de promoción.
 @Field final List<String> CONTINUOUS_DELIVERY_STAGES = [
-    'Deploy to dev', 'Verify dev health', 'E2E against dev', 'Promote to stage', 'Verify stage health'
+    'Deploy to dev', 'Verify dev health', 'E2E against dev', 'ZAP Baseline against dev', 'Promote to stage', 'Verify stage health'
 ]
 // Compuertas que deben terminar en SUCCESS, en este orden, antes de promover a stage.
 @Field final List<String> PROMOTION_GATES = ['deployDev', 'verifyDev', 'e2eDev']

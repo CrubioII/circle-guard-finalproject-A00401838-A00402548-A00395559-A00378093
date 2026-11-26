@@ -70,3 +70,12 @@ DRY_RUN=1 bash infra/scripts/zap-scan.sh --env dev --host 52.15.165.116
 ```
 
 Variables: `ZAP_MAX_HIGH`, `ZAP_TARGETS` (por defecto `web auth gateway`), `ZAP_MINUTES` (duración de la araña, 2), `ZAP_IMAGE`, `ZAP_DOCKER_NETWORK`, `REPORT_DIR`.
+
+## 5. En el pipeline
+
+La etapa `ZAP Baseline against dev` corre en cada build de `main` que despliega, justo después de `E2E against dev`:
+
+- Con `DEPLOY_PLATFORM=compose` usa `--host` hacia `DEV_HOST` con la credencial SSH del ambiente. Con `k8s` usa `--k8s` con `kubeconfig-dev`.
+- Publica `reports/zap/dev/junit/*.xml` en la pestaña **Tests**, el reporte HTML **OWASP ZAP (dev)** (una pestaña por objetivo) y archiva `reports/zap/dev/**`.
+- Un código `1` (alertas altas) o `2`/`3` (el escaneo no se completó) deja la etapa y el build en **UNSTABLE**, y `notifyPipeline` lo avisa en Discord.
+- No es compuerta de `promotionDecision`: la versión sigue a stage aunque ZAP quede en amarillo.

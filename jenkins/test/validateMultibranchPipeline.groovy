@@ -348,7 +348,7 @@ println('[OK] Caso 14: webhook idempotente con gh/curl (POST -> PATCH) y secreto
 // =============================================================================
 // US-13 — Despliegue automático a dev y promoción a stage tras E2E
 // =============================================================================
-List<String> cdStages = ['Deploy to dev', 'Verify dev health', 'E2E against dev', 'Promote to stage', 'Verify stage health']
+List<String> cdStages = ['Deploy to dev', 'Verify dev health', 'E2E against dev', 'ZAP Baseline against dev', 'Promote to stage', 'Verify stage health']
 
 // -----------------------------------------------------------------------------
 // Caso 15: solo main con build pesado despliega a dev y planifica la promoción (CA1)
@@ -413,15 +413,25 @@ println('[OK] Caso 16: promoción a stage solo con deploy + healthchecks + E2E e
     'multibranchFlow.promotionDecision(deployResults',
     'reports/ci/promotion-stage.json', 'reports/ci/health-dev.json', 'e2e/reports/dev/junit/*.xml', "reportName           : 'Playwright E2E (dev)'",
     'requireReleaseVersion(versionMap)',
+    // US-44: ZAP tras los E2E, en UNSTABLE y sin bloquear la promoción
+    "stage('ZAP Baseline against dev')", "./infra/scripts/zap-scan.sh --env dev --host '\${env.DEV_HOST}'",
+    "testResults: 'reports/zap/dev/junit/*.xml'", "reportName           : 'OWASP ZAP (dev)'",
+    "catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE'",
     "ENV_SSH_CREDENTIALS_ID = 'circleguard-env-ssh'", "NEXUS_CREDENTIALS_ID = 'nexus-credentials'",
     'sshUserPrivateKey(', 'currentBuild.description'
 ].each { String required ->
     assert jenkinsfileText.contains(required) : "El Jenkinsfile no contiene el fragmento de US-13: ${required}"
 }
 List<Integer> order = ["stage('Publish Images to Nexus')", "stage('Deploy to dev')", "stage('Verify dev health')",
-                       "stage('E2E against dev')", "stage('Promote to stage')", "stage('Verify stage health')"]
+                       "stage('E2E against dev')", "stage('ZAP Baseline against dev')", "stage('Promote to stage')",
+                       "stage('Verify stage health')"]
     .collect { jenkinsfileText.indexOf(it) }
-assert order == order.sort(false) : 'Orden requerido: publicar -> dev -> health -> E2E -> stage -> health stage'
+assert order == order.sort(false) : 'Orden requerido: publicar -> dev -> health -> E2E -> ZAP -> stage -> health stage'
+assert !multibranchFlow.PROMOTION_GATES.contains('zapDev') : 'US-44: ZAP informa, pero no es compuerta de promoción a stage'
+String zapFunction = jenkinsfileText.substring(jenkinsfileText.indexOf('void runZapBaselineAgainstDevStage()'))
+zapFunction = zapFunction.substring(0, zapFunction.indexOf('\n}') + 2)
+assert !zapFunction.contains('error(') : 'US-44: el escaneo ZAP deja UNSTABLE; nunca falla el build'
+assert zapFunction.contains('unstable(') && zapFunction.contains('rc == 1')
 // US-31: prod solo puede aparecer DESPUÉS de la compuerta manual (nunca en el flujo automático dev -> stage).
 int approveStageIndex = jenkinsfileText.indexOf("stage('Approve prod release')")
 assert approveStageIndex > 0 : 'Falta la compuerta manual a prod (US-31)'
