@@ -15,6 +15,7 @@ Reglas:
 | Versión | Fecha | Release notes |
 | :--- | :--- | :--- |
 | 0.1.0 | 2026-11-08 | [RELEASE_NOTES_v0.1.0.md](RELEASE_NOTES_v0.1.0.md) |
+| 0.2.0 | Parte 2 | [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md) |
 
 ## Registro
 

@@ -60,3 +60,4 @@ deploy/compose/.env*
 
 # Reportes generados por el pipeline y las pruebas locales (Jenkins los archiva; no se versionan)
 reports/
+.git-askpass.sh

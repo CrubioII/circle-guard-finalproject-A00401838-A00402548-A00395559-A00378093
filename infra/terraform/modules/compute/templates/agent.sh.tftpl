@@ -9,6 +9,20 @@ REGION="${region}"
 TOKEN_PARAMETER="${token_parameter}"
 SERVER_URL="https://${server_private_ip}:6443"
 
+%{ if length(insecure_registries) > 0 ~}
+# P2: registros que sirven por HTTP (Nexus). Sin este archivo containerd intenta HTTPS
+# y los pods quedan en ImagePullBackOff. Se escribe antes de instalar k3s.
+mkdir -p /etc/rancher/k3s
+cat > /etc/rancher/k3s/registries.yaml <<'REGISTRIES'
+mirrors:
+%{ for registry in insecure_registries ~}
+  "${registry}":
+    endpoint:
+      - "http://${registry}"
+%{ endfor ~}
+REGISTRIES
+chmod 0600 /etc/rancher/k3s/registries.yaml
+%{ endif ~}
 dnf install -y --setopt=install_weak_deps=False iptables-nft >/dev/null || echo "[k3s] iptables-nft no disponible; k3s usa su iptables embebido."
 
 echo "[k3s-agent] Esperando a que el server publique el token..."

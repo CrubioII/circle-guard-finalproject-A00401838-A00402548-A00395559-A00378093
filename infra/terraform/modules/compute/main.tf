@@ -254,6 +254,7 @@ resource "aws_launch_template" "server" {
     token_parameter      = aws_ssm_parameter.node_token.name
     kubeconfig_parameter = aws_ssm_parameter.kubeconfig.name
     node_labels          = var.node_labels
+    insecure_registries  = var.insecure_registries
   }))
 
   tag_specifications {
@@ -343,14 +344,15 @@ resource "aws_launch_template" "agent" {
   }
 
   user_data = base64encode(templatefile("${path.module}/templates/agent.sh.tftpl", {
-    name              = "${local.base_name}-k3s-agent"
-    environment       = var.environment
-    region            = local.region
-    k3s_version       = var.k3s_version
-    server_private_ip = aws_instance.server.private_ip
-    token_parameter   = aws_ssm_parameter.node_token.name
-    placeholder       = local.parameter_placeholder
-    node_labels       = var.node_labels
+    name                = "${local.base_name}-k3s-agent"
+    environment         = var.environment
+    region              = local.region
+    k3s_version         = var.k3s_version
+    server_private_ip   = aws_instance.server.private_ip
+    token_parameter     = aws_ssm_parameter.node_token.name
+    placeholder         = local.parameter_placeholder
+    node_labels         = var.node_labels
+    insecure_registries = var.insecure_registries
   }))
 
   tag_specifications {

@@ -21,6 +21,20 @@ done
 [[ "$${CURRENT_IP:-}" == "$${PUBLIC_IP}" ]] || { echo "[k3s-server] La IP elástica no se asoció a tiempo." >&2; exit 1; }
 
 echo "[k3s-server] Instalando k3s ${k3s_version} para ${environment}..."
+%{ if length(insecure_registries) > 0 ~}
+# P2: registros que sirven por HTTP (Nexus). Sin este archivo containerd intenta HTTPS
+# y los pods quedan en ImagePullBackOff. Se escribe antes de instalar k3s.
+mkdir -p /etc/rancher/k3s
+cat > /etc/rancher/k3s/registries.yaml <<'REGISTRIES'
+mirrors:
+%{ for registry in insecure_registries ~}
+  "${registry}":
+    endpoint:
+      - "http://${registry}"
+%{ endfor ~}
+REGISTRIES
+chmod 0600 /etc/rancher/k3s/registries.yaml
+%{ endif ~}
 dnf install -y --setopt=install_weak_deps=False iptables-nft >/dev/null || echo "[k3s] iptables-nft no disponible; k3s usa su iptables embebido."
 
 curl -sfL https://get.k3s.io | \

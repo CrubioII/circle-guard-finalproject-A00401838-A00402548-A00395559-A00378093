@@ -325,6 +325,7 @@ pipeline {
         // US-22: backend remoto de US-36 con bloqueo nativo de S3. Si CG_TF_STATE_BUCKET está
         // vacío, tf-pipeline.sh usa circleguard-terraform-state-<ID_CUENTA>. La Región es la del proyecto AWS.
         AWS_TERRAFORM_CREDENTIALS_ID = 'aws-terraform'
+        GITHUB_CREDENTIALS_ID = 'github-credentials'   // P1: publicar y leer los tags vX.Y.Z
         TF_STATE_BUCKET = "${env.CG_TF_STATE_BUCKET ?: ''}"
         TF_STATE_REGION = "${env.CG_AWS_REGION ?: 'us-east-2'}"
         // US-22: el apply crea infraestructura real con costo; se activa a propósito.
@@ -656,12 +657,7 @@ pipeline {
             }
             steps {
                 script {
-                    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
-                    String semver = versionMap.APP_VERSION ?: '0.1.0'
-                    echo "Generando Release Notes automaticas y tag Git para ${semver} (US-18 y US-12)..."
-                    sh 'chmod +x infra/scripts/generate-release-notes.sh infra/scripts/git-tag-release.sh'
-                    sh "./infra/scripts/generate-release-notes.sh --version '${semver}'"
-                    sh "./infra/scripts/git-tag-release.sh --version '${semver}'"
+                    runReleaseNotesAndTagStage()
                 }
             }
         }
@@ -1053,9 +1049,44 @@ void runDetectChangedComponentsStage() {
     writeFile file: 'reports/ci/platform-plan.json', text: JsonOutput.prettyPrint(JsonOutput.toJson(platform))
 }
 
+// P1 (US-12): git con la credencial de GitHub, por GIT_ASKPASS para que el token no quede
+// en la URL ni en el log. Si la credencial no existe, avisa y sigue: el tag queda local.
+boolean withGitHubAuth(Closure body) {
+    try {
+        withCredentials([usernamePassword(credentialsId: env.GITHUB_CREDENTIALS_ID,
+                                          usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+            writeFile file: '.git-askpass.sh', text: '#!/bin/sh\ncase "$1" in Username*) echo "$GIT_USER";; *) echo "$GIT_TOKEN";; esac\n'
+            sh 'chmod 700 .git-askpass.sh'
+            try {
+                withEnv(["GIT_ASKPASS=${pwd()}/.git-askpass.sh", 'GIT_TERMINAL_PROMPT=0']) { body() }
+            } finally {
+                sh 'rm -f .git-askpass.sh'
+            }
+        }
+        return true
+    } catch (Exception e) {
+        echo "[US-12] Advertencia: git con '${env.GITHUB_CREDENTIALS_ID}' falló (${e.message})."
+        return false
+    }
+}
+
+// US-18 y US-12: release notes, tag anotado vX.Y.Z y publicación del tag en GitHub (P1).
+// Sin el push, un workspace nuevo no veía tags y volvía a calcular 0.1.0.
+void runReleaseNotesAndTagStage() {
+    pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
+    String semver = versionMap.APP_VERSION ?: '0.1.0'
+    echo "Generando Release Notes automaticas y tag Git para ${semver} (US-18 y US-12)..."
+    sh 'chmod +x infra/scripts/generate-release-notes.sh infra/scripts/git-tag-release.sh'
+    sh "./infra/scripts/generate-release-notes.sh --version '${semver}'"
+    sh "./infra/scripts/git-tag-release.sh --version '${semver}'"
+    withGitHubAuth { sh "git push origin 'refs/tags/v${semver}'" }
+}
+
 void runCalculateSemVerStage() {
     pipelineTrack.stage = env.STAGE_NAME   // US-14: etapa en curso para la notificación
     echo 'Calculando version semantica dinamica a partir de commits (US-12)...'
+    // P1: el checkout de Multibranch no trae tags; sin ellos la versión vuelve a 0.1.0.
+    withGitHubAuth { sh 'git fetch --tags --force --quiet origin' }
     sh 'chmod +x infra/scripts/calculate-semver.sh'
     sh './infra/scripts/calculate-semver.sh --export reports/ci/version.env --format env'
 
