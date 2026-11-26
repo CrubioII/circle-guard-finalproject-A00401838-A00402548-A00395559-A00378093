@@ -17,6 +17,30 @@ patches:
       - op: replace
         path: /metadata/namespace
         value: circleguard-stage
+  # Alloy solo lee los logs del namespace de la aplicación del ambiente (US-42).
+  - target:
+      kind: Role
+      name: circleguard-alloy-logs
+    patch: |-
+      - op: replace
+        path: /metadata/namespace
+        value: circleguard-stage
+  - target:
+      kind: RoleBinding
+      name: circleguard-alloy-logs
+    patch: |-
+      - op: replace
+        path: /metadata/namespace
+        value: circleguard-stage
+  - target:
+      kind: Deployment
+      name: alloy
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - {name: CG_APP_NAMESPACE, value: circleguard-stage}
+          - {name: CG_ENVIRONMENT, value: stage}
   # Retención de logs: 14 días, igual que los log groups de CloudWatch del ambiente.
   - target:
       kind: StatefulSet
