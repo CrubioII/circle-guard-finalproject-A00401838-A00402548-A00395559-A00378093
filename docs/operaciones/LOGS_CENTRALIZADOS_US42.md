@@ -127,17 +127,29 @@ curl -G http://localhost:3100/loki/api/v1/query_range \
 
 | Componente | Pide | Límite |
 | :--- | :--- | :--- |
-| Loki | 100m CPU, 256 Mi | 500m, 512 Mi |
-| Alloy | 50m CPU, 96 Mi | 300m, 256 Mi |
+| Loki | 25m CPU, 256 Mi | 500m, 512 Mi |
+| Alloy | 25m CPU, 96 Mi | 300m, 256 Mi |
+| Prometheus (US-24) | 25m CPU, 256 Mi | 500m, 768 Mi |
+| Grafana (US-24) | 25m CPU, 128 Mi | 300m, 384 Mi |
 
-Van en `circleguard-observability`, que no tiene ResourceQuota, así que no cuentan para la cuota de `circleguard-<env>`.
+Van en `circleguard-observability`, que no tiene ResourceQuota, así que no cuentan para la cuota de `circleguard-<env>`. Sí cuentan para el nodo, y la CPU es lo que más se agota:
+- El nodo `m7i-flex.large` tiene 2000m de CPU para pedir.
+- En stage, la aplicación y los pods del sistema ya piden 1850m.
+- Con 100m por componente, Loki y Prometheus quedaban en `Pending` por `Insufficient cpu`.
+- Con 25m por componente, la observabilidad pide 100m en total y stage queda en 1950m.
 
-En stage y prod el nodo (`m7i-flex.large`, 8 GiB) queda con unos 6,7 GiB pedidos en total:
+Pedir poca CPU solo sirve para que Kubernetes ubique los pods en el nodo; en reposo consumen menos que eso. El límite les deja usar más cuando hacen falta, por ejemplo en una consulta grande o al compactar.
+
+En memoria, stage y prod quedan con unos 6,7 GiB pedidos en total de 8 GiB:
 - 6016 Mi de la aplicación;
 - 384 Mi de Prometheus y Grafana;
 - 352 Mi de Loki y Alloy.
 
-Si se agregan más pods, conviene revisar la memoria del nodo.
+Antes de desplegar en un nodo, o de agregar más pods, revisa lo que queda libre:
+
+```bash
+kubectl describe node | sed -n '/Allocated resources/,/Events/p' | head -6
+```
 
 ## 6. Validación
 
